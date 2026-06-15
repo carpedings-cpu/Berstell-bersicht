@@ -739,6 +739,15 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <button onclick="saveSettings()">Speichern</button>
   </div>
   <div class="setbox">
+    <h3>💾 Backup &amp; Wiederherstellung</h3>
+    <div class="hint" style="margin-top:0;margin-bottom:10px">Deine Daten liegen nur in diesem Browser. Lade regelmäßig ein Backup herunter – damit kannst du die Daten wiederherstellen oder auf einen anderen PC übertragen.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="zipExpAll()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">⬇️ Backup herunterladen</button>
+      <button onclick="trigImportBackup()" style="background:linear-gradient(135deg,#b8860b,#c8961b)">⬆️ Backup wiederherstellen</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Wiederherstellen fügt die Projekte aus der Backup-Datei hinzu (gleiche Projekte werden überschrieben, vorhandene andere bleiben erhalten).</div>
+  </div>
+  <div class="setbox">
     <h3>📦 Daten</h3>
     <button onclick="resetDemo()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🔄 Demo zurücksetzen</button>
     <div class="hint" style="margin-top:8px">Lädt das Demo-Projekt KiTa Hollerborn neu (alle Status zurück auf offen). Deine eigenen Projekte bleiben unberührt.</div>
@@ -1240,7 +1249,8 @@ function renderDetail(){
     if(p.quelle==='bestellt'){
       html+=`<div class="ck p-bs${p.lieferort==='baustelle'?' on':''}" onclick="setF(${idx},'lieferort','baustelle')"><span class="cki">${p.lieferort==='baustelle'?'✓':'○'}</span>Baustelle</div>
         <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager</div>`;
-      html+=`<div class="ck st-best${p.status==='bestellt'?' on':''}" onclick="setF(${idx},'status','bestellt')"><span class="cki">${p.status==='bestellt'?'✓':'○'}</span>Bestellt</div>`;
+      const istBestellt=p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert';
+      html+=`<div class="ck st-best${p.status==='bestellt'?' on':''}" onclick="setF(${idx},'status','bestellt')"><span class="cki">${p.status==='bestellt'?'✓':'○'}</span>${istBestellt?'Bestellt':'Zu bestellen'}</div>`;
       html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen</div>`;
       html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert</div>`;
     }
@@ -1614,6 +1624,45 @@ async function zipExpAll(){
   hideLoader();toast('Gesamt-Backup heruntergeladen','ok');
 }
 
+
+// ── BACKUP WIEDERHERSTELLEN ──────────────────────────────────────────────
+function trigImportBackup(){
+  const fi=document.createElement('input');
+  fi.type='file';fi.accept='.zip,.json';fi.style.display='none';
+  fi.onchange=ev=>{const f=ev.target.files[0];if(f)importBackup(f);};
+  document.body.appendChild(fi);fi.click();
+  setTimeout(()=>fi.remove(),1000);
+}
+async function importBackup(file){
+  if(!confirm('Backup einspielen? Projekte aus der Datei werden hinzugefügt bzw. überschrieben. Vorhandene andere Projekte bleiben erhalten.'))return;
+  showLoader('Backup wird eingespielt …');
+  try{
+    let projCount=0;
+    const handleObj=async obj=>{
+      if(!obj||typeof obj!=='object')return;
+      if(Array.isArray(obj.positionen)){ // Projekt
+        if(!obj.id)obj.id='p_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+        await dbPut('projects',obj);projCount++;
+      }else if(obj.warnDays!==undefined||obj.webhook!==undefined){ // Settings
+        Object.assign(SETTINGS,obj);await dbPut('settings',{k:'main',...SETTINGS});
+      }
+    };
+    if(/\.json$/i.test(file.name)){
+      await handleObj(JSON.parse(await file.text()));
+    }else{
+      const zip=await JSZip.loadAsync(await file.arrayBuffer());
+      for(const fn of Object.keys(zip.files)){
+        const entry=zip.files[fn];
+        if(entry.dir||!/\.json$/i.test(fn))continue;
+        let obj;try{obj=JSON.parse(await entry.async('string'));}catch(e){continue;}
+        await handleObj(obj);
+      }
+    }
+    PROJECTS=await dbAll('projects');
+    hideLoader();goHome();
+    toast(projCount+' Projekt(e) wiederhergestellt','ok',3500);
+  }catch(e){hideLoader();console.error(e);toast('Wiederherstellung fehlgeschlagen: '+e.message,'err',4500);}
+}
 
 async function resetDemo(){
   if(!confirm('Demo-Projekt KiTa Hollerborn neu laden? Alle Status (bestellt/abgerufen/geliefert) der Demo werden zurückgesetzt. Eigene Projekte bleiben erhalten.'))return;
