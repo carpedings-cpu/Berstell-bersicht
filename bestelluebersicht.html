@@ -1548,20 +1548,22 @@ function renderDetail(){
       html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung</div>`;
     }
     html+=`</div>`;
-    // AB-Statuszeile: bestätigt (mit Datum) ODER überfällig-Warnung
-    if(p.quelle==='bestellt' && (p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')){
+    // AB-Statuszeile + Drop-Zone: bei jeder Bestellware verfuegbar (unabhaengig vom Status)
+    if(p.quelle==='bestellt'){
+      // Statuszeile nur sinnvoll, wenn bestelltAm gesetzt (sonst keine Frist berechenbar)
       if(p.abBestaetigt){
         html+=`<div class="ab-ok">📄 Auftragsbestätigung erhalten${p.abAm?' am '+fmtD(p.abAm):''}</div>`;
-      } else {
-        const tage=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
+      } else if(p.bestelltAm){
+        const tage=daysBtw(p.bestelltAm,today());
         const frist=SETTINGS.abFrist||7;
-        if(p.bestelltAm && tage>=frist){
+        if(tage>=frist){
           html+=`<div class="warn red">⚠ Auftragsbestätigung fehlt seit ${tage} Tagen (bestellt am ${fmtD(p.bestelltAm)}) – erinnern!</div>`;
-        } else if(p.bestelltAm){
+        } else {
           html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
         }
       }
-      // AB-Datei-Drop-Zone (analog zu Lieferschein) – Datei anhängen = AB bestätigt
+      // AB-Datei-Drop-Zone immer anbieten – auch bevor die Position formal als 'bestellt' markiert ist.
+      // Datei anhaengen setzt status='bestellt' + bestelltAm + abBestaetigt automatisch.
       if(p.abDoc){
         html+=`<div class="lsdrop hasFile">
           <span>📄</span>
@@ -2302,7 +2304,9 @@ async function handleAbFile(idx,file){
   if(p.abDoc&&p.abDoc.id){try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}}
   await dbPut('auftragsbestaetigungen',{id:abId,blob:buffer,type:file.type,name:file.name});
   p.abDoc={id:abId,name:file.name,type:file.type,datum:datum||today()};
-  // AB-Datei = AB ist da
+  // AB-Datei = AB ist da; impliziert dass auch wirklich bestellt wurde
+  if(p.status==='offen'||!p.status)p.status='bestellt';
+  if(!p.bestelltAm)p.bestelltAm=today();
   p.abBestaetigt=true;
   if(!p.abAm)p.abAm=datum||today();
   p.abErinnertAm='';
