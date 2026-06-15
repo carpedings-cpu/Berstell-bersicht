@@ -1545,8 +1545,8 @@ function renderDetail(){
         <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager</div>`;
       html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen</div>`;
       html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert</div>`;
-      // Auftragsbestätigung-Toggle
-      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung</div>`;
+      // Auftragsbestätigung – Klick oeffnet Datei-Picker; wenn bereits bestaetigt, kann zurueckgesetzt werden
+      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="${p.abBestaetigt?'toggleAB('+idx+')':'pickAb('+idx+')'}" title="${p.abBestaetigt?'Klicken zum Zuruecksetzen':'Klicken zum AB-PDF anhaengen'}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung</div>`;
     }
     html+=`</div>`;
     // AB-Statuszeile + Drop-Zone: bei jeder Bestellware verfuegbar (unabhaengig vom Status)
