@@ -741,6 +741,20 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
+<div class="modal" id="parseDebugModal">
+  <div class="modal-box" style="max-width:680px">
+    <h3>🔍 Excel-Import: Diagnose</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.65);margin-bottom:10px">
+      Es wurden keine Positionen erkannt. Schick diesen Text an Diana – damit der Parser angepasst werden kann.
+    </div>
+    <textarea id="pdText" rows="18" readonly style="width:100%;padding:10px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:11.5px;font-family:Consolas,Menlo,monospace;outline:none;resize:vertical;min-height:300px;line-height:1.4;white-space:pre"></textarea>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeParseDebug()">Schließen</button>
+      <button class="mok" onclick="copyParseDebug()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Kopieren</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <div id="loader"><div class="loader-box"><div class="spinner"></div><span id="loaderTxt">Lädt …</span></div></div>
 <input type="file" id="fiExcel" accept=".xlsx,.xlsm,.xls" style="display:none">
@@ -950,6 +964,10 @@ async function saveNewProj(){
   try{
     const data=parseExcel(await file.arrayBuffer());
     const proj=makeProjFromData(name,data,termin);
+    if(proj.positionen.length===0){
+      hideLoader();toast('Keine Positionen erkannt – Diagnose öffnet sich','err',3500);
+      showParseDebug();_npFile=null;return;
+    }
     await dbPut('projects',proj);
     PROJECTS.push(proj);
     renderHome();hideLoader();
@@ -961,6 +979,7 @@ async function saveNewProj(){
 function parseExcel(ab){
   const wb=XLSX.read(ab,{type:'array'});
   if(!wb.SheetNames.length)throw new Error('Datei enthält keine Sheets');
+  window._parseDebug={sheets:wb.SheetNames.slice(),picked:'',headerRow:-1,colMap:null,sample:[]};
   // Sheet finden: 'Kalkulation' bevorzugt (case-insensitive), sonst erstes Sheet mit passenden Headern, sonst erstes
   const pickSheet=()=>{
     const exact=wb.SheetNames.find(s=>s.toLowerCase().trim()==='kalkulation');
@@ -975,6 +994,8 @@ function parseExcel(ab){
   };
   const sn=pickSheet();
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});
+  window._parseDebug.picked=sn;
+  window._parseDebug.sample=rows.slice(0,15).map(r=>(r||[]).slice(0,8).map(c=>c==null?'':String(c)));
   // Zelle normalisieren: trim, NBSP→Space, Mehrfach-Leerzeichen kollabieren; leere Strings → null
   const n=v=>{if(v==null)return null;const s=String(v).replace(/ /g,' ').trim().replace(/\s+/g,' ');return s===''?null:s;};
   const isEmpty=v=>v==null||(typeof v==='string'&&v.replace(/ /g,'').trim()==='');
@@ -999,6 +1020,8 @@ function parseExcel(ab){
     }
   }
   if(headerRow<0)headerRow=0; // Fallback: alte feste Spaltenpositionen, Header in Zeile 0
+  window._parseDebug.headerRow=headerRow;
+  window._parseDebug.colMap={...col};
   const cats=[];let cur=null;
   const ensureCur=()=>{if(!cur){cur={pos:'00.',bez:'',label:'',subsections:[{pos:'00.',bez:'',items:[]}],items:[]};cats.push(cur);}};
   for(let i=headerRow+1;i<rows.length;i++){
@@ -1496,6 +1519,35 @@ async function saveSettings(){
   toast('Einstellungen gespeichert','ok');
 }
 
+// ── PARSE-DIAGNOSE ──────────────────────────────────────────────────────
+function showParseDebug(){
+  const d=window._parseDebug||{};
+  const lines=[];
+  lines.push('=== Excel-Import Diagnose ===');
+  lines.push('Sheets in Datei: '+(d.sheets||[]).join(' | '));
+  lines.push('Gewähltes Sheet: '+(d.picked||'(keins)'));
+  lines.push('Header-Zeile erkannt in Index: '+(d.headerRow>=0?d.headerRow:'(keine)'));
+  lines.push('Spalten-Mapping (Index, -1 = nicht gefunden):');
+  const cm=d.colMap||{};
+  Object.keys(cm).forEach(k=>lines.push('  '+k.padEnd(8)+' = '+cm[k]));
+  lines.push('');
+  lines.push('Erste 15 Zeilen (Spalten A-H):');
+  lines.push('Zeile | A | B | C | D | E | F | G | H');
+  lines.push('------+---+---+---+---+---+---+---+---');
+  (d.sample||[]).forEach((r,i)=>{
+    const cells=[];for(let j=0;j<8;j++)cells.push((r[j]||'').slice(0,18));
+    lines.push(String(i+1).padStart(5)+' | '+cells.join(' | '));
+  });
+  document.getElementById('pdText').value=lines.join('\n');
+  document.getElementById('parseDebugModal').classList.add('on');
+}
+function closeParseDebug(){document.getElementById('parseDebugModal').classList.remove('on');}
+async function copyParseDebug(){
+  const t=document.getElementById('pdText');t.select();
+  try{await navigator.clipboard.writeText(t.value);toast('Diagnose kopiert','ok');}
+  catch(e){document.execCommand('copy');toast('Diagnose kopiert','ok');}
+}
+
 // ── EXCEL IMPORT (im Projekt) ───────────────────────────────────────────
 function trigExcel(){
   const fi=document.getElementById('fiExcel');
@@ -1509,7 +1561,7 @@ function trigExcel(){
         newItems.push({pos:it.pos,bereich:sec.pos,bereichBez:sec.bez||'',bez:it.bez,
           fabrikat:it.fabrikat||'',typ:it.typ||'',menge:it.menge,einh:it.einh});
       })));
-      if(newItems.length===0){hideLoader();toast('Keine Positionen erkannt. Sheet/Spalten prüfen.','err',4500);fi.onchange=null;fi.value='';return;}
+      if(newItems.length===0){hideLoader();toast('Keine Positionen erkannt – Diagnose öffnet sich','err',3500);showParseDebug();fi.onchange=null;fi.value='';return;}
       const existMap={};CUR.positionen.forEach(p=>{existMap[p.pos]=p;});
       let added=0,kept=0;
       newItems.forEach(it=>{
