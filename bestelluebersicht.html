@@ -960,17 +960,66 @@ async function saveNewProj(){
 
 function parseExcel(ab){
   const wb=XLSX.read(ab,{type:'array'});
-  const sn=wb.SheetNames.includes('Kalkulation')?'Kalkulation':wb.SheetNames[0];
+  if(!wb.SheetNames.length)throw new Error('Datei enthält keine Sheets');
+  // Sheet finden: 'Kalkulation' bevorzugt (case-insensitive), sonst erstes Sheet mit passenden Headern, sonst erstes
+  const pickSheet=()=>{
+    const exact=wb.SheetNames.find(s=>s.toLowerCase().trim()==='kalkulation');
+    if(exact)return exact;
+    const partial=wb.SheetNames.find(s=>/kalku/i.test(s));
+    if(partial)return partial;
+    for(const sn of wb.SheetNames){
+      const rs=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});
+      if(rs.some(r=>r&&r.some(c=>/bezeichnung|fabrikat/i.test(String(c||'')))))return sn;
+    }
+    return wb.SheetNames[0];
+  };
+  const sn=pickSheet();
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});
-  const cats=[];let cur=null;
-  const n=s=>s==null?null:String(s).trim().replace(/\s+/g,' ');
-  for(let i=1;i<rows.length;i++){
+  // Zelle normalisieren: trim, NBSP→Space, Mehrfach-Leerzeichen kollabieren; leere Strings → null
+  const n=v=>{if(v==null)return null;const s=String(v).replace(/ /g,' ').trim().replace(/\s+/g,' ');return s===''?null:s;};
+  const isEmpty=v=>v==null||(typeof v==='string'&&v.replace(/ /g,'').trim()==='');
+  // Header-Zeile + Spaltenmapping automatisch finden (Pos + Bezeichnung müssen drin sein)
+  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6};
+  for(let i=0;i<Math.min(rows.length,25);i++){
     const r=rows[i];if(!r)continue;
-    const pos=n(r[0]),stk=r[1],einh=n(r[2]),bez=n(r[3]),fab=n(r[5]),typ=n(r[6]);
+    const find=re=>r.findIndex(c=>c!=null&&re.test(String(c).trim()));
+    const cPos=find(/^pos\.?$|^position$|^nr\.?$/i);
+    const cBez=find(/bezeichnung|beschreibung/i);
+    if(cPos>=0&&cBez>=0){
+      headerRow=i;
+      col={
+        pos:cPos,
+        menge:find(/^st(ü|ue|u)?ck\.?$|^stk\.?$|^menge$|^anzahl$/i),
+        einh:find(/^einh\.?$|einheit/i),
+        bez:cBez,
+        fab:find(/fabrikat|hersteller|marke/i),
+        typ:find(/^typ$|modell|artikel.?nr/i)
+      };
+      break;
+    }
+  }
+  if(headerRow<0)headerRow=0; // Fallback: alte feste Spaltenpositionen, Header in Zeile 0
+  const cats=[];let cur=null;
+  const ensureCur=()=>{if(!cur){cur={pos:'00.',bez:'',label:'',subsections:[{pos:'00.',bez:'',items:[]}],items:[]};cats.push(cur);}};
+  for(let i=headerRow+1;i<rows.length;i++){
+    const r=rows[i];if(!r)continue;
+    const pos=n(r[col.pos]);
+    const stkRaw=col.menge>=0?r[col.menge]:null;
+    const einh=col.einh>=0?n(r[col.einh]):null;
+    const bez=col.bez>=0?n(r[col.bez]):null;
+    const fab=col.fab>=0?n(r[col.fab]):null;
+    const typ=col.typ>=0?n(r[col.typ]):null;
     if(!pos)continue;
-    if(/^\d+\.\s*$/.test(pos)&&stk==null){cur={pos,bez:bez||'',label:bez||'',subsections:[{pos,bez:bez||'',items:[]}],items:[]};cats.push(cur);continue;}
-    if(stk!=null&&bez){const it={pos,menge:String(stk),einh:einh||'St',bez,fabrikat:fab||'',typ:typ||''};
-      if(cur)cur.subsections[0].items.push(it);}
+    // Bereichsüberschrift: Pos ist reine Bereichsnummer ("1.", "01.", "1") und Menge ist leer
+    if(/^\d{1,3}\.?\s*$/.test(pos)&&isEmpty(stkRaw)){
+      cur={pos,bez:bez||'',label:bez||'',subsections:[{pos,bez:bez||'',items:[]}],items:[]};
+      cats.push(cur);continue;
+    }
+    // Item: Bezeichnung + Menge vorhanden
+    if(!isEmpty(stkRaw)&&bez){
+      ensureCur();
+      cur.subsections[0].items.push({pos,menge:String(stkRaw).trim(),einh:einh||'St',bez,fabrikat:fab||'',typ:typ||''});
+    }
   }
   return cats;
 }
