@@ -362,6 +362,12 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;}
 .inspos:hover{background:rgba(200,168,130,.15);border-color:#6b5040;color:#6b5040;}
 .inspos:active{transform:scale(.98);}
+.bbanner{display:none;position:sticky;top:0;z-index:90;background:linear-gradient(135deg,rgba(184,134,11,.95),rgba(200,150,27,.95));color:#fff;padding:10px 14px;font-size:13px;font-weight:600;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap;box-shadow:0 4px 12px rgba(184,134,11,.25);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);}
+.bbanner.on{display:flex;}
+.bbanner .bb-txt{flex:1;min-width:160px;}
+.bbanner button{background:rgba(255,255,255,.18);border:.5px solid rgba(255,255,255,.3);color:#fff;padding:6px 12px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.bbanner button:active{transform:scale(.95);}
+.bbanner button.bb-save{background:#fff;color:#7a5800;border-color:transparent;}
 
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
@@ -409,6 +415,13 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     </div>
   </div>
 </header>
+
+<div class="bbanner" id="backupBanner">
+  <span>💾</span>
+  <span class="bb-txt"></span>
+  <button class="bb-save" onclick="zipExpAll()">⬇️ Jetzt sichern</button>
+  <button onclick="dismissBackupBanner()">Später</button>
+</div>
 
 <!-- VIEW: Projektliste -->
 <div class="view on" id="vHome">
@@ -792,7 +805,38 @@ function dbAll(s){return new Promise((r,j)=>{const t=db.transaction(s,'readonly'
 function dbDel(s,k){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).delete(k);q.onsuccess=()=>r();q.onerror=()=>j(q.error);});}
 
 // ── STATE ───────────────────────────────────────────────────────────────
-let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14}, PREISE_DATA=[];
+let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,lastBackup:'',changesSinceBackup:0}, PREISE_DATA=[];
+
+// ── BACKUP-ERINNERUNG ──────────────────────────────────────────────────
+async function markChanged(){
+  SETTINGS.changesSinceBackup=(SETTINGS.changesSinceBackup||0)+1;
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  updateBackupBanner();
+}
+function backupReminderDue(){
+  const ch=SETTINGS.changesSinceBackup||0;
+  const lb=SETTINGS.lastBackup;
+  if(ch===0)return false;
+  if(!lb)return ch>=5;
+  if(ch>=20)return true;
+  if(daysBtw(lb,today())>7)return true;
+  return false;
+}
+function updateBackupBanner(){
+  const b=document.getElementById('backupBanner');if(!b)return;
+  const dismissed=localStorage.getItem('kpc_backupDismiss')===today();
+  if(backupReminderDue()&&!dismissed){
+    const ch=SETTINGS.changesSinceBackup||0;
+    const lb=SETTINGS.lastBackup;
+    const txt=lb?`Letztes Backup vor ${daysBtw(lb,today())} Tagen · ${ch} Änderungen seither – jetzt sichern!`
+                :`Noch nie gesichert · ${ch} Änderung${ch===1?'':'en'} – jetzt sichern!`;
+    b.querySelector('.bb-txt').textContent=txt;
+    b.classList.add('on');
+  } else {
+    b.classList.remove('on');
+  }
+}
+function dismissBackupBanner(){localStorage.setItem('kpc_backupDismiss',today());updateBackupBanner();}
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const escA=s=>String(s||'').replace(/"/g,'&quot;');
 const today=()=>new Date().toISOString().slice(0,10);
@@ -857,6 +901,7 @@ async function init(){
   }
   hideLoader();
   goHome();
+  updateBackupBanner();
 }
 
 function makeProjFromData(name,data,termin=''){
@@ -982,7 +1027,7 @@ async function saveNewProj(){
       showParseDebug();_npFile=null;return;
     }
     await dbPut('projects',proj);
-    PROJECTS.push(proj);
+    PROJECTS.push(proj);markChanged();
     renderHome();hideLoader();
     toast('Projekt "'+name+'" angelegt: '+proj.positionen.length+' Positionen','ok',3000);
   }catch(e){hideLoader();console.error(e);toast('Import fehlgeschlagen: '+e.message,'err',4000);}
@@ -1348,7 +1393,7 @@ async function setF(idx,field,val){
   await saveCur();renderDetail();
 }
 async function updF(idx,k,v){CUR.positionen[idx][k]=v;await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();}
-async function saveCur(){if(CUR)await dbPut('projects',CUR);}
+async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
 
 // Tags
 function tagKey(ev,idx){if(ev.key==='Enter'||ev.key===','){ev.preventDefault();tagCommit(idx);}}
@@ -1621,6 +1666,9 @@ async function zipExpAll(){
   const blob=await zip.generateAsync({type:'blob'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=`KPC_Bestelluebersicht_Backup_${today()}.zip`;a.click();
+  SETTINGS.lastBackup=today();SETTINGS.changesSinceBackup=0;
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  updateBackupBanner();
   hideLoader();toast('Gesamt-Backup heruntergeladen','ok');
 }
 
@@ -1659,7 +1707,9 @@ async function importBackup(file){
       }
     }
     PROJECTS=await dbAll('projects');
-    hideLoader();goHome();
+    SETTINGS.lastBackup=today();SETTINGS.changesSinceBackup=0;
+    try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+    hideLoader();goHome();updateBackupBanner();
     toast(projCount+' Projekt(e) wiederhergestellt','ok',3500);
   }catch(e){hideLoader();console.error(e);toast('Wiederherstellung fehlgeschlagen: '+e.message,'err',4500);}
 }
@@ -1976,7 +2026,7 @@ async function markBestellt(projId,idx){
   p.quelle='bestellt';
   p.status='bestellt';
   if(!p.lieferant && p.fabrikat)p.lieferant=p.fabrikat;
-  await dbPut('projects',proj);
+  await dbPut('projects',proj);markChanged();
   renderZuBestellen();
   toast(p.pos+' als bestellt markiert','ok');
 }
@@ -1992,7 +2042,7 @@ async function markAllBestellt(lief){
     if(!it.proj.positionen[it.idx].lieferant && it.proj.positionen[it.idx].fabrikat){
       it.proj.positionen[it.idx].lieferant=it.proj.positionen[it.idx].fabrikat;
     }
-    await dbPut('projects',it.proj);
+    await dbPut('projects',it.proj);markChanged();
   }
   renderZuBestellen();
   toast(items.length+' Positionen als bestellt markiert','ok');
@@ -2368,7 +2418,7 @@ async function markAbgerufen(projId,idx){
   if(!p.quelle)p.quelle='bestellt';
   p.status='abgerufen';
   if(!p.lieferant&&p.fabrikat)p.lieferant=p.fabrikat;
-  await dbPut('projects',proj);
+  await dbPut('projects',proj);markChanged();
   renderAbrufAnsicht();
   toast(p.pos+' als abgerufen markiert','ok');
 }
