@@ -825,7 +825,17 @@ function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,3);
     if(!d.objectStoreNames.contains('settings'))d.createObjectStore('settings',{keyPath:'k'});
     if(!d.objectStoreNames.contains('lieferscheine'))d.createObjectStore('lieferscheine',{keyPath:'id'});
     if(!d.objectStoreNames.contains('auftragsbestaetigungen'))d.createObjectStore('auftragsbestaetigungen',{keyPath:'id'});};
-  r.onsuccess=ev=>{db=ev.target.result;res(db);};r.onerror=ev=>rej(ev.target.error);});}
+  r.onblocked=()=>{
+    // Eine andere Instanz (Tab/Fenster/Geraet) haelt die alte DB-Version offen → Upgrade blockiert.
+    document.getElementById('loaderTxt').textContent='⚠ App in anderem Tab geöffnet – diesen schließen, dann neu laden';
+  };
+  r.onsuccess=ev=>{db=ev.target.result;
+    // Falls eine spaetere Version geoeffnet wird, eigene Verbindung sofort freigeben, damit das andere Fenster upgraden kann.
+    db.onversionchange=()=>{try{db.close();}catch(e){}location.reload();};
+    res(db);
+  };
+  r.onerror=ev=>rej(ev.target.error);
+});}
 function dbGet(s,k){return new Promise((r,j)=>{const t=db.transaction(s,'readonly');const q=t.objectStore(s).get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error);});}
 function dbPut(s,v){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).put(v);q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error);});}
 function dbAll(s){return new Promise((r,j)=>{const t=db.transaction(s,'readonly');const q=t.objectStore(s).getAll();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>j(q.error);});}
@@ -904,41 +914,46 @@ function severity(p,proj){
 // ── INIT ────────────────────────────────────────────────────────────────
 async function init(){
   showLoader('Lade …');
-  await openDB();
-  // Settings
-  const s=await dbGet('settings','main').catch(()=>null);
-  if(s)Object.assign(SETTINGS,s);
-  PROJECTS=await dbAll('projects');
-  // Preisdaten laden
-  try{const pd=await dbGet('settings','preiseData');if(pd&&pd.v)PREISE_DATA=pd.v;}catch(e){}
-  // Migration: altes sollTermin-Feld → abrufTermin
-  let migrated=false;
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
-    if('sollTermin' in p && !('abrufTermin' in p)){p.abrufTermin='';migrated=true;delete p.sollTermin;}
-    if(!('abrufTermin' in p)){p.abrufTermin='';migrated=true;}
-    // Auftragsbestätigungs-Felder nachrüsten
-    if(!('abBestaetigt' in p)){p.abBestaetigt=false;migrated=true;}
-    if(!('bestelltAm' in p)){
-      // Bei bereits bestellten Positionen Bestelldatum unbekannt – heute annehmen, damit die Frist erst ab jetzt läuft
-      p.bestelltAm=(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')?today():'';
-      migrated=true;
+  try{
+    await openDB();
+    // Settings
+    const s=await dbGet('settings','main').catch(()=>null);
+    if(s)Object.assign(SETTINGS,s);
+    PROJECTS=await dbAll('projects');
+    // Preisdaten laden
+    try{const pd=await dbGet('settings','preiseData');if(pd&&pd.v)PREISE_DATA=pd.v;}catch(e){}
+    // Migration: altes sollTermin-Feld → abrufTermin
+    let migrated=false;
+    PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
+      if('sollTermin' in p && !('abrufTermin' in p)){p.abrufTermin='';migrated=true;delete p.sollTermin;}
+      if(!('abrufTermin' in p)){p.abrufTermin='';migrated=true;}
+      // Auftragsbestätigungs-Felder nachrüsten
+      if(!('abBestaetigt' in p)){p.abBestaetigt=false;migrated=true;}
+      if(!('bestelltAm' in p)){
+        // Bei bereits bestellten Positionen Bestelldatum unbekannt – heute annehmen, damit die Frist erst ab jetzt läuft
+        p.bestelltAm=(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')?today():'';
+        migrated=true;
+      }
+      if(!('abAm' in p)){p.abAm='';migrated=true;}
+      if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
+    }));
+    if(migrated)for(const proj of PROJECTS)await dbPut('projects',proj);
+    // Seed Demo-Projekt wenn leer
+    if(PROJECTS.length===0){
+      const demo=makeProjFromData('KiTa Hollerborn Wiesbaden',DEMO_DATA);
+      demo.demo=true;
+      await dbPut('projects',demo);
+      PROJECTS=[demo];
+      toast('Demo-Projekt geladen','ok');
     }
-    if(!('abAm' in p)){p.abAm='';migrated=true;}
-    if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
-  }));
-  if(migrated)for(const proj of PROJECTS)await dbPut('projects',proj);
-  // Seed Demo-Projekt wenn leer
-  if(PROJECTS.length===0){
-    const demo=makeProjFromData('KiTa Hollerborn Wiesbaden',DEMO_DATA);
-    demo.demo=true;
-    await dbPut('projects',demo);
-    PROJECTS=[demo];
-    toast('Demo-Projekt geladen','ok');
+    hideLoader();
+    goHome();
+    updateBackupBanner();
+    updateABBanner();
+  }catch(e){
+    console.error('Init-Fehler:',e);
+    document.getElementById('loaderTxt').textContent='⚠ Ladefehler: '+(e&&e.message||e)+' – Seite neu laden';
   }
-  hideLoader();
-  goHome();
-  updateBackupBanner();
-  updateABBanner();
 }
 
 function makeProjFromData(name,data,termin=''){
