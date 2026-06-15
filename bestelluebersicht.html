@@ -441,8 +441,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <h3>📥 Neues Projekt anlegen</h3>
       <div class="frm-row" style="margin-top:14px">
         <div class="frm-fld" style="flex:1 1 100%">
-          <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block">Projektname *</label>
-          <input type="text" id="npName" placeholder="z.B. Mensa Musterschule Frankfurt" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none">
+          <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block">Projektname (optional)</label>
+          <input type="text" id="npName" placeholder="leer lassen → wird aus Excel/Dateiname übernommen" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none">
         </div>
       </div>
       <div class="frm-row" style="margin-top:10px">
@@ -1031,16 +1031,18 @@ function pickExcelForNew(){
   fi.click();
 }
 async function saveNewProj(){
-  const name=document.getElementById('npName').value.trim();
-  if(!name){document.getElementById('npName').focus();document.getElementById('npName').style.borderColor='#d92020';return;}
+  const userName=document.getElementById('npName').value.trim();
   if(!_npFile){toast('Bitte zuerst Excel auswählen','err');return;}
   const file=_npFile; // Referenz sichern bevor closeNewProj sie resettet
   const termin=document.getElementById('npTermin').value||'';
   document.getElementById('newProjModal').classList.remove('on');
   showLoader('Excel wird geparst …');
   try{
-    const data=parseExcel(await file.arrayBuffer());
-    const proj=makeProjFromData(name,data,termin);
+    const parsed=parseExcel(await file.arrayBuffer());
+    // Projektname: 1) User-Eingabe 2) aus Excel-Header erkannt 3) Fallback aus Dateinamen
+    const fileBase=file.name.replace(/\.(xlsx|xlsm|xls)$/i,'').replace(/^Auftragsliste[_\s]*/i,'').replace(/_/g,' ').trim();
+    const name=userName||parsed.projName||fileBase||'Neues Projekt';
+    const proj=makeProjFromData(name,parsed.cats,termin);
     if(proj.positionen.length===0){
       hideLoader();toast('Keine Positionen erkannt – Diagnose öffnet sich','err',3500);
       showParseDebug();_npFile=null;return;
@@ -1081,29 +1083,93 @@ function parseExcel(ab){
   let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6,ek:-1,vk:-1};
   // EK/VK aus deutschem Zahlenformat lesen (7.850,00 € -> 7850)
   const num=v=>{if(v==null)return 0;const x=parseFloat(String(v).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'));return isNaN(x)?0:x;};
+  // EK/VK-Header breit erkennen: "EK", "EK-Preis", "EK netto", "EK €", "EK in €", "EK/Stk",
+  // "Einkaufspreis", "Einstand", "EP EK", analog VK. Kein .? – das hat fälschlich nach 1 Zeichen gesucht.
+  const RE_EK=/^\s*(ek\b|einkauf|einstand|ep\s*ek|ek[\s\-\/.·]*(netto|brutto|preis|stk|stueck|einzel|gesamt|€|eur|in\s*€)|einkaufspreis)/i;
+  const RE_VK=/^\s*(vk\b|verkauf|angebot|listenpreis|ep\s*vk|vk[\s\-\/.·]*(netto|brutto|preis|stk|stueck|einzel|gesamt|€|eur|in\s*€)|verkaufspreis)/i;
+  const findInRow=(r,re)=>r?r.findIndex(c=>c!=null&&re.test(String(c).trim())):-1;
   for(let i=0;i<Math.min(rows.length,25);i++){
     const r=rows[i];if(!r)continue;
-    const find=re=>r.findIndex(c=>c!=null&&re.test(String(c).trim()));
-    const cPos=find(/^pos\.?$|^position$|^nr\.?$/i);
-    const cBez=find(/bezeichnung|beschreibung/i);
+    const cPos=findInRow(r,/^pos\.?$|^position$|^nr\.?$/i);
+    const cBez=findInRow(r,/bezeichnung|beschreibung/i);
     if(cPos>=0&&cBez>=0){
       headerRow=i;
+      // EK/VK in 3-Zeilen-Fenster (Header-Zeile +/- 2) suchen – Kalkulationen haben oft mehrzeilige Header
+      let ekCol=-1, vkCol=-1;
+      for(let dy=-1; dy<=2 && (ekCol<0||vkCol<0); dy++){
+        const rr=rows[i+dy];
+        if(ekCol<0){const k=findInRow(rr,RE_EK); if(k>=0)ekCol=k;}
+        if(vkCol<0){const k=findInRow(rr,RE_VK); if(k>=0)vkCol=k;}
+      }
       col={
         pos:cPos,
-        menge:find(/^st(ü|ue|u)?ck\.?$|^stk\.?$|^menge$|^anzahl$/i),
-        einh:find(/^einh\.?$|einheit/i),
+        menge:findInRow(r,/^st(ü|ue|u)?ck\.?$|^stk\.?$|^menge$|^anzahl$/i),
+        einh:findInRow(r,/^einh\.?$|einheit/i),
         bez:cBez,
-        fab:find(/fabrikat|hersteller|marke/i),
-        typ:find(/^typ$|modell|artikel.?nr/i),
-        ek:find(/^ek$|einkauf|ek.?netto|ek.?preis|einstand/i),
-        vk:find(/^vk$|verkauf|vk.?netto|vk.?preis|angebot.?preis|listenpreis/i)
+        fab:findInRow(r,/fabrikat|hersteller|marke/i),
+        typ:findInRow(r,/^typ$|modell|artikel.?nr/i),
+        ek:ekCol,
+        vk:vkCol
       };
       break;
     }
   }
   if(headerRow<0)headerRow=0; // Fallback: alte feste Spaltenpositionen, Header in Zeile 0
+  // Heuristik-Fallback: EK/VK ueber numerische Spalten rechts der Bezeichnung erraten,
+  // wenn der Header-Scan sie nicht gefunden hat. Konvention: links EK, rechts VK.
+  if(col.ek<0||col.vk<0){
+    const startCol=Math.max(col.bez||0,col.typ||0,col.fab||0)+1;
+    const stats={};
+    const scanEnd=Math.min(rows.length, headerRow+80);
+    for(let i=headerRow+1;i<scanEnd;i++){
+      const r=rows[i];if(!r)continue;
+      for(let j=startCol;j<r.length;j++){
+        const v=r[j]; if(v==null)continue;
+        const s=String(v).trim(); if(!s)continue;
+        if(!stats[j])stats[j]={nNum:0,nTotal:0};
+        stats[j].nTotal++;
+        const x=num(s);
+        if(x>=1 && x<1e7) stats[j].nNum++;
+      }
+    }
+    const cands=Object.entries(stats)
+      .filter(([_,s])=>s.nNum>=3 && s.nNum/s.nTotal>=0.4)
+      .map(([j])=>parseInt(j,10))
+      .filter(j=>j!==col.menge)
+      .sort((a,b)=>a-b);
+    if(col.ek<0&&col.vk<0&&cands.length>=2){
+      col.ek=cands[0]; col.vk=cands[cands.length-1];
+    }else if(col.ek<0&&col.vk>=0){
+      const c=cands.find(j=>j!==col.vk); if(c!=null)col.ek=c;
+    }else if(col.vk<0&&col.ek>=0){
+      const c=[...cands].reverse().find(j=>j!==col.ek); if(c!=null)col.vk=c;
+    }else if(col.ek<0&&col.vk<0&&cands.length===1){
+      col.vk=cands[0];
+    }
+  }
   window._parseDebug.headerRow=headerRow;
   window._parseDebug.colMap={...col};
+  // Projektname aus Header-Bereich oberhalb der Tabelle extrahieren
+  let projName='';
+  const RE_PROJ_LABEL=/^(projekt|bauvorhaben|objekt|bv|auftrag|kunde|baustelle)\b\s*:?\s*$/i;
+  const RE_PROJ_INLINE=/^(projekt|bauvorhaben|objekt|bv|auftrag|kunde|baustelle)\b\s*:\s*(.+)$/i;
+  outer: for(let i=0;i<Math.max(0,headerRow);i++){
+    const r=rows[i];if(!r)continue;
+    for(let j=0;j<r.length;j++){
+      const v=r[j]; if(v==null)continue;
+      const s=String(v).replace(/ /g,' ').trim(); if(!s)continue;
+      const m=s.match(RE_PROJ_INLINE);
+      if(m&&m[2]){projName=m[2].trim();break outer;}
+      if(RE_PROJ_LABEL.test(s)){
+        for(let k=j+1;k<r.length;k++){
+          const nv=r[k]; if(nv==null)continue;
+          const ns=String(nv).replace(/ /g,' ').trim(); if(!ns)continue;
+          projName=ns; break outer;
+        }
+      }
+    }
+  }
+  window._parseDebug.projName=projName;
   const cats=[];let cur=null;
   const ensureCur=()=>{if(!cur){cur={pos:'00.',bez:'',label:'',subsections:[{pos:'00.',bez:'',items:[]}],items:[]};cats.push(cur);}};
   for(let i=headerRow+1;i<rows.length;i++){
@@ -1127,7 +1193,7 @@ function parseExcel(ab){
         ek:col.ek>=0?num(r[col.ek]):0, vk:col.vk>=0?num(r[col.vk]):0});
     }
   }
-  return cats;
+  return {cats, projName};
 }
 
 async function delProject(id){
@@ -1616,6 +1682,7 @@ function showParseDebug(){
   lines.push('Sheets in Datei: '+(d.sheets||[]).join(' | '));
   lines.push('Gewähltes Sheet: '+(d.picked||'(keins)'));
   lines.push('Header-Zeile erkannt in Index: '+(d.headerRow>=0?d.headerRow:'(keine)'));
+  lines.push('Projektname aus Excel: '+(d.projName||'(nicht erkannt)'));
   lines.push('Spalten-Mapping (Index, -1 = nicht gefunden):');
   const cm=d.colMap||{};
   Object.keys(cm).forEach(k=>lines.push('  '+k.padEnd(8)+' = '+cm[k]));
@@ -1644,7 +1711,7 @@ function trigExcel(){
     const f=ev.target.files[0];if(!f||!CUR){fi.onchange=null;fi.value='';return;}
     showLoader('Excel wird geparst …');
     try{
-      const data=parseExcel(await f.arrayBuffer());
+      const {cats:data}=parseExcel(await f.arrayBuffer());
       const newItems=[];
       data.forEach(sec=>(sec.subsections||[]).forEach(sub=>sub.items.forEach(it=>{
         newItems.push({pos:it.pos,bereich:sec.pos,bereichBez:sec.bez||'',bez:it.bez,
