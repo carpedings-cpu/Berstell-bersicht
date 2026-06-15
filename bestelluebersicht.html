@@ -752,20 +752,21 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 <div class="view" id="vSettings">
   <div class="setbox">
     <h3>⚙ Einstellungen</h3>
+    <div class="hint" style="margin-top:0;margin-bottom:10px">Eingaben werden automatisch gespeichert, sobald du das Feld verlässt.</div>
     <label>Power Automate Webhook-URL</label>
-    <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…">
+    <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt – auch Erinnerungen an fehlende Auftragsbestätigungen.</div>
     <label>Deine E-Mail</label>
-    <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de">
+    <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <label>E-Mail Kollegin</label>
-    <input type="email" id="setMail2" placeholder="kollegin@kpc-gmbh.de">
+    <input type="email" id="setMail2" placeholder="kollegin@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <label>Abruf-Vorlauf (Tage vor Liefertermin)</label>
-    <input type="number" id="setWarnDays" value="14" min="1" max="90">
+    <input type="number" id="setWarnDays" value="14" min="1" max="90" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Standard-Vorlaufzeit für den Abruftermin. Pro Position überschreibbar.</div>
     <label>Auftragsbestätigung-Frist (Tage nach Bestellung)</label>
-    <input type="number" id="setAbFrist" value="7" min="1" max="60">
+    <input type="number" id="setAbFrist" value="7" min="1" max="60" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird gewarnt und – falls Power Automate eingerichtet ist – eine Erinnerung verschickt.</div>
-    <button onclick="saveSettings()">Speichern</button>
+    <button onclick="saveSettings(false)">Speichern</button>
     <div style="margin-top:14px;padding:10px 12px;background:rgba(19,160,176,.08);border:.5px solid rgba(19,160,176,.22);border-radius:9px">
       <div style="font-size:11.5px;color:rgba(28,28,30,.7);line-height:1.5;margin-bottom:8px">
         <strong>🔁 Autonomer Versand (auch wenn die App geschlossen ist):</strong><br>
@@ -1968,14 +1969,25 @@ async function checkWarnings(){
 }
 
 // ── SETTINGS ────────────────────────────────────────────────────────────
-async function saveSettings(){
-  SETTINGS.webhook=document.getElementById('setWebhook').value.trim();
-  SETTINGS.mail1=document.getElementById('setMail1').value.trim();
-  SETTINGS.mail2=document.getElementById('setMail2').value.trim();
-  SETTINGS.warnDays=parseInt(document.getElementById('setWarnDays').value)||14;
-  SETTINGS.abFrist=parseInt(document.getElementById('setAbFrist').value)||7;
-  await dbPut('settings',{k:'main',...SETTINGS});
-  toast('Einstellungen gespeichert','ok');
+async function saveSettings(silent){
+  // Aktuelle Eingabewerte einsammeln
+  const next={
+    webhook:document.getElementById('setWebhook').value.trim(),
+    mail1:document.getElementById('setMail1').value.trim(),
+    mail2:document.getElementById('setMail2').value.trim(),
+    warnDays:parseInt(document.getElementById('setWarnDays').value)||14,
+    abFrist:parseInt(document.getElementById('setAbFrist').value)||7
+  };
+  // Auto-Save: nur speichern, wenn sich tatsaechlich was geaendert hat (sonst spammt jedes blur den Store)
+  const changed=Object.keys(next).some(k=>next[k]!==SETTINGS[k]);
+  if(!changed&&silent)return;
+  Object.assign(SETTINGS,next);
+  try{
+    await dbPut('settings',{k:'main',...SETTINGS});
+    toast(silent?'Gespeichert ✓':'Einstellungen gespeichert','ok',silent?1000:2500);
+  }catch(e){
+    toast('Speichern fehlgeschlagen: '+(e&&e.message||e),'err',4000);
+  }
   updateABBanner();
 }
 
