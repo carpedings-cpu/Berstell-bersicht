@@ -357,6 +357,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .reklam-badge{display:inline-flex;align-items:center;gap:4px;background:#8b2222;color:#fff;
   font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:6px;letter-spacing:.3px;}
 .card.s-reklam::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#8b2222,#b03030);}
+.inspos{margin-top:8px;width:100%;padding:6px 11px;border-radius:10px;border:.5px dashed rgba(107,80,64,.3);
+  background:rgba(255,255,255,.4);color:rgba(107,80,64,.8);font-size:11.5px;font-weight:600;cursor:pointer;
+  font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;}
+.inspos:hover{background:rgba(200,168,130,.15);border-color:#6b5040;color:#6b5040;}
+.inspos:active{transform:scale(.98);}
 
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
@@ -523,7 +528,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="fabrow" id="dFabs">
     <button class="fab fab-i" onclick="openAddPos()">➕ Position</button>
     <button class="fab fab-c" onclick="csvExp()">📊 CSV</button>
-    <button class="fab fab-e" onclick="trigExcel()">📥 Excel ergänzen</button>
   </div>
 
   <!-- Lager-Abruf Modal – nur in Projekt-Detail -->
@@ -680,7 +684,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <!-- Position hinzufügen -->
   <div class="modal" id="addPosModal">
     <div class="modal-box" style="max-width:460px">
-      <h3>➕ Position hinzufügen</h3>
+      <h3 id="addPosTitle">➕ Position hinzufügen</h3>
       <div style="display:flex;gap:10px;margin-bottom:10px">
         <div style="width:90px"><label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;margin-bottom:4px;display:block">Pos-Nr</label>
           <input type="text" id="apPos" placeholder="auto" style="width:100%;padding:9px 10px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none"></div>
@@ -1296,7 +1300,8 @@ function renderDetail(){
       html+=`<button class="reklam-btn" onclick="openReklam(${idx})">🚨 Reklamation melden</button>`;
     }
     html+=`<textarea class="anm" rows="1" placeholder="Notiz …" onchange="updF(${idx},'notiz',this.value)">${esc(p.notiz)}</textarea>`;
-    
+    html+=`<button class="inspos" onclick="openAddPos(${idx+1})">➕ Position darunter einfügen</button>`;
+
     card.innerHTML=html;wrap.appendChild(card);shown++;
   });
   if(shown===0)wrap.innerHTML='<div class="empty">Keine Positionen gefunden.</div>';
@@ -2334,19 +2339,24 @@ renderHome=function(){
 };
 
 
-// ── POSITION HINZUFÜGEN / LÖSCHEN ────────────────────────────────────────
-function openAddPos(){
+// ── POSITION HINZUFÜGEN / EINFÜGEN / LÖSCHEN ─────────────────────────────
+let _addPosIdx=null; // null = hinten anhängen; Zahl = an diesem Index einfügen
+function openAddPos(insertIdx){
   if(!CUR){toast('Kein Projekt geöffnet','err');return;}
+  _addPosIdx=(typeof insertIdx==='number')?insertIdx:null;
+  const ins=_addPosIdx!=null;
+  document.getElementById('addPosTitle').textContent=ins?'➕ Position einfügen':'➕ Position hinzufügen';
   document.getElementById('apPos').value='';
   document.getElementById('apBez').value='';
   document.getElementById('apFab').value='';
   document.getElementById('apTyp').value='';
   document.getElementById('apMenge').value='1';
   document.getElementById('apEinh').value='Stk';
+  document.getElementById('apBez').style.borderColor='';
   document.getElementById('addPosModal').classList.add('on');
   setTimeout(()=>document.getElementById('apBez').focus(),120);
 }
-function closeAddPos(){document.getElementById('addPosModal').classList.remove('on');}
+function closeAddPos(){document.getElementById('addPosModal').classList.remove('on');_addPosIdx=null;}
 async function saveAddPos(){
   const bez=document.getElementById('apBez').value.trim();
   if(!bez){document.getElementById('apBez').focus();document.getElementById('apBez').style.borderColor='#d92020';return;}
@@ -2357,7 +2367,7 @@ async function saveAddPos(){
     const max=nums.length?Math.max(...nums):0;
     pos=(max+1)+'.';
   }
-  CUR.positionen.push({
+  const neu={
     pos, bereich:'', bereichBez:'',
     bez,
     fabrikat:document.getElementById('apFab').value.trim(),
@@ -2365,9 +2375,12 @@ async function saveAddPos(){
     menge:document.getElementById('apMenge').value.trim()||'1',
     einh:document.getElementById('apEinh').value.trim()||'Stk',
     quelle:'',lieferant:'',kommNrs:[],lieferort:'',abrufTermin:'',status:'offen',geliefertDatum:'',notiz:''
-  });
+  };
+  const eingefuegt=_addPosIdx!=null && _addPosIdx>=0 && _addPosIdx<=CUR.positionen.length;
+  if(eingefuegt)CUR.positionen.splice(_addPosIdx,0,neu);
+  else CUR.positionen.push(neu);
   await saveCur();renderDetail();closeAddPos();
-  toast('Position '+pos+' hinzugefügt','ok');
+  toast('Position '+pos+(eingefuegt?' eingefügt':' hinzugefügt'),'ok');
 }
 async function delPos(idx){
   const p=CUR.positionen[idx];
