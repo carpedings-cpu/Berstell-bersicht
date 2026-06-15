@@ -914,6 +914,7 @@ function makeProjFromData(name,data,termin=''){
           pos:it.pos,bereich:sec.pos,bereichBez:sec.bez||sec.label||'',
           bez:it.bez,fabrikat:it.fabrikat||'',typ:it.typ||'',
           menge:it.menge,einh:it.einh,
+          ek:it.ek||0,vk:it.vk||0,
           quelle:'',lieferant:'',kommNrs:[],lieferort:'',
           abrufTermin:'',status:'offen',geliefertDatum:'',notiz:''
         });
@@ -921,6 +922,23 @@ function makeProjFromData(name,data,termin=''){
     });
   });
   return {id,name,liefertermin:termin,positionen,created:new Date().toISOString()};
+}
+
+// EK/VK-Preise eines Projekts in die Preis-Ansicht übernehmen (upsert nach Projekt+Pos+Lieferant)
+async function syncPreiseFromProject(proj){
+  if(!proj||!Array.isArray(proj.positionen))return 0;
+  let count=0;
+  proj.positionen.forEach(p=>{
+    if(!((p.ek||0)>0||(p.vk||0)>0))return;
+    const lief=p.lieferant||p.fabrikat||'(ohne Lieferant)';
+    const entry={proj:proj.name,pos:p.pos,bez:p.bez,typ:p.typ||'',lief,
+      menge:toI(p.menge)||1,ek:p.ek||0,vk:p.vk||0,termin:proj.liefertermin||'',anm:'',bindung:''};
+    const i=PREISE_DATA.findIndex(e=>e.proj===entry.proj&&e.pos===entry.pos&&e.lief===entry.lief);
+    if(i>=0)PREISE_DATA[i]=entry; else PREISE_DATA.push(entry);
+    count++;
+  });
+  if(count>0)await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
+  return count;
 }
 
 // ── NAVIGATION ──────────────────────────────────────────────────────────
@@ -1028,8 +1046,9 @@ async function saveNewProj(){
     }
     await dbPut('projects',proj);
     PROJECTS.push(proj);markChanged();
+    const np=await syncPreiseFromProject(proj);
     renderHome();hideLoader();
-    toast('Projekt "'+name+'" angelegt: '+proj.positionen.length+' Positionen','ok',3000);
+    toast('Projekt "'+name+'" angelegt: '+proj.positionen.length+' Positionen'+(np?' · '+np+' Preise übernommen':''),'ok',3500);
   }catch(e){hideLoader();console.error(e);toast('Import fehlgeschlagen: '+e.message,'err',4000);}
   _npFile=null;
 }
@@ -1058,7 +1077,9 @@ function parseExcel(ab){
   const n=v=>{if(v==null)return null;const s=String(v).replace(/ /g,' ').trim().replace(/\s+/g,' ');return s===''?null:s;};
   const isEmpty=v=>v==null||(typeof v==='string'&&v.replace(/ /g,'').trim()==='');
   // Header-Zeile + Spaltenmapping automatisch finden (Pos + Bezeichnung müssen drin sein)
-  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6};
+  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6,ek:-1,vk:-1};
+  // EK/VK aus deutschem Zahlenformat lesen (7.850,00 € -> 7850)
+  const num=v=>{if(v==null)return 0;const x=parseFloat(String(v).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'));return isNaN(x)?0:x;};
   for(let i=0;i<Math.min(rows.length,25);i++){
     const r=rows[i];if(!r)continue;
     const find=re=>r.findIndex(c=>c!=null&&re.test(String(c).trim()));
@@ -1072,7 +1093,9 @@ function parseExcel(ab){
         einh:find(/^einh\.?$|einheit/i),
         bez:cBez,
         fab:find(/fabrikat|hersteller|marke/i),
-        typ:find(/^typ$|modell|artikel.?nr/i)
+        typ:find(/^typ$|modell|artikel.?nr/i),
+        ek:find(/^ek$|einkauf|ek.?netto|ek.?preis|einstand/i),
+        vk:find(/^vk$|verkauf|vk.?netto|vk.?preis|angebot.?preis|listenpreis/i)
       };
       break;
     }
@@ -1099,7 +1122,8 @@ function parseExcel(ab){
     // Item: Bezeichnung + Menge vorhanden
     if(!isEmpty(stkRaw)&&bez){
       ensureCur();
-      cur.subsections[0].items.push({pos,menge:String(stkRaw).trim(),einh:einh||'St',bez,fabrikat:fab||'',typ:typ||''});
+      cur.subsections[0].items.push({pos,menge:String(stkRaw).trim(),einh:einh||'St',bez,fabrikat:fab||'',typ:typ||'',
+        ek:col.ek>=0?num(r[col.ek]):0, vk:col.vk>=0?num(r[col.vk]):0});
     }
   }
   return cats;
@@ -1107,8 +1131,12 @@ function parseExcel(ab){
 
 async function delProject(id){
   if(!confirm('Projekt wirklich löschen?'))return;
+  const proj=PROJECTS.find(p=>p.id===id);
   await dbDel('projects',id);
   PROJECTS=PROJECTS.filter(p=>p.id!==id);
+  // zugehörige Preisdaten mitentfernen
+  if(proj){const before=PREISE_DATA.length;PREISE_DATA=PREISE_DATA.filter(e=>e.proj!==proj.name);
+    if(PREISE_DATA.length!==before)await dbPut('settings',{k:'preiseData',v:PREISE_DATA});}
   renderHome();toast('Gelöscht','ok');
 }
 
@@ -2239,12 +2267,12 @@ function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 function renderPreise(){
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
-  const useDemo=PREISE_DATA.length===0;
-  let items=(useDemo?DEMO_PREISE:PREISE_DATA).slice();
+  const hasData=PREISE_DATA.length>0;
+  let items=PREISE_DATA.slice();
   if(q)items=items.filter(it=>[it.lief,it.bez,it.typ,it.proj,it.pos].join(' ').toLowerCase().includes(q));
-  // Demo-Hinweis ein/ausblenden
+  // Demo-Hinweis immer ausblenden (keine Demo-Daten mehr)
   const demoNote=document.querySelector('#vPreise .demo-note');
-  if(demoNote)demoNote.style.display=useDemo?'block':'none';
+  if(demoNote)demoNote.style.display='none';
   // Gruppieren nach Lieferant
   const groups={};
   items.forEach(it=>{
@@ -2267,9 +2295,12 @@ function renderPreise(){
     <div class="pr-kpi"><div class="kn">${fmtEur(vkTot)}</div><div class="kl">Volumen VK</div></div>
     <div class="pr-kpi"><div class="kn" style="color:#1e8a4a">${margeTot.toFixed(1)}%</div><div class="kl">Ø Marge</div></div>`;
   const wrap=document.getElementById('prList');
-  if(groupList.length===0){wrap.innerHTML='<div class="empty">Keine Treffer.</div>';return;}
+  if(groupList.length===0){
+    wrap.innerHTML=hasData?'<div class="empty">Keine Treffer.</div>':'<div class="empty">Noch keine Preisdaten.<br>Beim Hochladen eines Projekts werden EK/VK automatisch übernommen – oder lade oben gezielt eine EK/VK-Excel hoch.</div>';
+    return;
+  }
   wrap.innerHTML=groupList.map((g,gi)=>{
-    const b=useDemo?DEMO_BINDUNGEN[g.lief]:(g.items.find(it=>it.bindung)?{status:'warn',text:g.items.find(it=>it.bindung).bindung}:null);
+    const b=(g.items.find(it=>it.bindung)?{status:'warn',text:g.items.find(it=>it.bindung).bindung}:null);
     const margeAvg=g.vkSum>0?((g.vkSum-g.ekSum)/g.vkSum*100):0;
     const rows=g.items.map(it=>{
       const marge=it.vk>0?((it.vk-it.ek)/it.vk*100):0;
