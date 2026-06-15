@@ -1542,8 +1542,6 @@ function renderDetail(){
     if(p.quelle==='bestellt'){
       html+=`<div class="ck p-bs${p.lieferort==='baustelle'?' on':''}" onclick="setF(${idx},'lieferort','baustelle')"><span class="cki">${p.lieferort==='baustelle'?'✓':'○'}</span>Baustelle</div>
         <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager</div>`;
-      const istBestellt=p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert';
-      html+=`<div class="ck st-best${p.status==='bestellt'?' on':''}" onclick="setF(${idx},'status','bestellt')"><span class="cki">${p.status==='bestellt'?'✓':'○'}</span>${istBestellt?'Bestellt':'Zu bestellen'}</div>`;
       html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen</div>`;
       html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert</div>`;
       // Auftragsbestätigung-Toggle
