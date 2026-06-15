@@ -171,7 +171,10 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ck.on.st-best{background:linear-gradient(135deg,#b8860b,#c8961b);box-shadow:0 3px 10px rgba(184,134,11,.35);}
 .ck.on.st-abg{background:linear-gradient(135deg,#b85a00,#d97706);box-shadow:0 3px 10px rgba(184,90,0,.35);}
 .ck.on.st-gel{background:linear-gradient(135deg,#1e8a4a,#34c759);box-shadow:0 3px 10px rgba(52,199,89,.35);}
+.ck.on.st-ab{background:linear-gradient(135deg,#0f7b8a,#13a0b0);box-shadow:0 3px 10px rgba(19,160,176,.35);}
 .cki{font-size:12px;line-height:1;}
+.ab-ok{margin-top:6px;padding:5px 10px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(19,160,176,.10);color:#0a6b78;border:.5px solid rgba(19,160,176,.22);}
+.ab-pend{margin-top:6px;padding:5px 10px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(120,120,128,.10);color:rgba(28,28,30,.62);border:.5px solid rgba(120,120,128,.18);}
 
 /* Inline fields */
 .irow{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;align-items:center;}
@@ -368,6 +371,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .bbanner button{background:rgba(255,255,255,.18);border:.5px solid rgba(255,255,255,.3);color:#fff;padding:6px 12px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
 .bbanner button:active{transform:scale(.95);}
 .bbanner button.bb-save{background:#fff;color:#7a5800;border-color:transparent;}
+.bbanner.ab{background:linear-gradient(135deg,rgba(192,57,43,.96),rgba(217,32,32,.96));box-shadow:0 4px 12px rgba(217,32,32,.25);}
+.bbanner.ab button.bb-save{color:#9a1414;}
 
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
@@ -416,6 +421,13 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </header>
 
+<div class="bbanner ab" id="abBanner">
+  <span>📄</span>
+  <span class="bb-txt"></span>
+  <button class="bb-save" onclick="abBannerSend()">📧 Erinnern</button>
+  <button onclick="dismissABBanner()">Später</button>
+</div>
+
 <div class="bbanner" id="backupBanner">
   <span>💾</span>
   <span class="bb-txt"></span>
@@ -452,11 +464,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
         </div>
       </div>
       <div style="margin-top:10px;padding:10px 12px;background:rgba(200,168,130,.12);border-radius:9px;border:.5px solid rgba(200,168,130,.3);font-size:12px;color:#6b5040;font-weight:500" id="npFileInfo">
-        📎 Noch keine Excel ausgewählt
+        📎 Noch keine Datei ausgewählt (Excel oder PDF)
       </div>
       <div class="modal-act" style="margin-top:14px">
         <button class="mcancel" onclick="closeNewProj()">Abbrechen</button>
-        <button style="flex:1;padding:10px;border-radius:11px;border:none;background:rgba(107,80,64,.92);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="pickExcelForNew()">📥 Excel wählen …</button>
+        <button style="flex:1;padding:10px;border-radius:11px;border:none;background:rgba(107,80,64,.92);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="pickExcelForNew()">📥 Excel / PDF wählen …</button>
         <button class="mok" id="npSaveBtn" onclick="saveNewProj()" disabled style="opacity:.45">Anlegen</button>
       </div>
     </div>
@@ -742,7 +754,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <h3>⚙ Einstellungen</h3>
     <label>Power Automate Webhook-URL</label>
     <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…">
-    <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt.</div>
+    <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt – auch Erinnerungen an fehlende Auftragsbestätigungen.</div>
     <label>Deine E-Mail</label>
     <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de">
     <label>E-Mail Kollegin</label>
@@ -750,6 +762,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <label>Abruf-Vorlauf (Tage vor Liefertermin)</label>
     <input type="number" id="setWarnDays" value="14" min="1" max="90">
     <div class="hint">Standard-Vorlaufzeit für den Abruftermin. Pro Position überschreibbar.</div>
+    <label>Auftragsbestätigung-Frist (Tage nach Bestellung)</label>
+    <input type="number" id="setAbFrist" value="7" min="1" max="60">
+    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird gewarnt und – falls Power Automate eingerichtet ist – eine Erinnerung verschickt.</div>
     <button onclick="saveSettings()">Speichern</button>
   </div>
   <div class="setbox">
@@ -771,7 +786,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
 <div class="modal" id="parseDebugModal">
   <div class="modal-box" style="max-width:680px">
-    <h3>🔍 Excel-Import: Diagnose</h3>
+    <h3>🔍 Datei-Import: Diagnose (Excel / PDF)</h3>
     <div style="font-size:11.5px;color:rgba(28,28,30,.65);margin-bottom:10px">
       Es wurden keine Positionen erkannt. Schick diesen Text an Diana – damit der Parser angepasst werden kann.
     </div>
@@ -784,7 +799,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 </div>
 <div class="toast" id="toast"></div>
 <div id="loader"><div class="loader-box"><div class="spinner"></div><span id="loaderTxt">Lädt …</span></div></div>
-<input type="file" id="fiExcel" accept=".xlsx,.xlsm,.xls" style="display:none">
+<input type="file" id="fiExcel" accept=".xlsx,.xlsm,.xls,.pdf,application/pdf" style="display:none">
 <input type="file" id="fiLs" accept="application/pdf,image/*" style="display:none">
 <input type="file" id="fiPreise" accept=".xlsx,.xlsm,.xls" style="display:none">
 
@@ -806,7 +821,7 @@ function dbAll(s){return new Promise((r,j)=>{const t=db.transaction(s,'readonly'
 function dbDel(s,k){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).delete(k);q.onsuccess=()=>r();q.onerror=()=>j(q.error);});}
 
 // ── STATE ───────────────────────────────────────────────────────────────
-let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,lastBackup:'',changesSinceBackup:0}, PREISE_DATA=[];
+let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,abFrist:7,lastBackup:'',changesSinceBackup:0}, PREISE_DATA=[];
 
 // ── BACKUP-ERINNERUNG ──────────────────────────────────────────────────
 async function markChanged(){
@@ -890,6 +905,15 @@ async function init(){
   PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
     if('sollTermin' in p && !('abrufTermin' in p)){p.abrufTermin='';migrated=true;delete p.sollTermin;}
     if(!('abrufTermin' in p)){p.abrufTermin='';migrated=true;}
+    // Auftragsbestätigungs-Felder nachrüsten
+    if(!('abBestaetigt' in p)){p.abBestaetigt=false;migrated=true;}
+    if(!('bestelltAm' in p)){
+      // Bei bereits bestellten Positionen Bestelldatum unbekannt – heute annehmen, damit die Frist erst ab jetzt läuft
+      p.bestelltAm=(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')?today():'';
+      migrated=true;
+    }
+    if(!('abAm' in p)){p.abAm='';migrated=true;}
+    if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
   }));
   if(migrated)for(const proj of PROJECTS)await dbPut('projects',proj);
   // Seed Demo-Projekt wenn leer
@@ -903,6 +927,7 @@ async function init(){
   hideLoader();
   goHome();
   updateBackupBanner();
+  updateABBanner();
 }
 
 function makeProjFromData(name,data,termin=''){
@@ -917,7 +942,8 @@ function makeProjFromData(name,data,termin=''){
           menge:it.menge,einh:it.einh,
           ek:it.ek||0,vk:it.vk||0,
           quelle:'',lieferant:'',kommNrs:[],lieferort:'',
-          abrufTermin:'',status:'offen',geliefertDatum:'',notiz:''
+          abrufTermin:'',status:'offen',geliefertDatum:'',notiz:'',
+          bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:''
         });
       });
     });
@@ -962,6 +988,7 @@ function goSettings(){
   document.getElementById('setMail1').value=SETTINGS.mail1||'';
   document.getElementById('setMail2').value=SETTINGS.mail2||'';
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
+  document.getElementById('setAbFrist').value=SETTINGS.abFrist||7;
 }
 
 // ── HOME ────────────────────────────────────────────────────────────────
@@ -995,9 +1022,10 @@ function renderHome(){
   });
   // Add-Card
   const add=document.createElement('div');add.className='padd';
-  add.innerHTML='📥<br>Neues Projekt<br><span style="font-size:11px;font-weight:400;color:rgba(28,28,30,.5)">Excel hochladen</span>';
+  add.innerHTML='📥<br>Neues Projekt<br><span style="font-size:11px;font-weight:400;color:rgba(28,28,30,.5)">Excel oder PDF hochladen</span>';
   add.onclick=()=>newProject();
   g.appendChild(add);
+  updateABBanner();
 }
 
 function fmtD(s){if(!s)return '';const d=new Date(s);return d.toLocaleDateString('de-DE');}
@@ -1008,7 +1036,7 @@ function newProject(){
   _npFile=null;
   document.getElementById('npName').value='';
   document.getElementById('npTermin').value='';
-  document.getElementById('npFileInfo').textContent='📎 Noch keine Excel ausgewählt';
+  document.getElementById('npFileInfo').textContent='📎 Noch keine Datei ausgewählt (Excel oder PDF)';
   document.getElementById('npSaveBtn').disabled=true;
   document.getElementById('npSaveBtn').style.opacity='.45';
   document.getElementById('newProjModal').classList.add('on');
@@ -1032,15 +1060,15 @@ function pickExcelForNew(){
 }
 async function saveNewProj(){
   const userName=document.getElementById('npName').value.trim();
-  if(!_npFile){toast('Bitte zuerst Excel auswählen','err');return;}
+  if(!_npFile){toast('Bitte zuerst Excel oder PDF auswählen','err');return;}
   const file=_npFile; // Referenz sichern bevor closeNewProj sie resettet
   const termin=document.getElementById('npTermin').value||'';
   document.getElementById('newProjModal').classList.remove('on');
-  showLoader('Excel wird geparst …');
+  showLoader(/\.pdf$/i.test(file.name)?'PDF wird gelesen … (lädt einmalig die PDF-Bibliothek)':'Excel wird geparst …');
   try{
-    const parsed=parseExcel(await file.arrayBuffer());
-    // Projektname: 1) User-Eingabe 2) aus Excel-Header erkannt 3) Fallback aus Dateinamen
-    const fileBase=file.name.replace(/\.(xlsx|xlsm|xls)$/i,'').replace(/^Auftragsliste[_\s]*/i,'').replace(/_/g,' ').trim();
+    const parsed=await parseProjectFile(file);
+    // Projektname: 1) User-Eingabe 2) aus Datei-Header erkannt 3) Fallback aus Dateinamen
+    const fileBase=file.name.replace(/\.(xlsx|xlsm|xls|pdf)$/i,'').replace(/^Auftragsliste[_\s]*/i,'').replace(/_/g,' ').trim();
     const name=userName||parsed.projName||fileBase||'Neues Projekt';
     const proj=makeProjFromData(name,parsed.cats,termin);
     if(proj.positionen.length===0){
@@ -1076,11 +1104,15 @@ function parseExcel(ab){
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});
   window._parseDebug.picked=sn;
   window._parseDebug.sample=rows.slice(0,15).map(r=>(r||[]).slice(0,8).map(c=>c==null?'':String(c)));
+  return rowsToProject(rows);
+}
+
+// Gemeinsamer Kern: aus einer Zeilen-Matrix (Excel ODER PDF) Bereiche + Positionen + Projektname ableiten
+function rowsToProject(rows){
+  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6,ek:-1,vk:-1};
   // Zelle normalisieren: trim, NBSP→Space, Mehrfach-Leerzeichen kollabieren; leere Strings → null
   const n=v=>{if(v==null)return null;const s=String(v).replace(/ /g,' ').trim().replace(/\s+/g,' ');return s===''?null:s;};
   const isEmpty=v=>v==null||(typeof v==='string'&&v.replace(/ /g,'').trim()==='');
-  // Header-Zeile + Spaltenmapping automatisch finden (Pos + Bezeichnung müssen drin sein)
-  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6,ek:-1,vk:-1};
   // EK/VK aus deutschem Zahlenformat lesen (7.850,00 € -> 7850)
   const num=v=>{if(v==null)return 0;const x=parseFloat(String(v).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'));return isNaN(x)?0:x;};
   // EK/VK-Header breit erkennen: "EK", "EK-Preis", "EK netto", "EK €", "EK in €", "EK/Stk",
@@ -1194,6 +1226,101 @@ function parseExcel(ab){
     }
   }
   return {cats, projName};
+}
+
+// ── PDF-IMPORT ──────────────────────────────────────────────────────────
+// pdf.js wird zur Laufzeit vom CDN nachgeladen (nur beim ersten PDF-Upload).
+// Excel-Import bleibt komplett offline; nur PDF benötigt einmal Internet.
+let _pdfjsLoading=null;
+function loadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(_pdfjsLoading)return _pdfjsLoading;
+  const VER='3.11.174';
+  const bases=[
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/'+VER,
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@'+VER+'/build',
+    'https://unpkg.com/pdfjs-dist@'+VER+'/build'
+  ];
+  const tryLoad=base=>new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=base+'/pdf.min.js';
+    s.onload=()=>{
+      if(window.pdfjsLib){
+        try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=base+'/pdf.worker.min.js';}catch(e){}
+        res(window.pdfjsLib);
+      } else rej(new Error('pdf.js nicht initialisiert'));
+    };
+    s.onerror=()=>rej(new Error('Laden fehlgeschlagen: '+base));
+    document.head.appendChild(s);
+  });
+  _pdfjsLoading=(async()=>{
+    let lastErr;
+    for(const b of bases){
+      try{return await tryLoad(b);}catch(e){lastErr=e;}
+    }
+    _pdfjsLoading=null;
+    throw new Error('PDF-Bibliothek konnte nicht geladen werden (Internet nötig). '+(lastErr?lastErr.message:''));
+  })();
+  return _pdfjsLoading;
+}
+
+// PDF-Textfragmente einer Seite zu Tabellen-Zeilen rekonstruieren.
+// items: [{str, x, y, w, h}] (aus pdf.js getTextContent: x=transform[4], y=transform[5], w=width)
+function pdfItemsToRows(items){
+  const toks=items.filter(it=>it.str!=null&&String(it.str).trim()!=='');
+  if(!toks.length)return [];
+  // mittlere Texthöhe als Maß für Zeilen-/Spaltentoleranz
+  const heights=toks.map(t=>t.h||0).filter(h=>h>0).sort((a,b)=>a-b);
+  const medH=heights.length?heights[Math.floor(heights.length/2)]:8;
+  const yTol=Math.max(medH*0.6,3);
+  const gapTol=Math.max(medH*0.8,4); // horizontaler Mindestabstand für neue Zelle
+  // nach Y gruppieren (oben→unten), innerhalb nach X
+  const sorted=toks.slice().sort((a,b)=>(b.y-a.y)||(a.x-b.x));
+  const lines=[];let curL=null;
+  for(const t of sorted){
+    if(!curL||Math.abs(t.y-curL.y)>yTol){curL={y:t.y,items:[t]};lines.push(curL);}
+    else curL.items.push(t);
+  }
+  // pro Zeile: nach X sortieren, bei großen Lücken neue Zelle
+  return lines.map(L=>{
+    const xs=L.items.slice().sort((a,b)=>a.x-b.x);
+    const cells=[];let cell=null,prevEnd=null;
+    for(const t of xs){
+      const s=String(t.str);
+      if(cell===null||(t.x-prevEnd)>gapTol){cell={text:s.trim()};cells.push(cell);}
+      else cell.text+=(cell.text.endsWith(' ')||s.startsWith(' ')?'':' ')+s.trim();
+      prevEnd=t.x+(t.w||0);
+    }
+    return cells.map(c=>c.text.trim());
+  });
+}
+
+async function parsePdf(ab){
+  const pdfjsLib=await loadPdfJs();
+  const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+  const rows=[];
+  window._parseDebug={sheets:['PDF · '+pdf.numPages+' Seite(n)'],picked:'PDF',headerRow:-1,colMap:null,sample:[]};
+  for(let pn=1;pn<=pdf.numPages;pn++){
+    const page=await pdf.getPage(pn);
+    const tc=await page.getTextContent();
+    const items=tc.items.map(it=>({
+      str:it.str,
+      x:it.transform?it.transform[4]:0,
+      y:it.transform?it.transform[5]:0,
+      w:it.width||0,
+      h:it.height||(it.transform?Math.abs(it.transform[3]):0)
+    }));
+    rows.push(...pdfItemsToRows(items));
+  }
+  window._parseDebug.sample=rows.slice(0,15).map(r=>(r||[]).slice(0,8).map(c=>c==null?'':String(c)));
+  return rowsToProject(rows);
+}
+
+// Datei-Dispatcher: erkennt anhand Endung/MIME ob Excel oder PDF
+async function parseProjectFile(file){
+  const ab=await file.arrayBuffer();
+  if(/\.pdf$/i.test(file.name)||file.type==='application/pdf')return await parsePdf(ab);
+  return parseExcel(ab);
 }
 
 async function delProject(id){
@@ -1393,9 +1520,25 @@ function renderDetail(){
       html+=`<div class="ck st-best${p.status==='bestellt'?' on':''}" onclick="setF(${idx},'status','bestellt')"><span class="cki">${p.status==='bestellt'?'✓':'○'}</span>${istBestellt?'Bestellt':'Zu bestellen'}</div>`;
       html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen</div>`;
       html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert</div>`;
+      // Auftragsbestätigung-Toggle
+      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung</div>`;
     }
     html+=`</div>`;
-    
+    // AB-Statuszeile: bestätigt (mit Datum) ODER überfällig-Warnung
+    if(p.quelle==='bestellt' && (p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')){
+      if(p.abBestaetigt){
+        html+=`<div class="ab-ok">📄 Auftragsbestätigung erhalten${p.abAm?' am '+fmtD(p.abAm):''}</div>`;
+      } else {
+        const tage=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
+        const frist=SETTINGS.abFrist||7;
+        if(p.bestelltAm && tage>=frist){
+          html+=`<div class="warn red">⚠ Auftragsbestätigung fehlt seit ${tage} Tagen (bestellt am ${fmtD(p.bestelltAm)}) – erinnern!</div>`;
+        } else if(p.bestelltAm){
+          html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
+        }
+      }
+    }
+
     // Inline-Felder
     if(p.quelle==='bestellt'){
       html+=`<div class="irow">`;
@@ -1484,8 +1627,19 @@ async function setF(idx,field,val){
   else if(field==='status'){
     if(p.status===val)p.status='offen';
     else{p.status=val;if(val==='geliefert'&&!p.geliefertDatum)p.geliefertDatum=today();}
+    // Bestelldatum festhalten, sobald bestellt – Basis für die 7-Tage-AB-Frist
+    if(p.status==='bestellt'&&!p.bestelltAm)p.bestelltAm=today();
   }
   await saveCur();renderDetail();
+}
+// Auftragsbestätigung einer Position umschalten
+async function toggleAB(idx){
+  const p=CUR.positionen[idx];
+  p.abBestaetigt=!p.abBestaetigt;
+  if(p.abBestaetigt){p.abAm=today();p.abErinnertAm='';}
+  else p.abAm='';
+  await saveCur();renderDetail();updateABBanner();
+  toast(p.abBestaetigt?'Auftragsbestätigung erfasst ✓':'Auftragsbestätigung zurückgesetzt','ok');
 }
 async function updF(idx,k,v){CUR.positionen[idx][k]=v;await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();}
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
@@ -1634,9 +1788,74 @@ async function fireWebhook(typ,data){
   }catch(e){console.warn('Webhook fehlgeschlagen:',e);toast('Webhook fehlgeschlagen','err');}
 }
 
+// ── AUFTRAGSBESTÄTIGUNG: Überfälligkeit + Erinnerung ─────────────────────
+// Überfällig = Bestellware, bestellt, noch keine AB erfasst, Bestelldatum ≥ Frist (Standard 7 Tage) her
+function abOffeneListe(){
+  const frist=SETTINGS.abFrist||7;
+  const out=[];
+  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
+    if(p.quelle!=='bestellt'||p.abBestaetigt)return;
+    if(!(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert'))return;
+    if(!p.bestelltAm)return;
+    const tage=daysBtw(p.bestelltAm,today());
+    if(tage>=frist){
+      out.push({proj,idx,p,projekt:proj.name,pos:p.pos,bez:p.bez,
+        lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',
+        menge:p.menge,einheit:p.einh,bestelltAm:p.bestelltAm,tageOffen:tage});
+    }
+  }));
+  return out;
+}
+
+// Erinnerungen über Power Automate verschicken.
+// auto=true: beim Laden, mit Dedupe (erst wieder nach Ablauf der Frist erneut erinnern)
+async function sendeABErinnerungen(auto){
+  const frist=SETTINGS.abFrist||7;
+  let liste=abOffeneListe();
+  if(auto)liste=liste.filter(it=>!it.p.abErinnertAm||daysBtw(it.p.abErinnertAm,today())>=frist);
+  if(liste.length===0){if(!auto)toast('Keine überfälligen Auftragsbestätigungen ✓','ok');return 0;}
+  if(!SETTINGS.webhook){
+    if(!auto){goSettings();toast('Bitte Power-Automate-URL in ⚙ Einstellungen hinterlegen','err',4500);}
+    return 0;
+  }
+  // Nach Lieferant gruppieren – der Flow kann pro Lieferant eine Mail senden
+  const groups={};
+  liste.forEach(it=>{(groups[it.lieferant]=groups[it.lieferant]||[]).push(it);});
+  const gruppen=Object.entries(groups).map(([lieferant,items])=>({
+    lieferant,
+    positionen:items.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))
+  }));
+  const betreff=`KPC: ${liste.length} fehlende Auftragsbestätigung(en) bei ${Object.keys(groups).length} Lieferant(en)`;
+  await fireWebhook('ab_ueberfaellig',{betreff,frist,gruppen,
+    positionen:liste.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,lieferant:it.lieferant,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))});
+  // Positionen als erinnert markieren (Dedupe)
+  const heute=today();const dirty=new Set();
+  liste.forEach(it=>{it.p.abErinnertAm=heute;dirty.add(it.proj);});
+  for(const proj of dirty)await dbPut('projects',proj);
+  markChanged();updateABBanner();
+  return liste.length;
+}
+
+function updateABBanner(){
+  const b=document.getElementById('abBanner');if(!b)return;
+  const list=abOffeneListe();
+  const dismissed=localStorage.getItem('kpc_abDismiss')===today();
+  if(list.length>0&&!dismissed){
+    const n=list.length,liefs=new Set(list.map(x=>x.lieferant)).size;
+    b.querySelector('.bb-txt').textContent=`${n} Auftragsbestätigung${n===1?'':'en'} überfällig (>${SETTINGS.abFrist||7} Tage) bei ${liefs} Lieferant(en)`;
+    b.classList.add('on');
+  }else b.classList.remove('on');
+}
+function dismissABBanner(){localStorage.setItem('kpc_abDismiss',today());updateABBanner();}
+async function abBannerSend(){
+  const n=await sendeABErinnerungen(false);
+  if(n>0)toast(n+' Erinnerung(en) an Power Automate übergeben','ok',3500);
+}
+
 // Automatische Prüfung beim Laden
 async function checkWarnings(){
   if(!SETTINGS.webhook)return;
+  await sendeABErinnerungen(true);
   // Sammelbericht: Abrufe die morgen oder heute fällig sind oder überfällig, noch nicht bestellt
   const abrufFaellig=[];
   PROJECTS.forEach(proj=>{
@@ -1670,19 +1889,22 @@ async function saveSettings(){
   SETTINGS.mail1=document.getElementById('setMail1').value.trim();
   SETTINGS.mail2=document.getElementById('setMail2').value.trim();
   SETTINGS.warnDays=parseInt(document.getElementById('setWarnDays').value)||14;
+  SETTINGS.abFrist=parseInt(document.getElementById('setAbFrist').value)||7;
   await dbPut('settings',{k:'main',...SETTINGS});
   toast('Einstellungen gespeichert','ok');
+  updateABBanner();
 }
 
 // ── PARSE-DIAGNOSE ──────────────────────────────────────────────────────
 function showParseDebug(){
   const d=window._parseDebug||{};
   const lines=[];
-  lines.push('=== Excel-Import Diagnose ===');
-  lines.push('Sheets in Datei: '+(d.sheets||[]).join(' | '));
-  lines.push('Gewähltes Sheet: '+(d.picked||'(keins)'));
+  const istPdf=(d.picked==='PDF');
+  lines.push('=== '+(istPdf?'PDF':'Excel')+'-Import Diagnose ===');
+  lines.push((istPdf?'PDF-Info: ':'Sheets in Datei: ')+(d.sheets||[]).join(' | '));
+  if(!istPdf)lines.push('Gewähltes Sheet: '+(d.picked||'(keins)'));
   lines.push('Header-Zeile erkannt in Index: '+(d.headerRow>=0?d.headerRow:'(keine)'));
-  lines.push('Projektname aus Excel: '+(d.projName||'(nicht erkannt)'));
+  lines.push('Projektname erkannt: '+(d.projName||'(nicht erkannt)'));
   lines.push('Spalten-Mapping (Index, -1 = nicht gefunden):');
   const cm=d.colMap||{};
   Object.keys(cm).forEach(k=>lines.push('  '+k.padEnd(8)+' = '+cm[k]));
@@ -1709,9 +1931,9 @@ function trigExcel(){
   const fi=document.getElementById('fiExcel');
   fi.onchange=async ev=>{
     const f=ev.target.files[0];if(!f||!CUR){fi.onchange=null;fi.value='';return;}
-    showLoader('Excel wird geparst …');
+    showLoader(/\.pdf$/i.test(f.name)?'PDF wird gelesen … (lädt einmalig die PDF-Bibliothek)':'Excel wird geparst …');
     try{
-      const {cats:data}=parseExcel(await f.arrayBuffer());
+      const {cats:data}=await parseProjectFile(f);
       const newItems=[];
       data.forEach(sec=>(sec.subsections||[]).forEach(sub=>sub.items.forEach(it=>{
         newItems.push({pos:it.pos,bereich:sec.pos,bereichBez:sec.bez||'',bez:it.bez,
@@ -1722,7 +1944,7 @@ function trigExcel(){
       let added=0,kept=0;
       newItems.forEach(it=>{
         if(existMap[it.pos]){Object.assign(existMap[it.pos],{bez:it.bez,fabrikat:it.fabrikat,typ:it.typ,menge:it.menge,einh:it.einh});kept++;}
-        else{CUR.positionen.push({...it,quelle:'',lieferant:'',kommNrs:[],lieferort:'',abrufTermin:'',status:'offen',geliefertDatum:'',notiz:''});added++;}
+        else{CUR.positionen.push({...it,quelle:'',lieferant:'',kommNrs:[],lieferort:'',abrufTermin:'',status:'offen',geliefertDatum:'',notiz:'',bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:''});added++;}
       });
       await saveCur();renderDetail();hideLoader();
       toast(`${added} neu, ${kept} aktualisiert`,'ok',3000);
@@ -1735,8 +1957,8 @@ function trigExcel(){
 // ── CSV ─────────────────────────────────────────────────────────────────
 function csvExp(){
   if(!CUR)return;
-  const cols=['Pos','Bezeichnung','Fabrikat','Typ','Menge','Einheit','Quelle','Lieferant','Komm-Nr','Lieferort','Abruf-bis','Liefertermin','Status','Notiz'];
-  const rows=CUR.positionen.map(p=>[p.pos,p.bez,p.fabrikat,p.typ,p.menge,p.einh,p.quelle,p.lieferant,(p.kommNrs||[]).join(', '),p.lieferort,abrufTermin(p,CUR),CUR.liefertermin||'',p.status,p.notiz]);
+  const cols=['Pos','Bezeichnung','Fabrikat','Typ','Menge','Einheit','Quelle','Lieferant','Komm-Nr','Lieferort','Abruf-bis','Liefertermin','Status','Bestellt-am','Auftragsbestätigung','AB-am','Notiz'];
+  const rows=CUR.positionen.map(p=>[p.pos,p.bez,p.fabrikat,p.typ,p.menge,p.einh,p.quelle,p.lieferant,(p.kommNrs||[]).join(', '),p.lieferort,abrufTermin(p,CUR),CUR.liefertermin||'',p.status,p.bestelltAm||'',p.abBestaetigt?'ja':'nein',p.abAm||'',p.notiz]);
   const ce=v=>{const s=String(v||'');return /["\n;,]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
   const csv='\ufeff'+cols.join(';')+'\n'+rows.map(r=>r.map(ce).join(';')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
@@ -1835,7 +2057,7 @@ async function clearAllData(){
   if(!confirm('Wirklich? Nicht rückgängig machbar.'))return;
   const tx=db.transaction(['projects','settings'],'readwrite');
   tx.objectStore('projects').clear();tx.objectStore('settings').clear();
-  PROJECTS=[];CUR=null;SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14};
+  PROJECTS=[];CUR=null;SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,abFrist:7};
   goHome();toast('Alles gelöscht','ok');
 }
 
@@ -2121,9 +2343,10 @@ async function markBestellt(projId,idx){
   const p=proj.positionen[idx];
   p.quelle='bestellt';
   p.status='bestellt';
+  if(!p.bestelltAm)p.bestelltAm=today();
   if(!p.lieferant && p.fabrikat)p.lieferant=p.fabrikat;
   await dbPut('projects',proj);markChanged();
-  renderZuBestellen();
+  renderZuBestellen();updateABBanner();
   toast(p.pos+' als bestellt markiert','ok');
 }
 async function markAllBestellt(lief){
@@ -2133,14 +2356,14 @@ async function markAllBestellt(lief){
     if(istZuBestellen(p) && (p.lieferant||p.fabrikat||'(ohne Zuordnung)')===lief)items.push({proj,idx});
   }));
   for(const it of items){
-    it.proj.positionen[it.idx].quelle='bestellt';
-    it.proj.positionen[it.idx].status='bestellt';
-    if(!it.proj.positionen[it.idx].lieferant && it.proj.positionen[it.idx].fabrikat){
-      it.proj.positionen[it.idx].lieferant=it.proj.positionen[it.idx].fabrikat;
-    }
+    const pp=it.proj.positionen[it.idx];
+    pp.quelle='bestellt';
+    pp.status='bestellt';
+    if(!pp.bestelltAm)pp.bestelltAm=today();
+    if(!pp.lieferant && pp.fabrikat)pp.lieferant=pp.fabrikat;
     await dbPut('projects',it.proj);markChanged();
   }
-  renderZuBestellen();
+  renderZuBestellen();updateABBanner();
   toast(items.length+' Positionen als bestellt markiert','ok');
 }
 async function copyGroup(lief){
@@ -2604,7 +2827,7 @@ async function saveAddPos(){
     typ:document.getElementById('apTyp').value.trim(),
     menge:document.getElementById('apMenge').value.trim()||'1',
     einh:document.getElementById('apEinh').value.trim()||'Stk',
-    quelle:'',lieferant:'',kommNrs:[],lieferort:'',abrufTermin:'',status:'offen',geliefertDatum:'',notiz:''
+    quelle:'',lieferant:'',kommNrs:[],lieferort:'',abrufTermin:'',status:'offen',geliefertDatum:'',notiz:'',bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:''
   };
   const eingefuegt=_addPosIdx!=null && _addPosIdx>=0 && _addPosIdx<=CUR.positionen.length;
   if(eingefuegt)CUR.positionen.splice(_addPosIdx,0,neu);
