@@ -497,10 +497,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 <!-- VIEW: Preisvergleich Lieferanten (Demo) -->
 <div class="view" id="vPreise">
   <h2 style="font-size:17px;font-weight:700;margin-bottom:4px;letter-spacing:-.3px">💰 Preisvergleich Lieferanten</h2>
-  <div class="demo-note" style="font-size:11.5px;color:#b85a00;background:rgba(184,90,0,.08);border:.5px solid rgba(184,90,0,.25);padding:9px 13px;border-radius:10px;margin-bottom:14px;font-weight:500">
-    ⚠️ Demo-Ansicht mit erfundenen Preisen – wird bei Upload deiner Excel-Listen automatisch ersetzt.
+  <div class="demo-note" style="font-size:11.5px;color:#1a5f7a;background:rgba(26,95,122,.08);border:.5px solid rgba(26,95,122,.25);padding:9px 13px;border-radius:10px;margin-bottom:14px;font-weight:500">
+    💡 EK/VK werden beim Hochladen eines Projekts automatisch übernommen. Bestehende Projekte mit „🔄 Aus Projekten übernehmen" nachziehen.
   </div>
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <button class="actbtn" onclick="syncAllProjectPrices()" style="background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;border-color:transparent;padding:8px 13px;border-radius:11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:none">🔄 Aus Projekten übernehmen</button>
     <button class="actbtn" onclick="trigPreiseExcel()" style="background:rgba(107,80,64,.92);color:#fff;border-color:transparent">📥 EK/VK Excel hochladen</button>
     <div class="sw" style="flex:1;min-width:160px">
       <span class="si">⌕</span>
@@ -2174,6 +2175,20 @@ const DEMO_BINDUNGEN={
 };
 
 function goPreise(){showView('vPreise');renderPreise();}
+
+async function syncAllProjectPrices(){
+  let total=0,projWithPrices=0;
+  for(const proj of PROJECTS){
+    const c=await syncPreiseFromProject(proj);
+    if(c>0){total+=c;projWithPrices++;}
+  }
+  if(total===0){
+    toast('Keine EK/VK in den vorhandenen Projekten gefunden. Excel mit Preisspalten erneut hochladen oder Preise pro Position eintragen.','err',5000);
+    return;
+  }
+  toast(total+' Preis-Eintraege aus '+projWithPrices+' Projekt(en) uebernommen','ok',3500);
+  renderPreise();
+}
 function trigPreiseExcel(){
   const fi=document.getElementById('fiPreise');
   fi.onchange=async ev=>{
@@ -2270,9 +2285,7 @@ function renderPreise(){
   const hasData=PREISE_DATA.length>0;
   let items=PREISE_DATA.slice();
   if(q)items=items.filter(it=>[it.lief,it.bez,it.typ,it.proj,it.pos].join(' ').toLowerCase().includes(q));
-  // Demo-Hinweis immer ausblenden (keine Demo-Daten mehr)
-  const demoNote=document.querySelector('#vPreise .demo-note');
-  if(demoNote)demoNote.style.display='none';
+  // Hilfstext oben (kein Demo-Hinweis mehr) bleibt immer sichtbar
   // Gruppieren nach Lieferant
   const groups={};
   items.forEach(it=>{
