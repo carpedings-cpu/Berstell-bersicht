@@ -1902,7 +1902,7 @@ function renderZuBestellen(){
           <div style="font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px">📁 ${esc(it.projName)}${termInfo}</div>
         </div>
         <div class="zb-menge">${esc(it.p.menge)} ${esc(it.p.einh)}</div>
-        <button class="zb-mark" onclick="markBestellt('${it.projId}',${it.idx})">✓ Bestellt</button>
+        <button class="zb-mark" onclick="markBestellt('${it.projId}',${it.idx})">📦 Bestellen</button>
       </div>`;
     }).join('');
     return `<div class="zb-group">
@@ -2341,12 +2341,29 @@ renderHome=function(){
 
 // ── POSITION HINZUFÜGEN / EINFÜGEN / LÖSCHEN ─────────────────────────────
 let _addPosIdx=null; // null = hinten anhängen; Zahl = an diesem Index einfügen
+// Schlägt beim Einfügen eine Unter-Nummer mit Buchstaben vor (z.B. "5." -> "5.a", dann "5.b" …)
+function suggestInsertPos(insertIdx){
+  const prev=CUR.positionen[insertIdx-1]; // die Position oberhalb der Einfügestelle
+  if(!prev)return '';
+  const prevPos=String(prev.pos||'').trim();
+  if(!prevPos)return '';
+  // Basis = prevPos ohne evtl. vorhandenen End-Buchstaben ("5.a" -> "5.", "5." -> "5.")
+  const base=prevPos.replace(/[a-z]\s*$/i,'');
+  // bereits vergebene Buchstaben unter dieser Basis sammeln
+  const used=new Set();
+  CUR.positionen.forEach(p=>{
+    const m=String(p.pos||'').trim().match(/^(.*?)([a-z])\s*$/i);
+    if(m&&m[1]===base)used.add(m[2].toLowerCase());
+  });
+  for(let c=97;c<=122;c++){const ch=String.fromCharCode(c);if(!used.has(ch))return base+ch;}
+  return base+'a';
+}
 function openAddPos(insertIdx){
   if(!CUR){toast('Kein Projekt geöffnet','err');return;}
   _addPosIdx=(typeof insertIdx==='number')?insertIdx:null;
   const ins=_addPosIdx!=null;
   document.getElementById('addPosTitle').textContent=ins?'➕ Position einfügen':'➕ Position hinzufügen';
-  document.getElementById('apPos').value='';
+  document.getElementById('apPos').value=ins?suggestInsertPos(_addPosIdx):'';
   document.getElementById('apBez').value='';
   document.getElementById('apFab').value='';
   document.getElementById('apTyp').value='';
@@ -2361,11 +2378,14 @@ async function saveAddPos(){
   const bez=document.getElementById('apBez').value.trim();
   if(!bez){document.getElementById('apBez').focus();document.getElementById('apBez').style.borderColor='#d92020';return;}
   let pos=document.getElementById('apPos').value.trim();
-  // Auto-Pos wenn leer: nächste freie Nummer
+  // Auto-Pos wenn leer: beim Einfügen Unter-Buchstabe (5.a), sonst nächste freie Nummer
   if(!pos){
-    const nums=CUR.positionen.map(p=>{const m=String(p.pos).match(/(\d+)\.?\s*$/);return m?parseInt(m[1]):0;});
-    const max=nums.length?Math.max(...nums):0;
-    pos=(max+1)+'.';
+    if(_addPosIdx!=null)pos=suggestInsertPos(_addPosIdx);
+    if(!pos){
+      const nums=CUR.positionen.map(p=>{const m=String(p.pos).match(/(\d+)\.?\s*$/);return m?parseInt(m[1]):0;});
+      const max=nums.length?Math.max(...nums):0;
+      pos=(max+1)+'.';
+    }
   }
   const neu={
     pos, bereich:'', bereichBez:'',
