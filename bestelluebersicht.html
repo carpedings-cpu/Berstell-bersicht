@@ -1552,7 +1552,7 @@ function renderDetail(){
     
     // Quelle (immer)
     html+=`<div class="crow">
-      <div class="ck q-best${p.quelle==='bestellt'?' on':''}" onclick="setF(${idx},'quelle','bestellt')"><span class="cki">${p.quelle==='bestellt'?'✓':'○'}</span>Bestellware</div>
+      <div class="ck q-best${p.quelle==='bestellt'?' on':''}" onclick="setF(${idx},'quelle','bestellt')"><span class="cki">${p.quelle==='bestellt'?'✓':'○'}</span>Bestellt</div>
       <div class="ck q-lager${p.quelle==='lager'?' on':''}" onclick="setF(${idx},'quelle','lager')"><span class="cki">${p.quelle==='lager'?'✓':'○'}</span>Lagerware</div>`;
     // Nur bei BESTELLT: Lieferort + voller Status. Bei LAGER: nichts davon (nur Komm-Nr + Lager-Abruf)
     if(p.quelle==='bestellt'){
