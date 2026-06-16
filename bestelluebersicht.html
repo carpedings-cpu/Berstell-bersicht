@@ -1167,7 +1167,14 @@ function rowsToProject(rows){
   const n=v=>{if(v==null)return null;const s=String(v).replace(/ /g,' ').trim().replace(/\s+/g,' ');return s===''?null:s;};
   const isEmpty=v=>v==null||(typeof v==='string'&&v.replace(/ /g,'').trim()==='');
   // EK/VK aus deutschem Zahlenformat lesen (7.850,00 € -> 7850)
-  const num=v=>{if(v==null)return 0;const x=parseFloat(String(v).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'));return isNaN(x)?0:x;};
+  const num=v=>{
+    if(v==null)return 0;
+    if(typeof v==='number'&&isFinite(v))return v; // Excel-Number direkt nehmen, NICHT als String parsen (sonst frisst die Tausender-Regex die Dezimalstellen)
+    let s=String(v).replace(/[^0-9,.\-]/g,'').trim(); if(!s)return 0;
+    // Deutsches Format: bei Komma UND Punkt sind Punkte Tausender; bei nur Komma ist es Dezimal
+    if(s.indexOf(',')>=0) s = s.indexOf('.')>=0 ? s.replace(/\./g,'').replace(',','.') : s.replace(',','.');
+    const x=parseFloat(s); return isNaN(x)?0:x;
+  };
   // EK/VK-Header breit erkennen: "EK", "EK-Preis", "EK netto", "EK €", "EK in €", "EK/Stk",
   // "Einkaufspreis", "Einstand", "EP EK", analog VK. Kein .? – das hat fälschlich nach 1 Zeichen gesucht.
   const RE_EK=/^\s*(ek\b|einkauf|einstand|ep\s*ek|ek[\s\-\/.·]*(netto|brutto|preis|stk|stueck|einzel|gesamt|€|eur|in\s*€)|einkaufspreis)/i;
@@ -2751,7 +2758,13 @@ function parsePreiseExcel(ab,fname){
   // Projektname aus Dateiname ableiten
   const projName=fname.replace(/\.(xlsx|xlsm|xls)$/i,'').replace(/^Auftragsliste[_\s]*/i,'').replace(/[_]/g,' ').trim();
   const out=[];
-  const num=v=>{if(v==null)return 0;const n=parseFloat(String(v).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'));return isNaN(n)?0:n;};
+  const num=v=>{
+    if(v==null)return 0;
+    if(typeof v==='number'&&isFinite(v))return v;
+    let s=String(v).replace(/[^0-9,.\-]/g,'').trim(); if(!s)return 0;
+    if(s.indexOf(',')>=0) s = s.indexOf('.')>=0 ? s.replace(/\./g,'').replace(',','.') : s.replace(',','.');
+    const n=parseFloat(s); return isNaN(n)?0:n;
+  };
   for(let i=headerRow+1;i<rows.length;i++){
     const r=rows[i];if(!r)continue;
     const pos=r[posCol]!=null?String(r[posCol]).trim():'';
@@ -2818,7 +2831,7 @@ function renderPreise(){
     <div class="pr-kpi"><div class="kn">${groupList.length}</div><div class="kl">Lieferanten</div></div>
     <div class="pr-kpi"><div class="kn">${items.length}</div><div class="kl">Positionen</div></div>
     <div class="pr-kpi"><div class="kn">${fmtEur(vkTot)}</div><div class="kl">Volumen VK</div></div>
-    <div class="pr-kpi"><div class="kn" style="color:#1e8a4a">${margeTot.toFixed(1)}%</div><div class="kl">Ø Marge</div></div>`;
+    <div class="pr-kpi"><div class="kn" style="color:#1e8a4a">${Math.round(margeTot)}%</div><div class="kl">Ø Marge</div></div>`;
   const wrap=document.getElementById('prList');
   if(groupList.length===0){
     wrap.innerHTML=hasData?'<div class="empty">Keine Treffer.</div>':'<div class="empty">Noch keine Preisdaten.<br>Beim Hochladen eines Projekts werden EK/VK automatisch übernommen – oder lade oben gezielt eine EK/VK-Excel hoch.</div>';
@@ -2837,7 +2850,7 @@ function renderPreise(){
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
         <td class="pr-ek">${fmtEur(it.ek)}</td>
         <td class="pr-vk">${fmtEur(it.vk)}</td>
-        <td><span class="pr-marge ${margeClass(marge)}">${marge.toFixed(1)}%</span></td>
+        <td><span class="pr-marge ${margeClass(marge)}">${Math.round(marge)}%</span></td>
         <td class="pr-anm">${esc(it.anm||'')}</td>
       </tr>`;
     }).join('');
@@ -2846,7 +2859,7 @@ function renderPreise(){
       <td></td>
       <td class="pr-ek" style="font-weight:800">${fmtEur(g.ekSum)}</td>
       <td class="pr-vk" style="font-weight:800">${fmtEur(g.vkSum)}</td>
-      <td><span class="pr-marge ${margeClass(margeAvg)}" style="font-weight:800">${margeAvg.toFixed(1)}%</span></td>
+      <td><span class="pr-marge ${margeClass(margeAvg)}" style="font-weight:800">${Math.round(margeAvg)}%</span></td>
       <td></td>
     </tr>`;
     return `<div class="pr-group">
@@ -2855,7 +2868,7 @@ function renderPreise(){
         <span class="pr-name">🏭 ${esc(g.lief)}</span>
         ${b?'<span class="pr-bind '+b.status+'">'+(b.status==='ok'?'✓ aktuell':b.status==='warn'?'⚠ Preisbindung':'⚠ abgelaufen')+'</span>':''}
         <span class="pr-cnt">${g.items.length}</span>
-        <span class="pr-vol">EK ${fmtEur(g.ekSum)} · VK ${fmtEur(g.vkSum)} · ${margeAvg.toFixed(1)}%</span>
+        <span class="pr-vol">EK ${fmtEur(g.ekSum)} · VK ${fmtEur(g.vkSum)} · ${Math.round(margeAvg)}%</span>
       </div>
       <div class="pr-body">
         ${b?'<div class="pr-note">📋 '+esc(b.text)+'</div>':''}
