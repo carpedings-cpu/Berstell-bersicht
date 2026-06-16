@@ -128,6 +128,19 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .kpi .kn{font-size:22px;font-weight:800;letter-spacing:-.8px;line-height:1;}
 .kpi .kl{font-size:10px;font-weight:600;letter-spacing:.2px;color:rgba(28,28,30,.55);margin-top:4px;text-transform:uppercase;}
 .kpi.kr .kn{color:#d92020;} .kpi.ka .kn{color:#c47700;} .kpi.kg .kn{color:#1e8a4a;}
+.chipbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.chip{background:rgba(255,255,255,.7);border:.5px solid rgba(0,0,0,.08);border-radius:14px;padding:6px 11px;font-size:12px;font-weight:600;color:rgba(28,28,30,.7);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;}
+.chip:active{transform:scale(.96);}
+.chip.on{background:#2d2926;color:#c8a882;border-color:transparent;box-shadow:0 3px 10px rgba(45,41,38,.25);}
+.chip .cn{background:rgba(0,0,0,.08);padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;}
+.chip.on .cn{background:rgba(200,168,130,.25);color:#e6cba0;}
+.bsec-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;background:linear-gradient(135deg,rgba(45,41,38,.05),rgba(45,41,38,.02));border:.5px solid rgba(45,41,38,.08);border-radius:11px;margin:14px 0 8px;cursor:pointer;user-select:none;}
+.bsec-hd:hover{background:linear-gradient(135deg,rgba(45,41,38,.08),rgba(45,41,38,.04));}
+.bsec-hd.collapsed{margin-bottom:8px;}
+.bsec-tog{font-size:10px;color:rgba(28,28,30,.5);width:10px;}
+.bsec-bez{flex:1;font-size:13px;font-weight:700;color:#3c342e;letter-spacing:.2px;}
+.bsec-stats{font-size:11px;color:rgba(28,28,30,.55);font-weight:500;}
+.zb-tog{font-size:10px;width:10px;color:#c8a882;}
 
 .fbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
 .sw{position:relative;flex:1;min-width:180px;}
@@ -548,6 +561,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     </div>
   </div>
   <div class="cockpit" id="dCockpit"></div>
+  <div class="chipbar" id="dChips"></div>
   <div class="ptools">
     <button class="ptbtn" id="selBtn" onclick="openLagerAbruf()">🖨 Lager-Abruf</button>
     <button class="ptbtn" onclick="openTermininfo()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;border-color:transparent">📧 Lieferanten zu Termin</button>
@@ -1528,16 +1542,38 @@ function renderDetail(){
     return daysBtw(today(),at)<=1;
   }).length;
   cp.innerHTML=`
-    <button class="kpi kr" onclick="setDFilter('red')"><div class="kn">${red}</div><div class="kl">Überfällig</div></button>
-    <button class="kpi ka" onclick="setDFilter('abruf')"><div class="kn">${abrufFaellig}</div><div class="kl">Abruf fällig</div></button>
-    <button class="kpi kg" onclick="setDFilter('green')"><div class="kn">${gel}</div><div class="kl">Geliefert</div></button>`;
-  // Cards
+    <button class="kpi kr${DFILTER==='red'?' on':''}" onclick="setDFilter('red')"><div class="kn">${red}</div><div class="kl">Überfällig</div></button>
+    <button class="kpi ka${DFILTER==='abruf'?' on':''}" onclick="setDFilter('abruf')"><div class="kn">${abrufFaellig}</div><div class="kl">Abruf fällig</div></button>
+    <button class="kpi kg${DFILTER==='green'?' on':''}" onclick="setDFilter('green')"><div class="kn">${gel}</div><div class="kl">Geliefert</div></button>`;
+  // Status-Filter-Chips (zaehlen ueber ALLE Positionen, unabhaengig vom aktuellen Filter)
+  const cntZB=CUR.positionen.filter(istZuBestellen).length;
+  const cntABoffen=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.status==='bestellt'&&!p.abBestaetigt&&!istBauseits(p)).length;
+  const cntInLief=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istBauseits(p)).length;
+  const cntBauseits=CUR.positionen.filter(istBauseits).length;
+  const totalP=CUR.positionen.length;
+  document.getElementById('dChips').innerHTML=
+    `<button class="chip${DFILTER===''?' on':''}" onclick="setDFilter('')">Alle <span class="cn">${totalP}</span></button>`+
+    `<button class="chip${DFILTER==='zubest'?' on':''}" onclick="setDFilter('zubest')">Zu bestellen <span class="cn">${cntZB}</span></button>`+
+    `<button class="chip${DFILTER==='aboffen'?' on':''}" onclick="setDFilter('aboffen')">AB offen <span class="cn">${cntABoffen}</span></button>`+
+    `<button class="chip${DFILTER==='lieferung'?' on':''}" onclick="setDFilter('lieferung')">In Lieferung <span class="cn">${cntInLief}</span></button>`+
+    (cntBauseits?`<button class="chip${DFILTER==='bauseits'?' on':''}" onclick="setDFilter('bauseits')">Bauseits <span class="cn">${cntBauseits}</span></button>`:'')+
+    `<button class="chip" onclick="toggleAllBereiche(true)" title="Alle Bereiche zuklappen">▶ Alle zu</button>`+
+    `<button class="chip" onclick="toggleAllBereiche(false)" title="Alle Bereiche aufklappen">▼ Alle auf</button>`;
+  // Cards: gruppiert nach Bereich, mit Akkordeon
   const q=(document.getElementById('dSrch').value||'').toLowerCase().trim();
   const wrap=document.getElementById('dCards');wrap.innerHTML='';
   let shown=0;
+  if(!Array.isArray(CUR.collapsedBereiche))CUR.collapsedBereiche=[];
+  const collapsedSet=new Set(CUR.collapsedBereiche);
+  const bereichOrder=[];const bereichMap={};
   CUR.positionen.forEach((p,idx)=>{
-    if(q){const hay=[p.pos,p.bez,p.fabrikat,p.lieferant,...(p.kommNrs||[])].join(' ').toLowerCase();if(!hay.includes(q))return;}
-    if(!passesDFilter(p))return;
+    const k=p.bereich||'_';
+    if(!bereichMap[k]){bereichMap[k]={key:k,bez:p.bereichBez||'',items:[]};bereichOrder.push(k);}
+    bereichMap[k].items.push({p,idx});
+  });
+  const renderCard=(p,idx)=>{
+    if(q){const hay=[p.pos,p.bez,p.fabrikat,p.lieferant,...(p.kommNrs||[])].join(' ').toLowerCase();if(!hay.includes(q))return null;}
+    if(!passesDFilter(p))return null;
     const sev=severity(p,CUR);
     const effTermin=CUR.liefertermin;
     const card=document.createElement('div');
@@ -1668,7 +1704,31 @@ function renderDetail(){
     html+=`<textarea class="anm" rows="1" placeholder="Notiz …" onchange="updF(${idx},'notiz',this.value)">${esc(p.notiz)}</textarea>`;
     html+=`<button class="inspos" onclick="openAddPos(${idx+1})">➕ Position darunter einfügen</button>`;
 
-    card.innerHTML=html;wrap.appendChild(card);shown++;
+    card.innerHTML=html;
+    return card;
+  };
+  // Bereiche rendern – Header (klickbar) + sichtbare Karten dieses Bereichs
+  bereichOrder.forEach(k=>{
+    const sec=bereichMap[k];
+    const cards=sec.items.map(({p,idx})=>renderCard(p,idx)).filter(Boolean);
+    if(cards.length===0)return; // leerer Bereich nach Filter/Suche → nicht anzeigen
+    const isCollapsed=collapsedSet.has(k);
+    const total=sec.items.length;
+    const bestellt=sec.items.filter(it=>it.p.quelle==='bestellt'&&(it.p.status==='bestellt'||it.p.status==='abgerufen')&&!istBauseits(it.p)).length;
+    const geliefert=sec.items.filter(it=>it.p.status==='geliefert').length;
+    const offen=sec.items.filter(it=>istZuBestellen(it.p)).length;
+    const stats=[];
+    if(offen)stats.push(offen+' offen');
+    if(bestellt)stats.push(bestellt+' bestellt');
+    if(geliefert)stats.push(geliefert+'/'+total+' geliefert');
+    const head=document.createElement('div');
+    head.className='bsec-hd'+(isCollapsed?' collapsed':'');
+    head.innerHTML=`<span class="bsec-tog">${isCollapsed?'▶':'▼'}</span>`+
+      `<span class="bsec-bez">${esc(k==='_'?'(ohne Bereich)':k)}${sec.bez?' '+esc(sec.bez):''}</span>`+
+      `<span class="bsec-stats">${cards.length}${cards.length!==total?'/'+total:''} · ${stats.length?stats.join(' · '):'—'}</span>`;
+    head.onclick=()=>toggleBereich(k);
+    wrap.appendChild(head);
+    if(!isCollapsed){cards.forEach(c=>{wrap.appendChild(c);shown++;});}else{shown+=cards.length;}
   });
   if(shown===0)wrap.innerHTML='<div class="empty">Keine Positionen gefunden.</div>';
   // Lieferanten-Vorschlagsliste aktualisieren
@@ -1686,7 +1746,27 @@ function passesDFilter(p){
     const at=abrufTermin(p,CUR);if(!at)return false;
     return daysBtw(today(),at)<=1;
   }
+  if(DFILTER==='zubest')return istZuBestellen(p);
+  if(DFILTER==='aboffen')return p.quelle==='bestellt' && p.status==='bestellt' && !p.abBestaetigt && !istBauseits(p);
+  if(DFILTER==='lieferung')return p.quelle==='bestellt' && p.abBestaetigt && p.status!=='geliefert' && !istBauseits(p);
+  if(DFILTER==='bauseits')return istBauseits(p);
   return severity(p,CUR)===DFILTER;
+}
+async function toggleBereich(key){
+  if(!CUR)return;
+  if(!Array.isArray(CUR.collapsedBereiche))CUR.collapsedBereiche=[];
+  const i=CUR.collapsedBereiche.indexOf(key);
+  if(i>=0)CUR.collapsedBereiche.splice(i,1);
+  else CUR.collapsedBereiche.push(key);
+  await saveCur();renderDetail();
+}
+function toggleAllBereiche(closeAll){
+  if(!CUR)return;
+  if(closeAll){
+    const keys=new Set(); CUR.positionen.forEach(p=>keys.add(p.bereich||'_'));
+    CUR.collapsedBereiche=[...keys];
+  } else CUR.collapsedBereiche=[];
+  saveCur().then(()=>renderDetail());
 }
 
 async function setF(idx,field,val){
@@ -2534,14 +2614,18 @@ function renderZuBestellen(){
         <button class="zb-mark" onclick="markBestellt('${it.projId}',${it.idx})">📦 Bestellen</button>
       </div>`;
     }).join('');
+    const key=normLief(g.lief)||'_';
+    const zbCollapsed=(localStorage.getItem('kpc_zbCollapsed')||'').split('|').filter(Boolean);
+    const isCollapsed=zbCollapsed.includes(key);
     return `<div class="zb-group">
-      <div class="zb-grouphd">
+      <div class="zb-grouphd" onclick="toggleZbGroup('${escA(key)}')" style="cursor:pointer">
+        <span class="zb-tog">${isCollapsed?'▶':'▼'}</span>
         <span>🏭 ${esc(g.lief)}</span>
         <span class="zb-count">${g.items.length}</span>
-        <button class="zb-grpcopy" onclick="copyGroup('${escA(g.lief)}')" title="Liste kopieren">📋</button>
-        <button class="zb-grpall" onclick="markAllBestellt('${escA(g.lief)}')">Alle bestellen</button>
+        <button class="zb-grpcopy" onclick="event.stopPropagation();copyGroup('${escA(g.lief)}')" title="Liste kopieren">📋</button>
+        <button class="zb-grpall" onclick="event.stopPropagation();markAllBestellt('${escA(g.lief)}')">Alle bestellen</button>
       </div>
-      ${rows}
+      ${isCollapsed?'':rows}
     </div>`;
   }).join('');
   // Counter auf Startseite aktualisieren
@@ -2549,6 +2633,13 @@ function renderZuBestellen(){
   if(cnt)cnt.textContent=items.length;
 }
 
+function toggleZbGroup(key){
+  let keys=(localStorage.getItem('kpc_zbCollapsed')||'').split('|').filter(Boolean);
+  const i=keys.indexOf(key);
+  if(i>=0)keys.splice(i,1); else keys.push(key);
+  localStorage.setItem('kpc_zbCollapsed',keys.join('|'));
+  renderZuBestellen();
+}
 async function markBestellt(projId,idx){
   const proj=PROJECTS.find(p=>p.id===projId);
   if(!proj||!proj.positionen[idx])return;
