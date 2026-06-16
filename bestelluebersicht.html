@@ -318,6 +318,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-table td{padding:8px 10px;border-bottom:.5px solid rgba(0,0,0,.05);vertical-align:top;}
 .pr-table tr:hover td{background:rgba(255,255,255,.5);}
 .pr-table tr:last-child td{border-bottom:none;}
+.pr-table tr.pr-sum td{background:rgba(107,80,64,.07);border-top:1.5px solid rgba(107,80,64,.25);padding-top:10px;padding-bottom:10px;font-size:12.5px;}
+.pr-table tr.pr-sum:hover td{background:rgba(107,80,64,.10);}
 .pr-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;}
 .pr-bez{font-weight:600;color:#1c1c1e;}
 .pr-typ{font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px;}
@@ -882,6 +884,15 @@ function updateBackupBanner(){
 }
 function dismissBackupBanner(){localStorage.setItem('kpc_backupDismiss',today());updateBackupBanner();}
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// Lieferanten-Schluessel: Whitespace/Sonderzeichen/Case egalisieren, damit
+// "Nordcap", "NordCap", "Nord Cap", "nord-cap." als gleicher Lieferant gelten.
+function normLief(s){return String(s||'').toLowerCase().replace(/[\s\-._/&+]/g,'').replace(/(gmbh|ag|kg|ohg|se)$/g,'').trim();}
+// "Bauseits" = nichts zu bestellen. Erkennt das Wort in Bezeichnung, Typ, Fabrikat, Lieferant oder Notiz.
+function istBauseits(p){
+  if(!p)return false;
+  const hay=[p.bez,p.typ,p.fabrikat,p.lieferant,p.notiz].filter(Boolean).join(' ').toLowerCase();
+  return /\bbauseit/.test(hay);
+}
 const escA=s=>String(s||'').replace(/"/g,'&quot;');
 const today=()=>new Date().toISOString().slice(0,10);
 const daysBtw=(a,b)=>Math.floor((new Date(b)-new Date(a))/864e5);
@@ -2455,6 +2466,7 @@ async function goZuBestellen(){
 // Offen = Status nicht bestellt/abgerufen/geliefert, und keine Lagerware
 function istZuBestellen(p){
   if(p.quelle==='lager')return false;        // Lagerware muss man nicht bestellen
+  if(istBauseits(p))return false;             // bauseits = stellt der Bau, nicht wir
   if(p.status==='bestellt')return false;      // schon bestellt
   if(p.status==='abgerufen')return false;     // schon abgerufen
   if(p.status==='geliefert')return false;     // schon geliefert
@@ -2475,12 +2487,18 @@ function renderZuBestellen(){
     const hay=[it.projName,it.p.pos,it.p.bez,it.p.fabrikat,it.p.lieferant,it.p.typ].join(' ').toLowerCase();
     return hay.includes(q);
   }):items;
-  // Gruppieren nach Lieferant (Fallback Fabrikat → '(ohne Zuordnung)')
+  // Gruppieren nach Lieferant – tolerant gegen unterschiedliche Schreibweisen
+  // (Nordcap/NordCap/Nord Cap → ein Eintrag); Anzeige nimmt die haeufigste Variante.
   const groups={};
   filtered.forEach(it=>{
-    const lief=it.p.lieferant||it.p.fabrikat||'(ohne Zuordnung)';
-    if(!groups[lief])groups[lief]={lief,items:[]};
-    groups[lief].items.push(it);
+    const raw=it.p.lieferant||it.p.fabrikat||'(ohne Zuordnung)';
+    const key=normLief(raw)||'(ohne)';
+    if(!groups[key])groups[key]={key,items:[],variants:{}};
+    groups[key].items.push(it);
+    groups[key].variants[raw]=(groups[key].variants[raw]||0)+1;
+  });
+  Object.values(groups).forEach(g=>{
+    g.lief=Object.entries(g.variants).sort((a,b)=>b[1]-a[1])[0][0];
   });
   const groupList=Object.values(groups).sort((a,b)=>{
     if(a.lief==='(ohne Zuordnung)')return 1;
@@ -2538,9 +2556,10 @@ async function markBestellt(projId,idx){
 }
 async function markAllBestellt(lief){
   if(!confirm(`Alle Positionen von "${lief}" als bestellt markieren?`))return;
+  const k=normLief(lief);
   const items=[];
   PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
-    if(istZuBestellen(p) && (p.lieferant||p.fabrikat||'(ohne Zuordnung)')===lief)items.push({proj,idx});
+    if(istZuBestellen(p) && normLief(p.lieferant||p.fabrikat)===k)items.push({proj,idx});
   }));
   for(const it of items){
     const pp=it.proj.positionen[it.idx];
@@ -2555,8 +2574,9 @@ async function markAllBestellt(lief){
 }
 async function copyGroup(lief){
   const lines=[`Bestellanfrage an ${lief}:`,''];
+  const k=normLief(lief);
   PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
-    if(istZuBestellen(p) && (p.lieferant||p.fabrikat||'(ohne Zuordnung)')===lief){
+    if(istZuBestellen(p) && normLief(p.lieferant||p.fabrikat)===k){
       const t=p.abrufTermin||proj.liefertermin;
       lines.push(`• Projekt ${proj.name} · Pos ${p.pos} · ${p.bez}${p.fabrikat?' / '+p.fabrikat:''}${p.typ?' '+p.typ:''} · ${p.menge} ${p.einh}${t?' · Abruf '+new Date(t).toLocaleDateString('de-DE'):''}`);
     }
@@ -2570,15 +2590,16 @@ async function copyAllZuBestellen(){
   const byLief={};
   PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
     if(istZuBestellen(p)){
-      const k=p.lieferant||p.fabrikat||'(ohne Zuordnung)';
-      if(!byLief[k])byLief[k]=[];
+      const raw=p.lieferant||p.fabrikat||'(ohne Zuordnung)';
+      const key=normLief(raw)||'(ohne)';
+      if(!byLief[key])byLief[key]={display:raw,lines:[]};
       const t=p.abrufTermin||proj.liefertermin;
-      byLief[k].push(`  • ${proj.name} · Pos ${p.pos} · ${p.bez} · ${p.menge} ${p.einh}${t?' · '+new Date(t).toLocaleDateString('de-DE'):''}`);
+      byLief[key].lines.push(`  • ${proj.name} · Pos ${p.pos} · ${p.bez} · ${p.menge} ${p.einh}${t?' · '+new Date(t).toLocaleDateString('de-DE'):''}`);
     }
   }));
-  Object.keys(byLief).sort().forEach(k=>{
-    lines.push(`${k} (${byLief[k].length}):`);
-    lines.push(...byLief[k]);
+  Object.values(byLief).sort((a,b)=>a.display.localeCompare(b.display)).forEach(g=>{
+    lines.push(`${g.display} (${g.lines.length}):`);
+    lines.push(...g.lines);
     lines.push('');
   });
   const text=lines.join('\n');
@@ -2763,14 +2784,17 @@ function renderPreise(){
   let items=PREISE_DATA.slice();
   if(q)items=items.filter(it=>[it.lief,it.bez,it.typ,it.proj,it.pos].join(' ').toLowerCase().includes(q));
   // Hilfstext oben (kein Demo-Hinweis mehr) bleibt immer sichtbar
-  // Gruppieren nach Lieferant
+  // Gruppieren nach Lieferant – tolerant gegen Schreibweisen (Nordcap/NordCap/Nord Cap → ein Eintrag)
   const groups={};
   items.forEach(it=>{
-    if(!groups[it.lief])groups[it.lief]={lief:it.lief,items:[],ekSum:0,vkSum:0};
-    groups[it.lief].items.push(it);
-    groups[it.lief].ekSum+=it.ek*it.menge;
-    groups[it.lief].vkSum+=it.vk*it.menge;
+    const key=normLief(it.lief)||'(ohne)';
+    if(!groups[key])groups[key]={key,items:[],ekSum:0,vkSum:0,variants:{}};
+    groups[key].items.push(it);
+    groups[key].ekSum+=it.ek*it.menge;
+    groups[key].vkSum+=it.vk*it.menge;
+    groups[key].variants[it.lief]=(groups[key].variants[it.lief]||0)+1;
   });
+  Object.values(groups).forEach(g=>{g.lief=Object.entries(g.variants).sort((a,b)=>b[1]-a[1])[0][0];});
   let groupList=Object.values(groups);
   if(sortBy==='lief')groupList.sort((a,b)=>a.lief.localeCompare(b.lief));
   else if(sortBy==='anzahl')groupList.sort((a,b)=>b.items.length-a.items.length);
@@ -2806,19 +2830,27 @@ function renderPreise(){
         <td class="pr-anm">${esc(it.anm||'')}</td>
       </tr>`;
     }).join('');
+    const sumRow=`<tr class="pr-sum">
+      <td colspan="3" style="text-align:right;font-weight:800;color:#6b5040">Σ Gesamt (${g.items.length} Pos.)</td>
+      <td></td>
+      <td class="pr-ek" style="font-weight:800">${fmtEur(g.ekSum)}</td>
+      <td class="pr-vk" style="font-weight:800">${fmtEur(g.vkSum)}</td>
+      <td><span class="pr-marge ${margeClass(margeAvg)}" style="font-weight:800">${margeAvg.toFixed(1)}%</span></td>
+      <td></td>
+    </tr>`;
     return `<div class="pr-group">
       <div class="pr-hd" onclick="togglePr(this)">
         <span class="pr-tog">▶</span>
         <span class="pr-name">🏭 ${esc(g.lief)}</span>
         ${b?'<span class="pr-bind '+b.status+'">'+(b.status==='ok'?'✓ aktuell':b.status==='warn'?'⚠ Preisbindung':'⚠ abgelaufen')+'</span>':''}
         <span class="pr-cnt">${g.items.length}</span>
-        <span class="pr-vol">${fmtEur(g.vkSum)} · ${margeAvg.toFixed(1)}%</span>
+        <span class="pr-vol">EK ${fmtEur(g.ekSum)} · VK ${fmtEur(g.vkSum)} · ${margeAvg.toFixed(1)}%</span>
       </div>
       <div class="pr-body">
         ${b?'<div class="pr-note">📋 '+esc(b.text)+'</div>':''}
         <div style="overflow-x:auto"><table class="pr-table">
           <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th>Projekt / Termin</th><th style="text-align:right">EK</th><th style="text-align:right">VK</th><th style="text-align:right">Marge</th><th>Anmerkung</th></tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows}${sumRow}</tbody>
         </table></div>
       </div>
     </div>`;
