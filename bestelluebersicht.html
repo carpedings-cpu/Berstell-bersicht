@@ -2782,7 +2782,18 @@ function renderPreise(){
   const sortBy=document.getElementById('prSort')?.value||'lief';
   const hasData=PREISE_DATA.length>0;
   let items=PREISE_DATA.slice();
-  if(q)items=items.filter(it=>[it.lief,it.bez,it.typ,it.proj,it.pos].join(' ').toLowerCase().includes(q));
+  if(q){
+    // Sucht primaer ueber den Lieferanten (mit Normalisierung – "cool" findet Cool Compact / CoolCompact,
+    // aber nicht WMF, auch wenn 'cool' in Bezeichnung steht). Faellt auf Volltext zurueck, wenn kein Lieferant matched.
+    const qNorm=q.replace(/[\s\-._/&+]/g,'');
+    const liefKeys=new Set();
+    items.forEach(it=>{const k=normLief(it.lief);if(k.includes(qNorm))liefKeys.add(k||'(ohne)');});
+    if(liefKeys.size>0){
+      items=items.filter(it=>liefKeys.has(normLief(it.lief)||'(ohne)'));
+    } else {
+      items=items.filter(it=>[it.bez,it.typ,it.proj,it.pos].join(' ').toLowerCase().includes(q));
+    }
+  }
   // Hilfstext oben (kein Demo-Hinweis mehr) bleibt immer sichtbar
   // Gruppieren nach Lieferant – tolerant gegen Schreibweisen (Nordcap/NordCap/Nord Cap → ein Eintrag)
   const groups={};
