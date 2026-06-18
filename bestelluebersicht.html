@@ -1226,11 +1226,23 @@ function abrufTermin(p,proj){
   const d=new Date(lt);d.setDate(d.getDate()-vorlauf);
   return d.toISOString().slice(0,10);
 }
+// ── ZENTRALE WAHRHEIT: Was gilt als "bestellt"? ─────────────────────────
+// Eine Position ist genau dann bestellt, wenn quelle==='bestellt'. Das ist GENAU der
+// "Bestellt"-Schalter, den der Bearbeiter im Detail anklickt und dort sieht. status
+// (offen/bestellt/abgerufen/geliefert) ist ein Unterzustand DAVON. Wir zaehlen nie nach
+// status, weil status in Altdaten gesetzt sein kann, ohne dass quelle='bestellt' ist –
+// dann wuerde die Karte etwas zaehlen, das man im Projekt nicht als bestellt sieht.
+function istBestellt(p){return p.quelle==='bestellt';}
+// Abgerufen/Geliefert sind Unterzustaende von bestellt
+function istAbgerufen(p){return istBestellt(p)&&p.status==='abgerufen';}
+function istGeliefert(p){return istBestellt(p)&&p.status==='geliefert';}
+// Bestellt, aber noch nicht abgerufen und noch nicht geliefert → wartet auf Abruf
+function wartetAufAbruf(p){return istBestellt(p)&&p.status!=='abgerufen'&&p.status!=='geliefert';}
 // Zentrale Definition: Welche Positionen MUESSEN jetzt abgerufen werden?
-// Strikt: muss bestellt sein (sonst kann man gar nicht abrufen) UND Abruftermin
-// ist heute oder ueberfaellig.
+// Strikt: muss bestellt sein (sonst kann man gar nicht abrufen) UND noch nicht
+// abgerufen/geliefert UND Abruftermin ist heute oder ueberfaellig.
 function istAbrufFaellig(p,proj){
-  if(p.status!=='bestellt')return false; // bestellt aber noch nicht abgerufen
+  if(!wartetAufAbruf(p))return false;
   const at=abrufTermin(p,proj); if(!at)return false;
   return daysBtw(today(),at)<=0; // heute oder ueberfaellig
 }
@@ -1241,9 +1253,10 @@ function countAbrufFaellig(){
 }
 function severity(p,proj){
   if(p.reklamation)return 'reklam';
-  if(p.status==='geliefert')return 'green';
-  // Vor dem Abruf (noch nicht abgerufen/geliefert): Abruftermin ist kritisch
-  if(p.status!=='abgerufen'){
+  if(istGeliefert(p))return 'green';
+  // Nur BESTELLTE Positionen, die noch auf Abruf warten, koennen einen Abruf "verpassen".
+  // Bei nicht bestellten Positionen ist der (automatische) Abruftermin bedeutungslos.
+  if(wartetAufAbruf(p)){
     const at=abrufTermin(p,proj);
     if(at){
       const da=daysBtw(today(),at);
@@ -1251,7 +1264,8 @@ function severity(p,proj){
       if(da<=1)return 'amber';   // Abruf morgen/heute fällig
     }
   }
-  // Nach dem Abruf: Liefertermin zählt
+  // Liefertermin zaehlt fuer bestellte Positionen (nach Abruf) UND als Bestell-Dringlichkeit
+  // fuer noch nicht bestellte (man muss rechtzeitig vor Liefertermin bestellen).
   const lt=proj.liefertermin;
   if(lt){
     const dl=daysBtw(today(),lt);
@@ -1477,20 +1491,15 @@ function renderHome(){
   g.innerHTML='';
   PROJECTS.forEach(proj=>{
     const tot=proj.positionen.length;
-    const gel=proj.positionen.filter(p=>p.status==='geliefert').length;
-    // 'Bestellt'-Zaehlung: STRIKT nur status. Das ist das einzige Feld, das ausschliesslich
-    // durch explizite Bearbeiter-Aktionen gesetzt wird (Klick auf Bestellt/Abgerufen/Geliefert,
-    // AB-Datei anhaengen, markBestellt in der Zu-Bestellen-Liste). Alle anderen Felder (Lieferant,
-    // KommNr, bestelltAm, abDoc) koennen durch automatische Prozesse befuellt werden und sind
-    // daher KEINE verlaesslichen Signale fuer "User hat bestellt geklickt".
-    const best=proj.positionen.filter(p=>
-      p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert'
-    ).length;
+    const gel=proj.positionen.filter(istGeliefert).length;
+    // 'Bestellt'-Zaehlung = quelle==='bestellt' (siehe istBestellt). Exakt das, was im
+    // Detail als "Bestellt" angeklickt/angezeigt wird. Damit ist Karte == Detailansicht.
+    const best=proj.positionen.filter(istBestellt).length;
     const red=proj.positionen.filter(p=>severity(p,proj)==='red').length;
     const amb=proj.positionen.filter(p=>severity(p,proj)==='amber').length;
-    // Abruf überfällig zählen
+    // Abruf überfällig zählen – nur bestellte Positionen, die noch auf Abruf warten
     const abrufUeberf=proj.positionen.filter(p=>{
-      if(p.status==='abgerufen'||p.status==='geliefert')return false;
+      if(!wartetAufAbruf(p))return false;
       const at=abrufTermin(p,proj);if(!at)return false;
       return daysBtw(today(),at)<0;
     }).length;
@@ -1844,10 +1853,10 @@ function buildProjStatus(proj){
   const aktiv=ps.filter(p=>!istNichtBestellbar(p));      // alles, was Bestell-/Liefer-Relevanz hat
   const aktivN=aktiv.length||1;
   const zubest=ps.filter(istZuBestellen).length;
-  const bestellt=ps.filter(p=>p.quelle==='bestellt'&&(p.status==='bestellt'||p.status==='abgerufen')).length;
-  const aboffen=ps.filter(p=>p.quelle==='bestellt'&&p.status==='bestellt'&&!p.abBestaetigt&&!istNichtBestellbar(p)).length;
-  const inLieferung=ps.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
-  const geliefert=ps.filter(p=>p.status==='geliefert').length;
+  const bestellt=ps.filter(p=>istBestellt(p)&&(p.status==='bestellt'||p.status==='abgerufen')).length;
+  const aboffen=ps.filter(p=>istBestellt(p)&&p.status==='bestellt'&&!p.abBestaetigt&&!istNichtBestellbar(p)).length;
+  const inLieferung=ps.filter(p=>istBestellt(p)&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
+  const geliefert=ps.filter(istGeliefert).length;
   const lager=ps.filter(p=>p.quelle==='lager').length;
   const nichtBest=ps.filter(istNichtBestellbar).length;
   const reklam=ps.filter(p=>p.reklamation).length;
@@ -1940,7 +1949,7 @@ function showBestelltList(projId){
   const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
   const items=proj.positionen
     .map((p,idx)=>({p,idx}))
-    .filter(o=>o.p.status==='bestellt'||o.p.status==='abgerufen'||o.p.status==='geliefert');
+    .filter(o=>istBestellt(o.p));
   const statusBadge=p=>{
     if(p.status==='geliefert')return '<span style="color:#0f6332;font-weight:700">Geliefert'+(p.geliefertDatum?' · '+fd(p.geliefertDatum):'')+'</span>';
     if(p.status==='abgerufen')return '<span style="color:#b85a00;font-weight:700">Abgerufen</span>';
@@ -2057,18 +2066,17 @@ function buildProjReportHTML(proj){
   // Status-Label pro Position
   const statusLabel=p=>{
     if(istNichtBestellbar(p))return '<span class="lbl lbl-gray">'+e(nichtBestellbarLabel(p))+'</span>';
-    if(p.status==='geliefert')return '<span class="lbl lbl-green">Geliefert</span>';
-    if(p.status==='abgerufen')return '<span class="lbl lbl-amber">Abgerufen</span>';
-    if(p.status==='bestellt'){
+    if(p.quelle==='lager')return '<span class="lbl lbl-blue">Lager</span>';
+    if(istBestellt(p)){
+      if(p.status==='geliefert')return '<span class="lbl lbl-green">Geliefert</span>';
+      if(p.status==='abgerufen')return '<span class="lbl lbl-amber">Abgerufen</span>';
       if(p.abBestaetigt)return '<span class="lbl lbl-amber">Bestellt · AB ✓</span>';
       const t=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
       const frist=SETTINGS.abFrist||7;
       if(p.bestelltAm&&t>=frist)return '<span class="lbl lbl-red">Bestellt · AB ⚠ '+t+'T</span>';
       return '<span class="lbl lbl-amber">Bestellt · AB offen</span>';
     }
-    if(p.quelle==='lager')return '<span class="lbl lbl-blue">Lager</span>';
-    if(p.quelle==='bestellt')return '<span class="lbl lbl-red">Zu bestellen</span>';
-    return '<span class="lbl lbl-gray">Offen</span>';
+    return '<span class="lbl lbl-red">Zu bestellen</span>';
   };
   // Positionen nach Bereich gruppieren
   const bSec={}, bOrder=[];
@@ -2339,10 +2347,10 @@ function renderDetail(){
   const cp=document.getElementById('dCockpit');
   const red=CUR.positionen.filter(p=>severity(p,CUR)==='red').length;
   const amb=CUR.positionen.filter(p=>severity(p,CUR)==='amber').length;
-  const gel=CUR.positionen.filter(p=>p.status==='geliefert').length;
-  // Abruf-spezifische Zählung
+  const gel=CUR.positionen.filter(istGeliefert).length;
+  // Abruf-spezifische Zählung: nur bestellte Positionen, die auf Abruf warten
   const abrufFaellig=CUR.positionen.filter(p=>{
-    if(p.status==='abgerufen'||p.status==='geliefert')return false;
+    if(!wartetAufAbruf(p))return false;
     const at=abrufTermin(p,CUR);if(!at)return false;
     return daysBtw(today(),at)<=1;
   }).length;
@@ -2502,8 +2510,8 @@ function renderDetail(){
     if(cards.length===0)return; // leerer Bereich nach Filter/Suche → nicht anzeigen
     const isCollapsed=collapsedSet.has(k);
     const total=sec.items.length;
-    const bestellt=sec.items.filter(it=>it.p.quelle==='bestellt'&&(it.p.status==='bestellt'||it.p.status==='abgerufen')&&!istBauseits(it.p)).length;
-    const geliefert=sec.items.filter(it=>it.p.status==='geliefert').length;
+    const bestellt=sec.items.filter(it=>istBestellt(it.p)&&(it.p.status==='bestellt'||it.p.status==='abgerufen')&&!istBauseits(it.p)).length;
+    const geliefert=sec.items.filter(it=>istGeliefert(it.p)).length;
     const offen=sec.items.filter(it=>istZuBestellen(it.p)).length;
     const stats=[];
     if(offen)stats.push(offen+' offen');
@@ -2530,7 +2538,8 @@ function setDFilter(v){DFILTER=DFILTER===v?'':v;renderDetail();}
 function passesDFilter(p){
   if(!DFILTER)return true;
   if(DFILTER==='abruf'){
-    if(p.status==='bestellt'||p.status==='geliefert')return false;
+    // Konsistent mit dem "Abruf fällig"-KPI: bestellt + wartet auf Abruf + Termin nah
+    if(!wartetAufAbruf(p))return false;
     const at=abrufTermin(p,CUR);if(!at)return false;
     return daysBtw(today(),at)<=1;
   }
@@ -3177,6 +3186,8 @@ async function confirmLs(){
   const lsId='ls_'+CUR.id+'_'+idx+'_'+Date.now();
   await dbPut('lieferscheine',{id:lsId,blob:buffer,type:file.type,name:file.name});
   p.lieferschein={id:lsId,name:file.name,type:file.type,datum,lieferscheinNr:lsNr};
+  // Lieferschein da = geliefert; impliziert bestellt → quelle setzen, damit Karte konsistent ist
+  if(!istNichtBestellbar(p))p.quelle='bestellt';
   p.status='geliefert';
   p.geliefertDatum=datum;
   if(kommNr){p.kommNrs=p.kommNrs||[];if(!p.kommNrs.includes(kommNr))p.kommNrs.push(kommNr);}
@@ -3258,7 +3269,9 @@ async function handleAbFile(idx,file){
   if(p.abDoc&&p.abDoc.id){try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}}
   await dbPut('auftragsbestaetigungen',{id:abId,blob:buffer,type:file.type,name:file.name});
   p.abDoc={id:abId,name:file.name,type:file.type,datum:datum||today()};
-  // AB-Datei = AB ist da; impliziert dass auch wirklich bestellt wurde
+  // AB-Datei = AB ist da; impliziert dass auch wirklich bestellt wurde.
+  // quelle UND status setzen, damit Karte (zaehlt quelle) und Detail konsistent bleiben.
+  if(!istNichtBestellbar(p))p.quelle='bestellt';
   if(p.status==='offen'||!p.status)p.status='bestellt';
   if(!p.bestelltAm)p.bestelltAm=today();
   p.abBestaetigt=true;
@@ -3379,13 +3392,12 @@ async function goZuBestellen(){
   renderZuBestellen();
 }
 // Zentrale Definition: Was muss noch bestellt werden?
-// Offen = Status nicht bestellt/abgerufen/geliefert, und keine Lagerware
+// Gegenstueck zu istBestellt: alles was bestellbar ist, aber noch nicht bestellt
+// (quelle!=='bestellt'). Konsistent mit der Karte und der Detailansicht.
 function istZuBestellen(p){
   if(p.quelle==='lager')return false;        // Lagerware muss man nicht bestellen
   if(istNichtBestellbar(p))return false;      // bauseits / Dienstleistung / entfallen
-  if(p.status==='bestellt')return false;      // schon bestellt
-  if(p.status==='abgerufen')return false;     // schon abgerufen
-  if(p.status==='geliefert')return false;     // schon geliefert
+  if(istBestellt(p))return false;             // schon bestellt (quelle==='bestellt')
   return true;                                // sonst: noch zu bestellen
 }
 function renderZuBestellen(){
@@ -3862,7 +3874,9 @@ function renderAbrufAnsicht(){
   const items=[];
   PROJECTS.forEach(proj=>{
     proj.positionen.forEach((p,idx)=>{
-      if(p.status==='abgerufen'||p.status==='geliefert')return; // schon abgerufen
+      // Nur bestellte Positionen, die noch auf Abruf warten. Was nicht bestellt ist,
+      // kann auch nicht abgerufen werden – darf also gar nicht im Abrufplan stehen.
+      if(!wartetAufAbruf(p))return;
       const at=abrufTermin(p,proj);
       if(!at)return; // ohne Termin kein Abruf-Plan
       items.push({projId:proj.id,projName:proj.name,p,idx,abrufBis:at,
