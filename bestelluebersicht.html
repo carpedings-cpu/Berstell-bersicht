@@ -95,6 +95,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard .pst .dot{width:7px;height:7px;border-radius:50%;}
 .pcard .pst.st-r .dot{background:#d92020;} .pcard .pst.st-a .dot{background:#c47700;}
 .pcard .pst.st-g .dot{background:#1e8a4a;} .pcard .pst.st-o .dot{background:rgba(28,28,30,.35);}
+.pcard .pst.pst-click{cursor:pointer;padding:2px 6px;margin:-2px -6px;border-radius:6px;transition:background .12s ease;}
+.pcard .pst.pst-click:hover{background:rgba(30,138,74,.12);text-decoration:underline;}
 .pcard .pdel{position:absolute;top:10px;right:10px;background:rgba(139,34,34,.85);
   color:#fff;border:none;width:24px;height:24px;border-radius:50%;font-size:12px;cursor:pointer;
   display:none;align-items:center;justify-content:center;}
@@ -864,6 +866,17 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Bestellt-Liste Modal: zeigt alle Positionen die als bestellt gezaehlt werden -->
+<div class="modal" id="bestelltListModal" onclick="if(event.target===this)closeBestelltList()">
+  <div class="modal-box flex-scroll" style="max-width:640px;max-height:88vh">
+    <button class="modal-x" onclick="closeBestelltList()" title="Schließen (Esc)">✕</button>
+    <div id="bestelltListBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeBestelltList()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
 <!-- Projekt-Status Modal -->
 <div class="modal" id="projStatusModal" onclick="if(event.target===this)closeProjStatus()">
@@ -1332,7 +1345,7 @@ function renderHome(){
         ${abrufUeberf?`<span class="pst st-r"><span class="dot"></span>${abrufUeberf} Abruf überfällig</span>`:''}
         ${red&&!abrufUeberf?`<span class="pst st-r"><span class="dot"></span>${red} überfällig</span>`:''}
         ${amb?`<span class="pst st-a"><span class="dot"></span>${amb} bald fällig</span>`:''}
-        <span class="pst st-g"><span class="dot"></span>${best}/${tot} bestellt</span>
+        <span class="pst st-g pst-click" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?"><span class="dot"></span>${best}/${tot} bestellt</span>
       </div>
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
@@ -1767,12 +1780,51 @@ function showProjStatus(id){
   document.getElementById('projStatusModal').classList.add('on');
 }
 function closeProjStatus(){document.getElementById('projStatusModal').classList.remove('on');_statusProjId=null;}
-// ESC schliesst das Fortschrittsfenster
+// Liste aller bestellten Positionen anzeigen – per Klick auf den Bestellt-Counter der Karte
+function showBestelltList(projId){
+  const proj=PROJECTS.find(p=>p.id===projId); if(!proj)return;
+  const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
+  const items=proj.positionen
+    .map((p,idx)=>({p,idx}))
+    .filter(o=>o.p.status==='bestellt'||o.p.status==='abgerufen'||o.p.status==='geliefert');
+  const statusBadge=p=>{
+    if(p.status==='geliefert')return '<span style="color:#0f6332;font-weight:700">Geliefert'+(p.geliefertDatum?' · '+fd(p.geliefertDatum):'')+'</span>';
+    if(p.status==='abgerufen')return '<span style="color:#b85a00;font-weight:700">Abgerufen</span>';
+    if(p.abBestaetigt)return '<span style="color:#b8860b;font-weight:700">Bestellt · AB ✓</span>';
+    return '<span style="color:#b8860b;font-weight:700">Bestellt · AB offen</span>';
+  };
+  const rows=items.map(o=>{
+    const p=o.p;
+    const lief=p.lieferant||p.fabrikat||'–';
+    const komm=(p.kommNrs||[]).length?'<div style="font-size:11px;color:rgba(28,28,30,.6);margin-top:2px">🏷 Komm: '+p.kommNrs.map(esc).join(', ')+'</div>':'';
+    const datum=p.bestelltAm?'<div style="font-size:11px;color:rgba(28,28,30,.6);margin-top:2px">Bestellt am: '+fd(p.bestelltAm)+'</div>':'';
+    return `<div style="padding:10px 12px;border-bottom:.5px solid rgba(0,0,0,.06);cursor:pointer" onclick="closeBestelltList();openProject('${proj.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#2d2926;font-size:13px">${esc(p.pos)} – ${esc(p.bez)}</div>
+          <div style="font-size:11.5px;color:rgba(28,28,30,.65);margin-top:2px">🏭 ${esc(lief)} · ${p.menge||''} ${esc(p.einh||'')}</div>
+          ${komm}${datum}
+        </div>
+        <div style="font-size:11px;text-align:right;flex-shrink:0">${statusBadge(p)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const body=document.getElementById('bestelltListBody');
+  body.innerHTML=`
+    <h3 style="margin-bottom:4px">📦 Bestellte Positionen</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(proj.name)} · ${items.length} von ${proj.positionen.length} Positionen</div>
+    ${items.length?rows:'<div style="padding:24px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">Keine Positionen als bestellt markiert.</div>'}
+  `;
+  document.getElementById('bestelltListModal').classList.add('on');
+}
+function closeBestelltList(){document.getElementById('bestelltListModal').classList.remove('on');}
+// ESC schliesst offene Modals (Fortschrittsfenster, Bestellt-Liste)
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){
-    const psm=document.getElementById('projStatusModal');
-    if(psm&&psm.classList.contains('on')){closeProjStatus();e.preventDefault();}
-  }
+  if(e.key!=='Escape')return;
+  const blm=document.getElementById('bestelltListModal');
+  if(blm&&blm.classList.contains('on')){closeBestelltList();e.preventDefault();return;}
+  const psm=document.getElementById('projStatusModal');
+  if(psm&&psm.classList.contains('on')){closeProjStatus();e.preventDefault();}
 });
 function projStatusToText(proj){
   const s=buildProjStatus(proj);
