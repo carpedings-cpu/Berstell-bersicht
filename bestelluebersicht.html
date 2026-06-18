@@ -413,6 +413,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .bbanner button.bb-save{background:#fff;color:#7a5800;border-color:transparent;}
 .bbanner.ab{background:linear-gradient(135deg,rgba(192,57,43,.96),rgba(217,32,32,.96));box-shadow:0 4px 12px rgba(217,32,32,.25);}
 .bbanner.ab button.bb-save{color:#9a1414;}
+#toTopBtn{position:fixed;bottom:22px;right:22px;width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(45,41,38,.35);z-index:80;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity .25s, transform .15s;font-family:inherit;}
+#toTopBtn.show{display:flex;opacity:.92;}
+#toTopBtn:hover{opacity:1;}
+#toTopBtn:active{transform:scale(.92);}
+@media print{#toTopBtn{display:none!important;}}
 
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
@@ -861,6 +866,17 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<button id="toTopBtn" onclick="scrollTopSmooth()" title="Nach oben" aria-label="Nach oben scrollen">▲</button>
+<script>
+(function(){
+  const btn=document.getElementById('toTopBtn');
+  if(!btn)return;
+  const onScroll=()=>{btn.classList.toggle('show', (window.scrollY||document.documentElement.scrollTop)>320);};
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+function scrollTopSmooth(){window.scrollTo({top:0,behavior:'smooth'});}
+</script>
 <div id="loader"><div class="loader-box"><div class="spinner"></div><span id="loaderTxt">Lädt …</span></div></div>
 <input type="file" id="fiExcel" accept=".xlsx,.xlsm,.xls,.pdf,application/pdf" style="display:none">
 <input type="file" id="fiLs" accept="application/pdf,image/*" style="display:none">
@@ -3551,10 +3567,13 @@ async function saveAddPos(){
 }
 async function delPos(idx){
   const p=CUR.positionen[idx];
-  if(!confirm(`Position ${p.pos} "${p.bez}" wirklich löschen?`))return;
   // Lieferschein- und AB-Blob mitlöschen falls vorhanden
   if(p.lieferschein&&p.lieferschein.id){try{await dbDel('lieferscheine',p.lieferschein.id);}catch(e){}}
   if(p.abDoc&&p.abDoc.id){try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}}
+  // EK/VK in der Preise-Ansicht ebenfalls entfernen (alle Lieferanten-Varianten dieser Pos)
+  const beforeP=PREISE_DATA.length;
+  PREISE_DATA=PREISE_DATA.filter(e=>!(e.proj===CUR.name && e.pos===p.pos));
+  if(PREISE_DATA.length!==beforeP)await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
   CUR.positionen.splice(idx,1);
   await saveCur();renderDetail();
   toast('Position gelöscht','ok');
