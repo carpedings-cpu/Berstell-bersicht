@@ -213,6 +213,15 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ck.on.st-ab{background:linear-gradient(135deg,#0f7b8a,#13a0b0);box-shadow:0 3px 10px rgba(19,160,176,.35);}
 .cki{font-size:12px;line-height:1;}
 .ab-ok{margin-top:6px;padding:5px 10px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(19,160,176,.10);color:#0a6b78;border:.5px solid rgba(19,160,176,.22);}
+.fbtn-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.fbtn{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:8px;border:.5px dashed rgba(107,80,64,.35);background:rgba(255,255,255,.55);color:rgba(45,41,38,.7);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.1;}
+.fbtn:hover{background:rgba(255,255,255,.85);border-color:#6b5040;color:#6b5040;}
+.fbtn.dragover{background:rgba(200,168,130,.25);border-color:#6b5040;border-style:solid;}
+.fbtn.hasFile{background:rgba(30,138,74,.10);border:.5px solid rgba(30,138,74,.35);color:#0f6332;}
+.fbtn.hasFile:hover{background:rgba(30,138,74,.16);}
+.fbtn .fbtn-ic{font-size:13px;line-height:1;}
+.fbtn .fbtn-x{margin-left:4px;padding:1px 5px;border-radius:6px;background:rgba(139,34,34,.12);color:#8b2222;font-size:9.5px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;}
+.fbtn .fbtn-x:hover{background:rgba(139,34,34,.22);}
 .ab-pend{margin-top:6px;padding:5px 10px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(120,120,128,.10);color:rgba(28,28,30,.62);border:.5px solid rgba(120,120,128,.18);}
 
 /* Inline fields */
@@ -2193,20 +2202,14 @@ function renderDetail(){
           html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
         }
       }
-      // AB-Datei-Drop-Zone immer anbieten – auch bevor die Position formal als 'bestellt' markiert ist.
-      // Datei anhaengen setzt status='bestellt' + bestelltAm + abBestaetigt automatisch.
-      if(p.abDoc){
-        html+=`<div class="lsdrop hasFile">
-          <span>📄</span>
-          <span class="lsfn">AB: ${esc(p.abDoc.name)}${p.abDoc.datum?' · '+fmtD(p.abDoc.datum):''}</span>
-          <button class="lsbtn" onclick="openAb(${idx})" title="Anzeigen">👁</button>
-          <button class="lsbtn del" onclick="delAb(${idx})" title="Entfernen">✕</button>
-        </div>`;
-      } else {
-        html+=`<div class="lsdrop" id="AB${idx}" onclick="pickAb(${idx})"
-          ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})">
-          📄 Auftragsbestätigung per Drag &amp; Drop oder Klick</div>`;
-      }
+      // Kompakte Datei-Buttons (AB + Lieferschein) in einer Zeile – Drag&Drop bleibt auf den Buttons
+      const abBtn=p.abDoc
+        ? `<button class="fbtn hasFile" onclick="openAb(${idx})" title="${escA(p.abDoc.name)} – klicken zum Anzeigen"><span class="fbtn-ic">📄</span> AB${p.abDoc.datum?' '+fmtD(p.abDoc.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delAb(${idx})" title="AB entfernen">✕</span></button>`
+        : `<button class="fbtn" id="AB${idx}" onclick="pickAb(${idx})" ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📄</span> AB anhängen</button>`;
+      const lsBtn=p.lieferschein
+        ? `<button class="fbtn hasFile" onclick="openLs(${idx})" title="${escA(p.lieferschein.name)} – klicken zum Anzeigen"><span class="fbtn-ic">📦</span> LS${p.lieferschein.datum?' '+fmtD(p.lieferschein.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delLs(${idx})" title="Lieferschein entfernen">✕</span></button>`
+        : `<button class="fbtn" id="LS${idx}" onclick="pickLs(${idx})" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📦</span> LS anhängen</button>`;
+      html+=`<div class="fbtn-row">${abBtn}${lsBtn}</div>`;
     }
 
     // Inline-Felder
@@ -2234,21 +2237,6 @@ function renderDetail(){
       html+=`</div>`;
     }
     
-    // Lieferschein-Drop-Zone (nur bei Bestellt)
-    if(p.quelle==='bestellt'){
-      if(p.lieferschein){
-        html+=`<div class="lsdrop hasFile">
-          <span>📄</span>
-          <span class="lsfn">${esc(p.lieferschein.name)}${p.lieferschein.datum?' · '+fmtD(p.lieferschein.datum):''}</span>
-          <button class="lsbtn" onclick="openLs(${idx})" title="Anzeigen">👁</button>
-          <button class="lsbtn del" onclick="delLs(${idx})" title="Entfernen">✕</button>
-        </div>`;
-      } else {
-        html+=`<div class="lsdrop" id="LS${idx}" onclick="pickLs(${idx})"
-          ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})">
-          📄 Lieferschein per Drag & Drop oder Klick</div>`;
-      }
-    }
     // Reklamations-Button + Badge
     if(p.reklamation){
       html+=`<div style="margin-top:8px;padding:9px 11px;background:rgba(139,34,34,.08);border:.5px solid rgba(139,34,34,.25);border-radius:10px;font-size:12px;color:#8b2222;font-weight:600;display:flex;align-items:flex-start;gap:8px">
@@ -2334,23 +2322,40 @@ async function setF(idx,field,val){
   const p=CUR.positionen[idx];
   if(field==='quelle'){
     p.quelle=p.quelle===val?'':val;
-    // Auto-Vorschlag: bei Bestellt das Fabrikat als Lieferant übernehmen wenn leer
-    if(p.quelle==='bestellt' && !p.lieferant && p.fabrikat) p.lieferant=p.fabrikat;
+    if(p.quelle==='bestellt'){
+      // Auto-Vorschlag: Fabrikat → Lieferant wenn leer
+      if(!p.lieferant && p.fabrikat) p.lieferant=p.fabrikat;
+      // 'Bestellt' anklicken = Position ist bestellt: Status setzen + bestelltAm festhalten,
+      // damit sie aus 'Zu bestellen' verschwindet und die AB-Frist laeuft.
+      if((p.status==='offen'||!p.status) && !istNichtBestellbar(p)){
+        p.status='bestellt';
+        if(!p.bestelltAm)p.bestelltAm=today();
+      }
+    }
   }
   else if(field==='lieferort')p.lieferort=p.lieferort===val?'':val;
   else if(field==='status'){
     if(p.status===val){
       // Status abwaehlen: NICHT zurueck auf 'offen', wenn die Position schon bestellt war.
-      // Sonst wuerde sie wieder als "Zu bestellen" auftauchen, obwohl sie laengst bestellt ist.
       p.status=p.bestelltAm?'bestellt':'offen';
     } else {
       p.status=val;
       if(val==='geliefert'&&!p.geliefertDatum)p.geliefertDatum=today();
     }
-    // Bestelldatum festhalten, sobald bestellt – Basis für die 7-Tage-AB-Frist
     if(p.status==='bestellt'&&!p.bestelltAm)p.bestelltAm=today();
   }
-  await saveCur();renderDetail();
+  await saveCur();renderDetail();updateGlobalCounters();updateABBanner();
+}
+// Globale Counter (Home-Buttons + Banner) refreshen, ohne den ganzen Home zu rendern
+function updateGlobalCounters(){
+  const zb=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(istZuBestellen).length,0);
+  const zbEl=document.getElementById('zubestCnt'); if(zbEl)zbEl.textContent=zb;
+  const ab=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(p=>{
+    if(p.status==='abgerufen'||p.status==='geliefert')return false;
+    const at=abrufTermin(p,proj); if(!at)return false;
+    return daysBtw(today(),at)<=1;
+  }).length,0);
+  const abEl=document.getElementById('abrufCnt'); if(abEl)abEl.textContent=ab;
 }
 // Auftragsbestätigung einer Position umschalten
 async function toggleAB(idx){
