@@ -7,6 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#6b5040">
 <meta name="apple-mobile-web-app-title" content="KPC Bestellung">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='36' fill='%236b5040'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dominant-baseline='central' font-size='110' font-family='Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji'%3E📋%3C/text%3E%3C/svg%3E">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='36' fill='%236b5040'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dominant-baseline='central' font-size='110' font-family='Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji'%3E📋%3C/text%3E%3C/svg%3E">
 <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22KPC%20Bestelluebersicht%22%2C%22short_name%22%3A%22KPC%20Bestellung%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f5f0e8%22%2C%22theme_color%22%3A%22%236b5040%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%253D%2527http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2527%2520viewBox%253D%25270%25200%2520180%2520180%2527%253E%253Crect%2520width%253D%2527180%2527%2520height%253D%2527180%2527%2520rx%253D%252736%2527%2520fill%253D%2527%25236b5040%2527%252F%253E%253Ctext%2520x%253D%252750%2525%2527%2520y%253D%252750%2525%2527%2520text-anchor%253D%2527middle%2527%2520dominant-baseline%253D%2527central%2527%2520font-size%253D%2527110%2527%2520font-family%253D%2527Apple%2520Color%2520Emoji%252CSegoe%2520UI%2520Emoji%252CNoto%2520Color%2520Emoji%2527%253E%25F0%259F%2593%258B%253C%252Ftext%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22180x180%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%2C%22purpose%22%3A%22any%22%7D%5D%7D">
@@ -413,6 +414,10 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .bbanner button.bb-save{background:#fff;color:#7a5800;border-color:transparent;}
 .bbanner.ab{background:linear-gradient(135deg,rgba(192,57,43,.96),rgba(217,32,32,.96));box-shadow:0 4px 12px rgba(217,32,32,.25);}
 .bbanner.ab button.bb-save{color:#9a1414;}
+.sb-st{font-size:10.5px;font-weight:700;letter-spacing:.2px;padding:3px 9px;border-radius:9px;margin-left:6px;cursor:default;font-family:inherit;background:rgba(120,120,128,.12);color:rgba(28,28,30,.55);}
+.sb-st.sb-ok{background:rgba(30,138,74,.13);color:#0f6332;}
+.sb-st.sb-sync{background:rgba(196,119,0,.13);color:#7d4d00;}
+.sb-st.sb-err{background:rgba(217,32,32,.13);color:#a01515;}
 #toTopBtn{position:fixed;bottom:22px;right:22px;width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(45,41,38,.35);z-index:80;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity .25s, transform .15s;font-family:inherit;}
 #toTopBtn.show{display:flex;opacity:.92;}
 #toTopBtn:hover{opacity:1;}
@@ -462,6 +467,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button class="hbtn" id="navPreise" onclick="goPreise()">💰 Preise</button>
       <button class="hbtn" id="navSearch" onclick="goSearch()">🔍 Suche</button>
       <button class="hbtn" id="navSettings" onclick="goSettings()">⚙</button>
+      <span id="sbStatus" class="sb-st sb-off" title="Cloud-Status">◌ lokal</span>
     </div>
   </div>
 </header>
@@ -907,9 +913,157 @@ function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,3);
   r.onerror=ev=>rej(ev.target.error);
 });}
 function dbGet(s,k){return new Promise((r,j)=>{const t=db.transaction(s,'readonly');const q=t.objectStore(s).get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error);});}
-function dbPut(s,v){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).put(v);q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error);});}
+function dbPutLocal(s,v){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).put(v);q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error);});}
 function dbAll(s){return new Promise((r,j)=>{const t=db.transaction(s,'readonly');const q=t.objectStore(s).getAll();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>j(q.error);});}
-function dbDel(s,k){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).delete(k);q.onsuccess=()=>r();q.onerror=()=>j(q.error);});}
+function dbDelLocal(s,k){return new Promise((r,j)=>{const t=db.transaction(s,'readwrite');const q=t.objectStore(s).delete(k);q.onsuccess=()=>r();q.onerror=()=>j(q.error);});}
+
+// ── CLOUD-SYNC (Supabase) ───────────────────────────────────────────────
+// Daten geteilt ueber Supabase: jeder mit dem Link sieht alles, kann alles aendern.
+// Lokale IndexedDB bleibt als Cache fuer Offline-Modus erhalten.
+const SB_URL='https://prpxpfgauziuszkiirlq.supabase.co';
+const SB_KEY='sb_publishable_P4jEe_-3kgn_TAYg_LhS3w_W4PJfuQN';
+let sb=null;                          // Supabase-Client (null = offline-only)
+let sbEchoIds=new Set();              // IDs eigener Pushes, um Echo-Re-Render zu unterdruecken
+let sbReady=false;                    // true sobald initialer Pull abgeschlossen
+function sbInit(){
+  if(typeof window.supabase==='undefined')return null; // Library nicht geladen → offline-only
+  try{sb=window.supabase.createClient(SB_URL,SB_KEY,{realtime:{params:{eventsPerSecond:5}}});return sb;}
+  catch(e){console.warn('Supabase init fehlgeschlagen:',e);return null;}
+}
+function sbStatus(state,txt){
+  const el=document.getElementById('sbStatus'); if(!el)return;
+  el.className='sb-st sb-'+state;
+  el.textContent={ok:'☁ Cloud',sync:'⟳ Sync',err:'⚠ offline',off:'◌ lokal'}[state]||state;
+  if(txt)el.title=txt;
+}
+// Projekt-Push: in Cloud upserten
+async function sbPushProject(proj){
+  if(!sb)return;
+  try{
+    sbEchoIds.add('proj:'+proj.id);
+    const {error}=await sb.from('kpc_projects').upsert({
+      id:proj.id, name:proj.name, liefertermin:proj.liefertermin||null,
+      positionen:proj.positionen||[], collapsed_bereiche:proj.collapsedBereiche||[],
+      demo:!!proj.demo, created:proj.created||new Date().toISOString()
+    });
+    if(error)throw error;
+    sbStatus('ok');
+  }catch(e){console.warn('Cloud-Push Projekt:',e);sbStatus('err',e.message||'');}
+  finally{setTimeout(()=>sbEchoIds.delete('proj:'+proj.id),3000);}
+}
+async function sbDelProject(id){
+  if(!sb)return;
+  try{sbEchoIds.add('proj-del:'+id);
+    const {error}=await sb.from('kpc_projects').delete().eq('id',id);
+    if(error)throw error; sbStatus('ok');
+  }catch(e){console.warn('Cloud-Del Projekt:',e);sbStatus('err',e.message||'');}
+  finally{setTimeout(()=>sbEchoIds.delete('proj-del:'+id),3000);}
+}
+// Settings-Push (key→value)
+async function sbPushSetting(rec){
+  if(!sb)return;
+  try{sbEchoIds.add('set:'+rec.k);
+    const {k,...rest}=rec; const v={...rest}; delete v.k;
+    const {error}=await sb.from('kpc_settings').upsert({k,v});
+    if(error)throw error; sbStatus('ok');
+  }catch(e){console.warn('Cloud-Push Settings:',e);sbStatus('err',e.message||'');}
+  finally{setTimeout(()=>sbEchoIds.delete('set:'+rec.k),3000);}
+}
+// dbPut/dbDel als Wrapper – lokal speichern + Cloud-Sync
+async function dbPut(s,v){
+  const r=await dbPutLocal(s,v);
+  if(s==='projects')sbPushProject(v);
+  else if(s==='settings')sbPushSetting(v);
+  return r;
+}
+async function dbDel(s,k){
+  const r=await dbDelLocal(s,k);
+  if(s==='projects')sbDelProject(k);
+  else if(s==='settings' && sb){try{await sb.from('kpc_settings').delete().eq('k',k);}catch(e){console.warn(e);}}
+  return r;
+}
+// Initial-Pull: alle Projekte + Settings aus der Cloud holen, lokal cachen
+async function sbPullAll(){
+  if(!sb)return false;
+  sbStatus('sync','Lade aus der Cloud …');
+  try{
+    const [pr,se]=await Promise.all([
+      sb.from('kpc_projects').select('*'),
+      sb.from('kpc_settings').select('*')
+    ]);
+    if(pr.error||se.error)throw pr.error||se.error;
+    const cloudProjects=(pr.data||[]).map(row=>({
+      id:row.id, name:row.name, liefertermin:row.liefertermin||'',
+      positionen:row.positionen||[], collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
+      demo:!!row.demo, created:row.created||new Date().toISOString()
+    }));
+    if(cloudProjects.length===0 && PROJECTS.length>0){
+      // Cloud leer, lokal hat was → Initial-Upload
+      sbStatus('sync','Lade lokale Daten hoch …');
+      for(const p of PROJECTS) await sbPushProject(p);
+      // Settings auch
+      const settRows=await dbAll('settings');
+      for(const r of settRows) await sbPushSetting(r);
+      sbStatus('ok');
+      return true;
+    }
+    // Cloud ist Wahrheit: lokal mit Cloud-Stand ersetzen
+    const tx=db.transaction(['projects','settings'],'readwrite');
+    const ps=tx.objectStore('projects');
+    await new Promise(res=>{const r=ps.clear();r.onsuccess=res;r.onerror=res;});
+    for(const p of cloudProjects){await new Promise(res=>{const r=ps.put(p);r.onsuccess=res;r.onerror=res;});}
+    const ss=tx.objectStore('settings');
+    await new Promise(res=>{const r=ss.clear();r.onsuccess=res;r.onerror=res;});
+    for(const row of (se.data||[])){
+      const rec={k:row.k,...(row.v||{})};
+      await new Promise(res=>{const r=ss.put(rec);r.onsuccess=res;r.onerror=res;});
+    }
+    PROJECTS=cloudProjects;
+    sbStatus('ok');
+    return true;
+  }catch(e){console.warn('Cloud-Pull fehlgeschlagen:',e);sbStatus('err',e.message||'');return false;}
+}
+// Realtime-Subscriptions: andere Geraete senden Updates → lokale Sicht synchron halten
+function sbSubscribe(){
+  if(!sb)return;
+  sb.channel('kpc-bestell')
+    .on('postgres_changes',{event:'*',schema:'public',table:'kpc_projects'},async payload=>{
+      if(!sbReady)return;
+      const id=(payload.new&&payload.new.id)||(payload.old&&payload.old.id);
+      if(sbEchoIds.has('proj:'+id)||sbEchoIds.has('proj-del:'+id))return; // eigenes Echo ignorieren
+      if(payload.eventType==='DELETE'){
+        await dbDelLocal('projects',id); PROJECTS=PROJECTS.filter(p=>p.id!==id);
+      }else{
+        const row=payload.new;
+        const p={id:row.id,name:row.name,liefertermin:row.liefertermin||'',positionen:row.positionen||[],
+          collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
+          demo:!!row.demo,created:row.created||new Date().toISOString()};
+        await dbPutLocal('projects',p);
+        const i=PROJECTS.findIndex(x=>x.id===p.id); if(i>=0)PROJECTS[i]=p; else PROJECTS.push(p);
+        if(CUR&&CUR.id===p.id){
+          // Bei aktiv editierten Karten kein Re-Render, sonst springt das Tipp-Feld weg
+          if(!isEditingInput()){CUR=p;renderDetail();}
+        }
+      }
+      if(!isEditingInput())renderHome();
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'kpc_settings'},async payload=>{
+      if(!sbReady)return;
+      const k=(payload.new&&payload.new.k)||(payload.old&&payload.old.k);
+      if(sbEchoIds.has('set:'+k))return;
+      if(payload.eventType==='DELETE'){await dbDelLocal('settings',k);}
+      else{const rec={k:payload.new.k,...(payload.new.v||{})};await dbPutLocal('settings',rec);
+        if(k==='main')Object.assign(SETTINGS,payload.new.v||{});
+        else if(k==='preiseData'&&payload.new.v&&Array.isArray(payload.new.v.v))PREISE_DATA=payload.new.v.v;
+      }
+    })
+    .subscribe();
+}
+function isEditingInput(){
+  const el=document.activeElement;
+  if(!el)return false;
+  return ['INPUT','TEXTAREA','SELECT'].includes(el.tagName);
+}
 
 // ── STATE ───────────────────────────────────────────────────────────────
 let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,abFrist:7,lastBackup:'',changesSinceBackup:0}, PREISE_DATA=[];
@@ -1035,8 +1189,19 @@ async function init(){
       if(!('abAm' in p)){p.abAm='';migrated=true;}
       if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
     }));
-    if(migrated)for(const proj of PROJECTS)await dbPut('projects',proj);
-    // Seed Demo-Projekt wenn leer
+    if(migrated)for(const proj of PROJECTS)await dbPutLocal('projects',proj);
+    // Cloud-Sync: vor dem Seed eines Demo-Projekts erst Cloud abfragen, sonst spammt jeder neue Client ein Demo in die Cloud
+    sbInit();
+    if(sb){
+      sbStatus('sync','Verbinde …');
+      try{await sbPullAll();}catch(e){console.warn('Pull err',e);}
+      // Settings neu aus lokaler (jetzt synchronisierter) DB lesen
+      const s2=await dbGet('settings','main').catch(()=>null); if(s2)Object.assign(SETTINGS,s2);
+      try{const pd2=await dbGet('settings','preiseData');if(pd2&&pd2.v)PREISE_DATA=pd2.v;}catch(e){}
+      sbSubscribe();
+      sbReady=true;
+    } else sbStatus('off','Cloud nicht verfuegbar – nur lokal');
+    // Seed Demo nur wenn auch nach Cloud-Pull immer noch leer
     if(PROJECTS.length===0){
       const demo=makeProjFromData('KiTa Hollerborn Wiesbaden',DEMO_DATA);
       demo.demo=true;
