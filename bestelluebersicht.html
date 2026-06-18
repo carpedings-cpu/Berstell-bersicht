@@ -1308,10 +1308,12 @@ function renderHome(){
     const tot=proj.positionen.length;
     const gel=proj.positionen.filter(p=>p.status==='geliefert').length;
     // 'Bestellt'-Zaehlung: Status bestellt/abgerufen/geliefert ODER (Migrations-Heuristik fuer Altdaten)
-    // quelle='bestellt' UND ein Bestell-Signal (Lieferant, AB-Doc, Komm-Nr oder bestelltAm)
+    // Bestell-Signale = explizite Aktionen (AB-Doc, Komm-Nr, bestelltAm). Lieferant alleine reicht
+    // NICHT, weil er beim Import automatisch aus dem Fabrikat befuellt wird, ohne dass tatsaechlich
+    // bestellt wurde.
     const best=proj.positionen.filter(p=>{
       if(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')return true;
-      if(p.quelle==='bestellt'&&(p.lieferant||p.abDoc||(p.kommNrs&&p.kommNrs.length>0)||p.bestelltAm))return true;
+      if(p.quelle==='bestellt'&&(p.abDoc||(p.kommNrs&&p.kommNrs.length>0)||p.bestelltAm))return true;
       return false;
     }).length;
     const red=proj.positionen.filter(p=>severity(p,proj)==='red').length;
