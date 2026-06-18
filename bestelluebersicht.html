@@ -98,6 +98,24 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   color:#fff;border:none;width:24px;height:24px;border-radius:50%;font-size:12px;cursor:pointer;
   display:none;align-items:center;justify-content:center;}
 .pcard:hover .pdel{display:flex;}
+.pcard .pstat{position:absolute;top:10px;right:42px;background:rgba(26,95,122,.85);
+  color:#fff;border:none;width:24px;height:24px;border-radius:50%;font-size:12px;cursor:pointer;
+  display:none;align-items:center;justify-content:center;}
+.pcard:hover .pstat{display:flex;}
+.psm-bar{height:8px;background:rgba(0,0,0,.06);border-radius:5px;overflow:hidden;margin:6px 0 4px;}
+.psm-fill{height:100%;background:linear-gradient(90deg,#1e8a4a,#34c759);border-radius:5px;transition:width .3s;}
+.psm-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:.5px solid rgba(0,0,0,.05);font-size:13px;}
+.psm-row:last-child{border-bottom:none;}
+.psm-row .lbl{color:rgba(28,28,30,.7);font-weight:500;display:flex;align-items:center;gap:8px;}
+.psm-row .val{font-weight:700;color:#1c1c1e;font-variant-numeric:tabular-nums;}
+.psm-row .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.psm-lief{padding:8px 10px;background:rgba(45,41,38,.04);border-radius:9px;margin-bottom:6px;font-size:12px;}
+.psm-lief .lh{display:flex;justify-content:space-between;font-weight:700;color:#3c342e;margin-bottom:3px;}
+.psm-lief .ld{color:rgba(28,28,30,.65);font-size:11.5px;line-height:1.5;}
+.psm-section{margin-top:14px;}
+.psm-section h4{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:rgba(28,28,30,.5);margin-bottom:8px;}
+.psm-warn{padding:8px 11px;background:rgba(217,32,32,.08);border:.5px solid rgba(217,32,32,.2);border-radius:9px;color:#a01515;font-size:12px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:7px;}
+.psm-ok{padding:8px 11px;background:rgba(30,138,74,.08);border:.5px solid rgba(30,138,74,.2);border-radius:9px;color:#0f6332;font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px;}
 .padd{background:rgba(255,255,255,.4);border:2px dashed rgba(107,80,64,.3);border-radius:16px;
   padding:30px 16px;cursor:pointer;text-align:center;color:#6b5040;font-size:14px;font-weight:600;
   display:flex;flex-direction:column;align-items:center;gap:8px;min-height:100px;justify-content:center;}
@@ -817,6 +835,18 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 </div>
 
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
+<!-- Projekt-Status Modal -->
+<div class="modal" id="projStatusModal">
+  <div class="modal-box" style="max-width:560px;max-height:88vh;overflow-y:auto">
+    <div id="psmBody"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeProjStatus()">Schließen</button>
+      <button class="mok" onclick="copyProjStatus()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Als Text kopieren</button>
+      <button class="mok" onclick="sendProjStatusWebhook()" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0)">📧 Per Power Automate</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="parseDebugModal">
   <div class="modal-box" style="max-width:680px">
     <h3>🔍 Datei-Import: Diagnose (Excel / PDF)</h3>
@@ -1095,6 +1125,7 @@ function renderHome(){
         ${amb?`<span class="pst st-a"><span class="dot"></span>${amb} bald fällig</span>`:''}
         <span class="pst st-g"><span class="dot"></span>${gel}/${tot} geliefert</span>
       </div>
+      <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
     g.appendChild(d);
   });
@@ -1426,6 +1457,160 @@ async function delProject(id){
   if(proj){const before=PREISE_DATA.length;PREISE_DATA=PREISE_DATA.filter(e=>e.proj!==proj.name);
     if(PREISE_DATA.length!==before)await dbPut('settings',{k:'preiseData',v:PREISE_DATA});}
   renderHome();toast('Gelöscht','ok');
+}
+
+// ── PROJEKT-STATUS: Schnelluebersicht je Projekt ────────────────────────
+let _statusProjId=null;
+// Kennzahlen + Auflistung berechnen – wiederverwendbar fuer Modal, Text-Export und Webhook
+function buildProjStatus(proj){
+  const ps=proj.positionen||[];
+  const total=ps.length;
+  const aktiv=ps.filter(p=>!istNichtBestellbar(p));      // alles, was Bestell-/Liefer-Relevanz hat
+  const aktivN=aktiv.length||1;
+  const zubest=ps.filter(istZuBestellen).length;
+  const bestellt=ps.filter(p=>p.quelle==='bestellt'&&(p.status==='bestellt'||p.status==='abgerufen')).length;
+  const aboffen=ps.filter(p=>p.quelle==='bestellt'&&p.status==='bestellt'&&!p.abBestaetigt&&!istNichtBestellbar(p)).length;
+  const inLieferung=ps.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
+  const geliefert=ps.filter(p=>p.status==='geliefert').length;
+  const lager=ps.filter(p=>p.quelle==='lager').length;
+  const nichtBest=ps.filter(istNichtBestellbar).length;
+  const reklam=ps.filter(p=>p.reklamation).length;
+  const progress=aktiv.length?Math.round(100*geliefert/aktiv.length):0;
+  // Termin-Status
+  const lt=proj.liefertermin;
+  let lieferInfo='';
+  if(lt){
+    const d=daysBtw(today(),lt);
+    if(d<0)lieferInfo=`Liefertermin überfällig seit ${-d} Tag${d===-1?'':'en'}`;
+    else if(d===0)lieferInfo='Liefertermin: heute';
+    else lieferInfo=`Liefertermin in ${d} Tag${d===1?'':'en'}`;
+  } else lieferInfo='Liefertermin nicht gesetzt';
+  // Naechste Abrufe (7 Tage Fenster)
+  const abrufe7=ps.map(p=>({p,at:abrufTermin(p,proj)}))
+    .filter(o=>o.at&&!['abgerufen','geliefert'].includes(o.p.status))
+    .map(o=>({...o,d:daysBtw(today(),o.at)}))
+    .filter(o=>o.d<=7).sort((a,b)=>a.d-b.d);
+  // AB-Faelligkeiten
+  const frist=SETTINGS.abFrist||7;
+  const abUeberf=ps.filter(p=>p.quelle==='bestellt'&&!p.abBestaetigt&&p.status==='bestellt'&&p.bestelltAm&&daysBtw(p.bestelltAm,today())>=frist);
+  // Pro Lieferant
+  const liefMap={};
+  ps.forEach(p=>{
+    if(istNichtBestellbar(p))return;
+    const raw=p.lieferant||p.fabrikat||'(ohne Zuordnung)';
+    const key=normLief(raw)||'(ohne)';
+    if(!liefMap[key])liefMap[key]={key,variants:{},offen:0,bestellt:0,geliefert:0,abFehlt:0};
+    liefMap[key].variants[raw]=(liefMap[key].variants[raw]||0)+1;
+    if(istZuBestellen(p))liefMap[key].offen++;
+    if(p.quelle==='bestellt'&&(p.status==='bestellt'||p.status==='abgerufen'))liefMap[key].bestellt++;
+    if(p.status==='geliefert')liefMap[key].geliefert++;
+    if(p.quelle==='bestellt'&&!p.abBestaetigt&&p.status==='bestellt'&&p.bestelltAm&&daysBtw(p.bestelltAm,today())>=frist)liefMap[key].abFehlt++;
+  });
+  Object.values(liefMap).forEach(g=>{g.lief=Object.entries(g.variants).sort((a,b)=>b[1]-a[1])[0][0];});
+  const liefList=Object.values(liefMap).filter(g=>g.offen+g.bestellt+g.geliefert+g.abFehlt>0)
+    .sort((a,b)=>(b.abFehlt-a.abFehlt)||(b.offen-a.offen)||a.lief.localeCompare(b.lief));
+  return {proj,total,aktiv:aktiv.length,zubest,bestellt,aboffen,inLieferung,geliefert,lager,nichtBest,reklam,progress,lt,lieferInfo,abrufe7,abUeberf,liefList,frist};
+}
+function showProjStatus(id){
+  const proj=PROJECTS.find(p=>p.id===id); if(!proj)return;
+  _statusProjId=id;
+  const s=buildProjStatus(proj);
+  const wrap=document.getElementById('psmBody');
+  // Termin-Badge (rot wenn ueberfaellig, amber wenn <=warnDays, sonst grau)
+  let termCls='psm-ok';
+  if(s.lt){const d=daysBtw(today(),s.lt); if(d<0)termCls='psm-warn'; else if(d<=(SETTINGS.warnDays||14))termCls='psm-warn';}
+  if(!s.lt)termCls='psm-ok';
+  const rowsStatus=[
+    {n:s.zubest,lbl:'Zu bestellen',cls:'st-r',show:s.zubest>0},
+    {n:s.aboffen,lbl:'AB offen',cls:'st-r',show:s.aboffen>0},
+    {n:s.inLieferung,lbl:'In Lieferung',cls:'st-a',show:s.inLieferung>0},
+    {n:s.geliefert,lbl:'Geliefert',cls:'st-g',show:true},
+    {n:s.lager,lbl:'Lager',cls:'st-o',show:s.lager>0},
+    {n:s.nichtBest,lbl:'Nicht bestellbar (bauseits/Dienstleistung/entfällt)',cls:'st-o',show:s.nichtBest>0},
+    {n:s.reklam,lbl:'Reklamation',cls:'st-r',show:s.reklam>0}
+  ];
+  wrap.innerHTML=`
+    <h3 style="margin-bottom:4px">📊 ${esc(proj.name)}</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(s.lieferInfo)}${s.lt?' · '+fmtD(s.lt):''}</div>
+    <div style="font-size:12px;font-weight:600;color:rgba(28,28,30,.7);display:flex;justify-content:space-between"><span>Fortschritt</span><span>${s.geliefert} / ${s.aktiv} geliefert · ${s.progress}%</span></div>
+    <div class="psm-bar"><div class="psm-fill" style="width:${s.progress}%"></div></div>
+    ${s.abUeberf.length?`<div class="psm-warn">⚠ ${s.abUeberf.length} Auftragsbestätigung${s.abUeberf.length===1?'':'en'} überfällig (&gt; ${s.frist} Tage)</div>`:''}
+    ${s.zubest===0&&s.aboffen===0&&s.abUeberf.length===0?'<div class="psm-ok">✓ Nichts überfällig oder offen kritisch</div>':''}
+    <div class="psm-section"><h4>Status-Verteilung</h4>
+      ${rowsStatus.filter(r=>r.show).map(r=>`<div class="psm-row"><span class="lbl"><span class="dot" style="background:${({'st-r':'#d92020','st-a':'#c47700','st-g':'#1e8a4a','st-o':'rgba(28,28,30,.35)'})[r.cls]}"></span>${esc(r.lbl)}</span><span class="val">${r.n}</span></div>`).join('')}
+    </div>
+    ${s.abrufe7.length?`<div class="psm-section"><h4>Abrufe in den nächsten 7 Tagen</h4>
+      ${s.abrufe7.map(o=>{const d=o.d;const txt=d<0?`überfällig seit ${-d} T`:d===0?'heute':d===1?'morgen':'in '+d+' T';
+        return `<div class="psm-row"><span class="lbl">📅 ${esc(o.p.pos)} – ${esc(o.p.bez)}</span><span class="val" style="color:${d<=1?'#a01515':'#7d4d00'}">${txt}</span></div>`;
+      }).join('')}
+    </div>`:''}
+    ${s.liefList.length?`<div class="psm-section"><h4>Pro Lieferant</h4>
+      ${s.liefList.map(g=>{
+        const parts=[];
+        if(g.offen)parts.push(`<span style="color:#a01515">${g.offen} offen</span>`);
+        if(g.bestellt)parts.push(`${g.bestellt} bestellt`);
+        if(g.geliefert)parts.push(`<span style="color:#0f6332">${g.geliefert} geliefert</span>`);
+        if(g.abFehlt)parts.push(`<span style="color:#a01515;font-weight:700">⚠ ${g.abFehlt} AB überfällig</span>`);
+        return `<div class="psm-lief"><div class="lh"><span>🏭 ${esc(g.lief)}</span></div><div class="ld">${parts.join(' · ')}</div></div>`;
+      }).join('')}
+    </div>`:''}
+  `;
+  document.getElementById('projStatusModal').classList.add('on');
+}
+function closeProjStatus(){document.getElementById('projStatusModal').classList.remove('on');_statusProjId=null;}
+function projStatusToText(proj){
+  const s=buildProjStatus(proj);
+  const L=[];
+  L.push(`📊 STATUS · ${proj.name}`);
+  L.push(s.lieferInfo+(s.lt?' ('+fmtD(s.lt)+')':''));
+  L.push('');
+  L.push(`Fortschritt: ${s.geliefert}/${s.aktiv} geliefert · ${s.progress}%`);
+  if(s.abUeberf.length)L.push(`⚠ ${s.abUeberf.length} AB überfällig (>${s.frist} Tage)`);
+  L.push('');
+  L.push('Status:');
+  if(s.zubest)L.push(`  • ${s.zubest} zu bestellen`);
+  if(s.aboffen)L.push(`  • ${s.aboffen} AB offen`);
+  if(s.inLieferung)L.push(`  • ${s.inLieferung} in Lieferung`);
+  L.push(`  • ${s.geliefert} geliefert`);
+  if(s.lager)L.push(`  • ${s.lager} Lager`);
+  if(s.nichtBest)L.push(`  • ${s.nichtBest} nicht bestellbar`);
+  if(s.reklam)L.push(`  • ${s.reklam} Reklamation`);
+  if(s.abrufe7.length){
+    L.push('');L.push('Abrufe nächste 7 Tage:');
+    s.abrufe7.forEach(o=>{const d=o.d;const txt=d<0?`überfällig (${-d}T)`:d===0?'heute':d===1?'morgen':'in '+d+'T';
+      L.push(`  • Pos ${o.p.pos} ${o.p.bez} – ${txt}`);});
+  }
+  if(s.liefList.length){
+    L.push('');L.push('Pro Lieferant:');
+    s.liefList.forEach(g=>{
+      const parts=[];if(g.offen)parts.push(g.offen+' offen');if(g.bestellt)parts.push(g.bestellt+' bestellt');if(g.geliefert)parts.push(g.geliefert+' geliefert');if(g.abFehlt)parts.push('⚠ '+g.abFehlt+' AB überfällig');
+      L.push(`  • ${g.lief}: ${parts.join(' · ')}`);
+    });
+  }
+  L.push('');L.push('Stand: '+new Date().toLocaleString('de-DE'));
+  return L.join('\n');
+}
+async function copyProjStatus(){
+  const proj=PROJECTS.find(p=>p.id===_statusProjId); if(!proj)return;
+  const text=projStatusToText(proj);
+  try{await navigator.clipboard.writeText(text);toast('Status kopiert','ok');}
+  catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);toast('Kopiert','ok');}
+}
+async function sendProjStatusWebhook(){
+  const proj=PROJECTS.find(p=>p.id===_statusProjId); if(!proj)return;
+  if(!SETTINGS.webhook){goSettings();toast('Bitte zuerst Power-Automate-URL in Einstellungen','err',4000);return;}
+  const s=buildProjStatus(proj);
+  const text=projStatusToText(proj);
+  await fireWebhook('proj_status',{
+    betreff:'KPC-Status: '+proj.name,
+    projekt:proj.name, liefertermin:proj.liefertermin||'',
+    progress:s.progress, geliefert:s.geliefert, aktiv:s.aktiv,
+    zuBestellen:s.zubest, abOffen:s.aboffen, inLieferung:s.inLieferung,
+    abUeberfaellig:s.abUeberf.length, reklamation:s.reklam,
+    lieferanten:s.liefList.map(g=>({lief:g.lief,offen:g.offen,bestellt:g.bestellt,geliefert:g.geliefert,abFehlt:g.abFehlt})),
+    abrufeNaechste7Tage:s.abrufe7.map(o=>({pos:o.p.pos,bez:o.p.bez,tageBis:o.d,lieferant:o.p.lieferant||o.p.fabrikat||''})),
+    textreport:text
+  });
 }
 
 // ── PROJEKT-DETAIL ──────────────────────────────────────────────────────
