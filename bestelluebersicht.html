@@ -214,7 +214,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .cki{font-size:12px;line-height:1;}
 .ab-ok{margin-top:6px;padding:5px 10px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(19,160,176,.10);color:#0a6b78;border:.5px solid rgba(19,160,176,.22);}
 .fbtn-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
-.fbtn{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:8px;border:.5px dashed rgba(107,80,64,.35);background:rgba(255,255,255,.55);color:rgba(45,41,38,.7);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.1;}
+.fbtn{flex:1;min-width:120px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 10px;border-radius:8px;border:.5px dashed rgba(107,80,64,.35);background:rgba(255,255,255,.55);color:rgba(45,41,38,.7);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.1;transition:all .15s ease;}
 .fbtn:hover{background:rgba(255,255,255,.85);border-color:#6b5040;color:#6b5040;}
 .fbtn.dragover{background:rgba(200,168,130,.25);border-color:#6b5040;border-style:solid;}
 .fbtn.hasFile{background:rgba(30,138,74,.10);border:.5px solid rgba(30,138,74,.35);color:#0f6332;}
@@ -1296,6 +1296,7 @@ function renderHome(){
   PROJECTS.forEach(proj=>{
     const tot=proj.positionen.length;
     const gel=proj.positionen.filter(p=>p.status==='geliefert').length;
+    const best=proj.positionen.filter(p=>p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert').length;
     const red=proj.positionen.filter(p=>severity(p,proj)==='red').length;
     const amb=proj.positionen.filter(p=>severity(p,proj)==='amber').length;
     // Abruf überfällig zählen
@@ -1313,7 +1314,7 @@ function renderHome(){
         ${abrufUeberf?`<span class="pst st-r"><span class="dot"></span>${abrufUeberf} Abruf überfällig</span>`:''}
         ${red&&!abrufUeberf?`<span class="pst st-r"><span class="dot"></span>${red} überfällig</span>`:''}
         ${amb?`<span class="pst st-a"><span class="dot"></span>${amb} bald fällig</span>`:''}
-        <span class="pst st-g"><span class="dot"></span>${gel}/${tot} geliefert</span>
+        <span class="pst st-g"><span class="dot"></span>${best}/${tot} bestellt</span>
       </div>
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
@@ -2202,13 +2203,15 @@ function renderDetail(){
           html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
         }
       }
-      // Kompakte Datei-Buttons (AB + Lieferschein) in einer Zeile – Drag&Drop bleibt auf den Buttons
+      // Kompakte Datei-Buttons (AB + Lieferschein) in einer Zeile – Drag&Drop auf jedem Button (auch wenn schon Datei dran)
+      const abDrag=`id="AB${idx}" ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})"`;
+      const lsDrag=`id="LS${idx}" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})"`;
       const abBtn=p.abDoc
-        ? `<button class="fbtn hasFile" onclick="openAb(${idx})" title="${escA(p.abDoc.name)} – klicken zum Anzeigen"><span class="fbtn-ic">📄</span> AB${p.abDoc.datum?' '+fmtD(p.abDoc.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delAb(${idx})" title="AB entfernen">✕</span></button>`
-        : `<button class="fbtn" id="AB${idx}" onclick="pickAb(${idx})" ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📄</span> AB anhängen</button>`;
+        ? `<button class="fbtn hasFile" ${abDrag} onclick="openAb(${idx})" title="${escA(p.abDoc.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📄</span> AB${p.abDoc.datum?' '+fmtD(p.abDoc.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delAb(${idx})" title="AB entfernen">✕</span></button>`
+        : `<button class="fbtn" ${abDrag} onclick="pickAb(${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📄</span> AB anhängen</button>`;
       const lsBtn=p.lieferschein
-        ? `<button class="fbtn hasFile" onclick="openLs(${idx})" title="${escA(p.lieferschein.name)} – klicken zum Anzeigen"><span class="fbtn-ic">📦</span> LS${p.lieferschein.datum?' '+fmtD(p.lieferschein.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delLs(${idx})" title="Lieferschein entfernen">✕</span></button>`
-        : `<button class="fbtn" id="LS${idx}" onclick="pickLs(${idx})" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📦</span> LS anhängen</button>`;
+        ? `<button class="fbtn hasFile" ${lsDrag} onclick="openLs(${idx})" title="${escA(p.lieferschein.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📦</span> LS${p.lieferschein.datum?' '+fmtD(p.lieferschein.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delLs(${idx})" title="Lieferschein entfernen">✕</span></button>`
+        : `<button class="fbtn" ${lsDrag} onclick="pickLs(${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📦</span> LS anhängen</button>`;
       html+=`<div class="fbtn-row">${abBtn}${lsBtn}</div>`;
     }
 
