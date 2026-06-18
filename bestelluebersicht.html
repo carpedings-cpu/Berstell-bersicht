@@ -73,6 +73,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   font-family:inherit;display:flex;align-items:center;gap:5px;color:#1c1c1e;}
 .hbtn:active{transform:scale(.96);}
 .hbtn.on{background:rgba(45,41,38,.92);color:#c8a882;border-color:transparent;}
+.hbtn.editor-badge{background:linear-gradient(135deg,rgba(26,95,122,.12),rgba(31,109,140,.18));color:#0f4655;border-color:rgba(26,95,122,.3);max-width:140px;}
+.hbtn.editor-badge:hover{background:linear-gradient(135deg,rgba(26,95,122,.2),rgba(31,109,140,.26));}
+.hbtn.editor-badge #editorName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px;}
 
 /* ── VIEW SYSTEM ── */
 .view{display:none;padding:14px 14px 120px;}
@@ -311,6 +314,10 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .posdel{flex-shrink:0;width:26px;height:26px;border:none;border-radius:50%;background:rgba(139,34,34,.08);color:#8b2222;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;align-self:flex-start;transition:all .12s;}
 .posdel:hover{background:rgba(139,34,34,.18);}
 .posdel:active{transform:scale(.9);}
+.poshist{flex-shrink:0;height:26px;min-width:26px;padding:0 6px;border:none;border-radius:13px;background:rgba(26,95,122,.08);color:#0f4655;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;align-self:flex-start;transition:all .12s;font-family:inherit;}
+.poshist:hover{background:rgba(26,95,122,.18);}
+.poshist:active{transform:scale(.9);}
+.poshist .histcnt{font-weight:700;font-size:10px;}
 .ab-item{display:flex;align-items:center;gap:11px;padding:11px 14px;background:rgba(255,255,255,.7);
   border:.5px solid rgba(255,255,255,.7);border-radius:12px;margin-bottom:8px;box-shadow:0 3px 12px rgba(45,41,38,.04);position:relative;overflow:hidden;}
 .ab-item.ab-red::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#d92020,#ff4444);}
@@ -488,6 +495,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button class="hbtn" id="navPreise" onclick="goPreise()">💰 Preise</button>
       <button class="hbtn" id="navSearch" onclick="goSearch()">🔍 Suche</button>
       <button class="hbtn" id="navSettings" onclick="goSettings()">⚙</button>
+      <button class="hbtn editor-badge" id="editorBadge" onclick="openLogin()" title="Bearbeiter wechseln">👤 <span id="editorName">…</span></button>
       <span id="sbStatus" class="sb-st sb-off" title="Cloud-Status">◌ lokal</span>
     </div>
   </div>
@@ -500,12 +508,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <button onclick="dismissABBanner()">Später</button>
 </div>
 
-<div class="bbanner" id="backupBanner">
-  <span>💾</span>
-  <span class="bb-txt"></span>
-  <button class="bb-save" onclick="zipExpAll()">⬇️ Jetzt sichern</button>
-  <button onclick="dismissBackupBanner()">Später</button>
-</div>
+<!-- Backup-Banner entfernt: Cloud-Sync sichert automatisch.
+     Manuelles ZIP-Backup bleibt im Einstellungen-Menue erreichbar. -->
 
 <!-- VIEW: Projektliste -->
 <div class="view on" id="vHome">
@@ -866,6 +870,54 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Login: Auswahl der Bearbeiterin -->
+<div class="modal" id="loginModal">
+  <div class="modal-box" style="max-width:380px;text-align:center">
+    <h3 style="margin-bottom:6px">👋 Anmelden</h3>
+    <div style="font-size:12.5px;color:rgba(28,28,30,.65);margin-bottom:14px">Wer arbeitet jetzt mit dem System?</div>
+    <div id="loginBtns" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="margin-top:14px;text-align:right">
+      <button onclick="openEditorSetup()" style="background:none;border:none;color:#1a5f7a;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline">Bearbeiter einrichten / ändern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bearbeiter-Setup: Namen der zwei Bearbeiterinnen festlegen -->
+<div class="modal" id="editorSetupModal" onclick="if(event.target===this)closeEditorSetup()">
+  <div class="modal-box" style="max-width:420px;position:relative">
+    <button class="modal-x" onclick="closeEditorSetup()" title="Schließen">✕</button>
+    <h3 style="margin-bottom:6px">👥 Bearbeiterinnen einrichten</h3>
+    <div style="font-size:12.5px;color:rgba(28,28,30,.65);margin-bottom:14px">Trage die Namen der beiden Bearbeiterinnen ein. Sie werden auf allen Geräten gleich angezeigt.</div>
+    <div class="frm-row">
+      <div class="frm-fld" style="flex:1 1 100%">
+        <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block">Bearbeiterin 1</label>
+        <input type="text" id="editorName1" placeholder="Name" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div class="frm-row" style="margin-top:10px">
+      <div class="frm-fld" style="flex:1 1 100%">
+        <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block">Bearbeiterin 2</label>
+        <input type="text" id="editorName2" placeholder="Name" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeEditorSetup()">Abbrechen</button>
+      <button class="mok" onclick="saveEditorSetup()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Verlauf einer Position: Audit-Trail aller Aktionen -->
+<div class="modal" id="auditModal" onclick="if(event.target===this)closeAuditModal()">
+  <div class="modal-box flex-scroll" style="max-width:560px;max-height:88vh">
+    <button class="modal-x" onclick="closeAuditModal()" title="Schließen (Esc)">✕</button>
+    <div id="auditBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeAuditModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Bestellt-Liste Modal: zeigt alle Positionen die als bestellt gezaehlt werden -->
 <div class="modal" id="bestelltListModal" onclick="if(event.target===this)closeBestelltList()">
   <div class="modal-box flex-scroll" style="max-width:640px;max-height:88vh">
@@ -1174,6 +1226,19 @@ function abrufTermin(p,proj){
   const d=new Date(lt);d.setDate(d.getDate()-vorlauf);
   return d.toISOString().slice(0,10);
 }
+// Zentrale Definition: Welche Positionen MUESSEN jetzt abgerufen werden?
+// Strikt: muss bestellt sein (sonst kann man gar nicht abrufen) UND Abruftermin
+// ist heute oder ueberfaellig.
+function istAbrufFaellig(p,proj){
+  if(p.status!=='bestellt')return false; // bestellt aber noch nicht abgerufen
+  const at=abrufTermin(p,proj); if(!at)return false;
+  return daysBtw(today(),at)<=0; // heute oder ueberfaellig
+}
+function countAbrufFaellig(){
+  let n=0;
+  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{if(istAbrufFaellig(p,proj))n++;}));
+  return n;
+}
 function severity(p,proj){
   if(p.reklamation)return 'reklam';
   if(p.status==='geliefert')return 'green';
@@ -1244,13 +1309,106 @@ async function init(){
     }
     hideLoader();
     goHome();
-    updateBackupBanner();
     updateABBanner();
+    initEditor();
   }catch(e){
     console.error('Init-Fehler:',e);
     document.getElementById('loaderTxt').textContent='⚠ Ladefehler: '+(e&&e.message||e)+' – Seite neu laden';
   }
 }
+
+// ── BEARBEITER-LOGIN + AUDIT-TRAIL ──────────────────────────────────────
+let EDITOR=null;
+function initEditor(){
+  const stored=localStorage.getItem('kpc_editor');
+  const names=SETTINGS.editors||[];
+  if(stored&&names.includes(stored)){
+    EDITOR=stored;
+    updateEditorBadge();
+    return;
+  }
+  // Kein gueltiger Login → Login-Modal oeffnen (zeigt automatisch Setup, falls noch keine Namen)
+  EDITOR=null;
+  updateEditorBadge();
+  openLogin();
+}
+function updateEditorBadge(){
+  const el=document.getElementById('editorName');
+  if(el)el.textContent=EDITOR||'Anmelden';
+}
+function openLogin(){
+  const names=SETTINGS.editors||[];
+  if(names.length<2){openEditorSetup();return;}
+  const div=document.getElementById('loginBtns');
+  div.innerHTML=names.map(n=>`<button class="mok" style="padding:14px;font-size:14px;background:linear-gradient(135deg,#1a5f7a,#1f6d8c)" onclick="loginAs('${escA(n)}')">👤 ${esc(n)}</button>`).join('');
+  document.getElementById('loginModal').classList.add('on');
+}
+function closeLogin(){document.getElementById('loginModal').classList.remove('on');}
+function loginAs(name){
+  EDITOR=name;
+  localStorage.setItem('kpc_editor',name);
+  updateEditorBadge();
+  closeLogin();
+  toast('Angemeldet als '+name,'ok');
+}
+function openEditorSetup(){
+  closeLogin();
+  const names=SETTINGS.editors||[];
+  document.getElementById('editorName1').value=names[0]||'';
+  document.getElementById('editorName2').value=names[1]||'';
+  document.getElementById('editorSetupModal').classList.add('on');
+}
+function closeEditorSetup(){
+  document.getElementById('editorSetupModal').classList.remove('on');
+  // Falls noch nicht angemeldet → wieder Login zeigen (sofern jetzt 2 Namen da sind)
+  if(!EDITOR&&(SETTINGS.editors||[]).length>=2)openLogin();
+}
+async function saveEditorSetup(){
+  const n1=document.getElementById('editorName1').value.trim();
+  const n2=document.getElementById('editorName2').value.trim();
+  if(!n1||!n2){toast('Bitte beide Namen eintragen','err');return;}
+  if(n1===n2){toast('Namen müssen unterschiedlich sein','err');return;}
+  SETTINGS.editors=[n1,n2];
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  closeEditorSetup();
+  if(EDITOR&&!SETTINGS.editors.includes(EDITOR)){
+    EDITOR=null;localStorage.removeItem('kpc_editor');updateEditorBadge();
+  }
+  if(!EDITOR)openLogin();
+  toast('Bearbeiterinnen gespeichert','ok');
+}
+
+// Audit-Trail: protokolliert jede Aenderung mit Zeitstempel + Bearbeiterin
+function logAction(p,action){
+  if(!p.audit)p.audit=[];
+  p.audit.push({at:new Date().toISOString(),user:EDITOR||'(nicht angemeldet)',action});
+  // Trimmen auf max. 200 Eintraege pro Position
+  if(p.audit.length>200)p.audit=p.audit.slice(-200);
+}
+function fmtAuditTime(iso){
+  const d=new Date(iso);
+  return d.toLocaleDateString('de-DE')+' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+}
+function openAuditModal(idx){
+  const p=CUR.positionen[idx];
+  const log=p.audit||[];
+  const body=document.getElementById('auditBody');
+  const rows=log.slice().reverse().map(e=>`
+    <div style="padding:9px 12px;border-bottom:.5px solid rgba(0,0,0,.06)">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+        <div style="font-weight:600;color:#2d2926;font-size:12.5px">${esc(e.action)}</div>
+        <div style="font-size:10.5px;color:rgba(28,28,30,.55);white-space:nowrap">${esc(fmtAuditTime(e.at))}</div>
+      </div>
+      <div style="font-size:11px;color:rgba(28,28,30,.6);margin-top:2px">👤 ${esc(e.user)}</div>
+    </div>`).join('');
+  body.innerHTML=`
+    <h3 style="margin-bottom:4px">🕓 Verlauf</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(p.pos)} – ${esc(p.bez)} · ${log.length} Eintrag${log.length===1?'':'e'}</div>
+    ${log.length?rows:'<div style="padding:24px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">Noch keine Aktionen protokolliert.</div>'}
+  `;
+  document.getElementById('auditModal').classList.add('on');
+}
+function closeAuditModal(){document.getElementById('auditModal').classList.remove('on');}
 
 function makeProjFromData(name,data,termin=''){
   const id='p_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
@@ -1359,11 +1517,7 @@ function renderHome(){
   // Counter auf Startseite live aktualisieren (sonst steht da ein alter Wert, bis Zu-bestellen/Abruf geoeffnet wird)
   const zb=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(istZuBestellen).length,0);
   const zbEl=document.getElementById('zubestCnt'); if(zbEl)zbEl.textContent=zb;
-  const ab=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(p=>{
-    if(p.status==='abgerufen'||p.status==='geliefert')return false;
-    const at=abrufTermin(p,proj); if(!at)return false;
-    return daysBtw(today(),at)<=1;
-  }).length,0);
+  const ab=countAbrufFaellig();
   const abEl=document.getElementById('abrufCnt'); if(abEl)abEl.textContent=ab;
   updateABBanner();
 }
@@ -1818,13 +1972,17 @@ function showBestelltList(projId){
   document.getElementById('bestelltListModal').classList.add('on');
 }
 function closeBestelltList(){document.getElementById('bestelltListModal').classList.remove('on');}
-// ESC schliesst offene Modals (Fortschrittsfenster, Bestellt-Liste)
+// ESC schliesst offene Modals (Verlauf, Bestellt-Liste, Fortschritt, Setup, Login)
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
+  const am=document.getElementById('auditModal');
+  if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
   if(blm&&blm.classList.contains('on')){closeBestelltList();e.preventDefault();return;}
   const psm=document.getElementById('projStatusModal');
-  if(psm&&psm.classList.contains('on')){closeProjStatus();e.preventDefault();}
+  if(psm&&psm.classList.contains('on')){closeProjStatus();e.preventDefault();return;}
+  const es=document.getElementById('editorSetupModal');
+  if(es&&es.classList.contains('on')){closeEditorSetup();e.preventDefault();return;}
 });
 function projStatusToText(proj){
   const s=buildProjStatus(proj);
@@ -2249,6 +2407,7 @@ function renderDetail(){
       <div class="ii"><div class="ibez">${esc(p.bez)}${nbLabel?' <span class="nb-badge">🚫 '+nbLabel+'</span>':''}</div>
         <div class="imet">${p.fabrikat?'🏭 '+esc(p.fabrikat):''}${p.typ?' · '+esc(p.typ):''}</div></div>
       <div class="img">${esc(p.menge)} ${esc(p.einh)}</div>
+      <button class="poshist" onclick="openAuditModal(${idx})" title="Verlauf anzeigen">🕓${(p.audit&&p.audit.length)?'<span class="histcnt">'+p.audit.length+'</span>':''}</button>
       <button class="posdel" onclick="delPos(${idx})" title="Position löschen">✕</button>
     </div>${wt}`;
     
@@ -2399,14 +2558,13 @@ function toggleAllBereiche(closeAll){
 }
 
 async function setF(idx,field,val){
+  if(!requireLogin())return;
   const p=CUR.positionen[idx];
+  const prevQuelle=p.quelle, prevStatus=p.status, prevLieferort=p.lieferort;
   if(field==='quelle'){
     p.quelle=p.quelle===val?'':val;
     if(p.quelle==='bestellt'){
-      // Auto-Vorschlag: Fabrikat → Lieferant wenn leer
       if(!p.lieferant && p.fabrikat) p.lieferant=p.fabrikat;
-      // 'Bestellt' anklicken = Position ist bestellt: Status setzen + bestelltAm festhalten,
-      // damit sie aus 'Zu bestellen' verschwindet und die AB-Frist laeuft.
       if((p.status==='offen'||!p.status) && !istNichtBestellbar(p)){
         p.status='bestellt';
         if(!p.bestelltAm)p.bestelltAm=today();
@@ -2416,7 +2574,6 @@ async function setF(idx,field,val){
   else if(field==='lieferort')p.lieferort=p.lieferort===val?'':val;
   else if(field==='status'){
     if(p.status===val){
-      // Status abwaehlen: NICHT zurueck auf 'offen', wenn die Position schon bestellt war.
       p.status=p.bestelltAm?'bestellt':'offen';
     } else {
       p.status=val;
@@ -2424,18 +2581,26 @@ async function setF(idx,field,val){
     }
     if(p.status==='bestellt'&&!p.bestelltAm)p.bestelltAm=today();
   }
+  // Audit-Trail
+  const labelQ=v=>v==='bestellt'?'Bestellt':v==='lager'?'Lagerware':v==='bauseits'?'bauseits':v==='dienstleistung'?'Dienstleistung':v==='entfaellt'?'entfällt':(v||'offen');
+  const labelS=v=>v==='bestellt'?'Bestellt':v==='abgerufen'?'Abgerufen':v==='geliefert'?'Geliefert':(v||'offen');
+  if(field==='quelle'&&prevQuelle!==p.quelle)logAction(p,`Quelle: ${labelQ(prevQuelle)} → ${labelQ(p.quelle)}`);
+  if(field==='lieferort'&&prevLieferort!==p.lieferort)logAction(p,`Lieferort: ${prevLieferort||'-'} → ${p.lieferort||'-'}`);
+  if(prevStatus!==p.status)logAction(p,`Status: ${labelS(prevStatus)} → ${labelS(p.status)}`);
   await saveCur();renderDetail();updateGlobalCounters();updateABBanner();
+}
+// Stoppt den Vorgang wenn niemand angemeldet ist – verhindert anonyme Eintraege im Audit-Trail
+function requireLogin(){
+  if(EDITOR)return true;
+  toast('Bitte zuerst anmelden','err');
+  openLogin();
+  return false;
 }
 // Globale Counter (Home-Buttons + Banner) refreshen, ohne den ganzen Home zu rendern
 function updateGlobalCounters(){
   const zb=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(istZuBestellen).length,0);
   const zbEl=document.getElementById('zubestCnt'); if(zbEl)zbEl.textContent=zb;
-  const ab=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(p=>{
-    if(p.status==='abgerufen'||p.status==='geliefert')return false;
-    const at=abrufTermin(p,proj); if(!at)return false;
-    return daysBtw(today(),at)<=1;
-  }).length,0);
-  const abEl=document.getElementById('abrufCnt'); if(abEl)abEl.textContent=ab;
+  const abEl=document.getElementById('abrufCnt'); if(abEl)abEl.textContent=countAbrufFaellig();
 }
 // Auftragsbestätigung einer Position umschalten
 async function toggleAB(idx){
@@ -3001,23 +3166,29 @@ function closeLsModal(){
   _lsModalState={idx:null,file:null,buffer:null};
 }
 async function confirmLs(){
+  if(!requireLogin())return;
   const{idx,file,buffer}=_lsModalState;
   if(idx==null||!file){closeLsModal();return;}
   const datum=document.getElementById('lsDatum').value;
   const kommNr=document.getElementById('lsKommNr').value.trim();
   const lsNr=document.getElementById('lsNr').value.trim();
   const p=CUR.positionen[idx];
-  // Lieferschein speichern
+  const prevStatus=p.status;
   const lsId='ls_'+CUR.id+'_'+idx+'_'+Date.now();
   await dbPut('lieferscheine',{id:lsId,blob:buffer,type:file.type,name:file.name});
   p.lieferschein={id:lsId,name:file.name,type:file.type,datum,lieferscheinNr:lsNr};
-  // Status & Daten setzen
   p.status='geliefert';
   p.geliefertDatum=datum;
   if(kommNr){p.kommNrs=p.kommNrs||[];if(!p.kommNrs.includes(kommNr))p.kommNrs.push(kommNr);}
+  const det=[`LS angehängt: ${file.name}`];
+  if(datum)det.push('Lieferdatum '+datum);
+  if(lsNr)det.push('LS-Nr '+lsNr);
+  if(kommNr)det.push('Komm-Nr '+kommNr);
+  logAction(p,det.join(' · '));
+  if(prevStatus!=='geliefert')logAction(p,'Status: '+(prevStatus||'offen')+' → Geliefert');
   await saveCur();
   closeLsModal();
-  renderDetail();
+  renderDetail();updateGlobalCounters();
   toast('Lieferung erfasst'+(kommNr?' · Komm-Nr '+kommNr:''),'ok');
 }
 async function openLs(idx){
@@ -3030,9 +3201,14 @@ async function openLs(idx){
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function delLs(idx){
+  if(!requireLogin())return;
   if(!confirm('Lieferschein entfernen?'))return;
   const p=CUR.positionen[idx];
-  if(p.lieferschein){await dbDel('lieferscheine',p.lieferschein.id);p.lieferschein=null;}
+  if(p.lieferschein){
+    const fn=p.lieferschein.name;
+    await dbDel('lieferscheine',p.lieferschein.id);p.lieferschein=null;
+    logAction(p,`Lieferschein entfernt: ${fn}`);
+  }
   await saveCur();renderDetail();toast('Lieferschein entfernt','ok');
 }
 
@@ -3057,6 +3233,7 @@ async function abDrop(ev,idx){
   await handleAbFile(idx,f);
 }
 async function handleAbFile(idx,file){
+  if(!requireLogin())return;
   showLoader('Auftragsbestätigung wird gelesen …');
   let datum='';
   try{
@@ -3087,7 +3264,8 @@ async function handleAbFile(idx,file){
   p.abBestaetigt=true;
   if(!p.abAm)p.abAm=datum||today();
   p.abErinnertAm='';
-  await saveCur();renderDetail();updateABBanner();
+  logAction(p,`AB angehängt: ${file.name}${datum?' (Datum '+datum+')':''}`);
+  await saveCur();renderDetail();updateABBanner();updateGlobalCounters();
   toast('Auftragsbestätigung erfasst ✓','ok');
 }
 async function openAb(idx){
@@ -3100,9 +3278,14 @@ async function openAb(idx){
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function delAb(idx){
+  if(!requireLogin())return;
   if(!confirm('Auftragsbestätigung-Datei entfernen?'))return;
   const p=CUR.positionen[idx];
-  if(p.abDoc){try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}p.abDoc=null;}
+  if(p.abDoc){
+    const fn=p.abDoc.name;
+    try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}p.abDoc=null;
+    logAction(p,`AB entfernt: ${fn}`);
+  }
   await saveCur();renderDetail();toast('AB-Datei entfernt','ok');
 }
 
@@ -3287,13 +3470,16 @@ function toggleZbGroup(key){
   renderZuBestellen();
 }
 async function markBestellt(projId,idx){
+  if(!requireLogin())return;
   const proj=PROJECTS.find(p=>p.id===projId);
   if(!proj||!proj.positionen[idx])return;
   const p=proj.positionen[idx];
+  const prevStatus=p.status;
   p.quelle='bestellt';
   p.status='bestellt';
   if(!p.bestelltAm)p.bestelltAm=today();
   if(!p.lieferant && p.fabrikat)p.lieferant=p.fabrikat;
+  if(prevStatus!=='bestellt')logAction(p,'Status: '+(prevStatus||'offen')+' → Bestellt (über Zu-bestellen-Liste)');
   await dbPut('projects',proj);markChanged();
   renderZuBestellen();updateABBanner();
   toast(p.pos+' als bestellt markiert','ok');
@@ -3721,32 +3907,30 @@ function renderAbrufAnsicht(){
     </div>`;
   });
   wrap.innerHTML=html;
-  // Counter
+  // Counter: faellige/ueberfaellige Abrufe (konsistent mit Startseite)
   const cnt=document.getElementById('abrufCnt');
-  if(cnt){const offen=items.filter(it=>daysBtw(today(),it.abrufBis)<=14).length;cnt.textContent=offen;}
+  if(cnt)cnt.textContent=countAbrufFaellig();
 }
 async function markAbgerufen(projId,idx){
+  if(!requireLogin())return;
   const proj=PROJECTS.find(p=>p.id===projId);
   if(!proj||!proj.positionen[idx])return;
   const p=proj.positionen[idx];
+  const prevStatus=p.status;
   if(!p.quelle)p.quelle='bestellt';
   p.status='abgerufen';
   if(!p.lieferant&&p.fabrikat)p.lieferant=p.fabrikat;
+  if(prevStatus!=='abgerufen')logAction(p,'Status: '+(prevStatus||'offen')+' → Abgerufen');
   await dbPut('projects',proj);markChanged();
-  renderAbrufAnsicht();
+  renderAbrufAnsicht();updateGlobalCounters();
   toast(p.pos+' als abgerufen markiert','ok');
 }
 
-// renderHome erweitern: Abruf-Counter
+// renderHome erweitern: Abruf-Counter (konsistent mit countAbrufFaellig)
 const _origRenderHome2=renderHome;
 renderHome=function(){
   _origRenderHome2();
-  let abrufOffen=0;
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
-    if(p.status==='abgerufen'||p.status==='geliefert')return;
-    const at=abrufTermin(p,proj);if(!at)return;
-    if(daysBtw(today(),at)<=14)abrufOffen++;
-  }));
+  const abrufOffen=countAbrufFaellig();
   const cnt=document.getElementById('abrufCnt');
   if(cnt)cnt.textContent=abrufOffen;
 };
