@@ -447,6 +447,16 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
 .modal-act .mok{background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;}
 .modal-act .mcancel{background:rgba(0,0,0,.06);color:#1c1c1e;}
+/* Schliessen-X immer sichtbar in der oberen rechten Ecke (z.B. bei langen Berichten) */
+.modal-x{position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;
+  background:rgba(0,0,0,.08);border:none;font-size:14px;font-weight:800;cursor:pointer;
+  color:#2d2926;display:flex;align-items:center;justify-content:center;z-index:10;
+  font-family:inherit;line-height:1;}
+.modal-x:hover{background:rgba(0,0,0,.16);}
+/* Scrollbare Body-Variante: Body scrollt, Header/Footer bleiben fix */
+.modal-box.flex-scroll{display:flex;flex-direction:column;position:relative;padding:18px 20px;}
+.modal-box.flex-scroll .modal-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -4px;padding:0 4px 4px;}
+.modal-box.flex-scroll .modal-act{margin-top:14px;flex-shrink:0;border-top:.5px solid rgba(0,0,0,.08);padding-top:14px;}
 
 .lager-item{display:flex;align-items:center;gap:10px;padding:9px 12px;
   background:rgba(255,255,255,.65);border:.5px solid rgba(0,0,0,.06);border-radius:10px;cursor:pointer;}
@@ -856,9 +866,10 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
 <!-- Projekt-Status Modal -->
-<div class="modal" id="projStatusModal">
-  <div class="modal-box" style="max-width:560px;max-height:88vh;overflow-y:auto">
-    <div id="psmBody"></div>
+<div class="modal" id="projStatusModal" onclick="if(event.target===this)closeProjStatus()">
+  <div class="modal-box flex-scroll" style="max-width:560px;max-height:88vh">
+    <button class="modal-x" onclick="closeProjStatus()" title="Schließen (Esc)">✕</button>
+    <div id="psmBody" class="modal-scroll"></div>
     <div class="modal-act">
       <button class="mcancel" onclick="closeProjStatus()">Schließen</button>
       <button class="mok" onclick="copyProjStatus()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Text kopieren</button>
@@ -1296,7 +1307,13 @@ function renderHome(){
   PROJECTS.forEach(proj=>{
     const tot=proj.positionen.length;
     const gel=proj.positionen.filter(p=>p.status==='geliefert').length;
-    const best=proj.positionen.filter(p=>p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert').length;
+    // 'Bestellt'-Zaehlung: Status bestellt/abgerufen/geliefert ODER (Migrations-Heuristik fuer Altdaten)
+    // quelle='bestellt' UND ein Bestell-Signal (Lieferant, AB-Doc, Komm-Nr oder bestelltAm)
+    const best=proj.positionen.filter(p=>{
+      if(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')return true;
+      if(p.quelle==='bestellt'&&(p.lieferant||p.abDoc||(p.kommNrs&&p.kommNrs.length>0)||p.bestelltAm))return true;
+      return false;
+    }).length;
     const red=proj.positionen.filter(p=>severity(p,proj)==='red').length;
     const amb=proj.positionen.filter(p=>severity(p,proj)==='amber').length;
     // Abruf überfällig zählen
@@ -1749,6 +1766,13 @@ function showProjStatus(id){
   document.getElementById('projStatusModal').classList.add('on');
 }
 function closeProjStatus(){document.getElementById('projStatusModal').classList.remove('on');_statusProjId=null;}
+// ESC schliesst das Fortschrittsfenster
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    const psm=document.getElementById('projStatusModal');
+    if(psm&&psm.classList.contains('on')){closeProjStatus();e.preventDefault();}
+  }
+});
 function projStatusToText(proj){
   const s=buildProjStatus(proj);
   const L=[];
