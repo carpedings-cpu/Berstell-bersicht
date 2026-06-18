@@ -1307,15 +1307,14 @@ function renderHome(){
   PROJECTS.forEach(proj=>{
     const tot=proj.positionen.length;
     const gel=proj.positionen.filter(p=>p.status==='geliefert').length;
-    // 'Bestellt'-Zaehlung: Status bestellt/abgerufen/geliefert ODER (Migrations-Heuristik fuer Altdaten)
-    // Bestell-Signale = explizite Aktionen (AB-Doc, Komm-Nr, bestelltAm). Lieferant alleine reicht
-    // NICHT, weil er beim Import automatisch aus dem Fabrikat befuellt wird, ohne dass tatsaechlich
-    // bestellt wurde.
-    const best=proj.positionen.filter(p=>{
-      if(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')return true;
-      if(p.quelle==='bestellt'&&(p.abDoc||(p.kommNrs&&p.kommNrs.length>0)||p.bestelltAm))return true;
-      return false;
-    }).length;
+    // 'Bestellt'-Zaehlung: STRIKT nur status. Das ist das einzige Feld, das ausschliesslich
+    // durch explizite Bearbeiter-Aktionen gesetzt wird (Klick auf Bestellt/Abgerufen/Geliefert,
+    // AB-Datei anhaengen, markBestellt in der Zu-Bestellen-Liste). Alle anderen Felder (Lieferant,
+    // KommNr, bestelltAm, abDoc) koennen durch automatische Prozesse befuellt werden und sind
+    // daher KEINE verlaesslichen Signale fuer "User hat bestellt geklickt".
+    const best=proj.positionen.filter(p=>
+      p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert'
+    ).length;
     const red=proj.positionen.filter(p=>severity(p,proj)==='red').length;
     const amb=proj.positionen.filter(p=>severity(p,proj)==='amber').length;
     // Abruf überfällig zählen
