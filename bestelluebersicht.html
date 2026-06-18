@@ -842,8 +842,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <div class="modal-act">
       <button class="mcancel" onclick="closeProjStatus()">Schließen</button>
       <button class="mok" onclick="copyProjStatus()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Text kopieren</button>
-      <button class="mok" onclick="downloadProjReport()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">📄 Bericht (HTML)</button>
-      <button class="mok" onclick="sendProjStatusWebhook()" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0)">📧 Power Automate</button>
+      <button class="mok" onclick="printProjReport()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">📄 PDF erzeugen</button>
     </div>
   </div>
 </div>
@@ -1591,13 +1590,14 @@ function projStatusToText(proj){
   L.push('');L.push('Stand: '+new Date().toLocaleString('de-DE'));
   return L.join('\n');
 }
-// Eigenstaendigen HTML-Statusbericht generieren – fuer Chef/Bauherr, oeffnet jeder Browser
+// Status-Bericht als druckfertige Seite generieren – wird in neuem Fenster geoeffnet,
+// Browser-Druckdialog kommt automatisch hoch -> "Als PDF speichern"
 function buildProjReportHTML(proj){
   const s=buildProjStatus(proj);
   const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
   const stand=new Date().toLocaleString('de-DE');
-  // Status-Karten oben
+  // KPI-Karten
   const kpiCards=[
     {n:s.progress+'%',l:'Fortschritt',col:'#1e8a4a'},
     {n:s.geliefert+' / '+s.aktiv,l:'geliefert',col:'#1e8a4a'},
@@ -1606,7 +1606,7 @@ function buildProjReportHTML(proj){
     {n:s.inLieferung,l:'in Lieferung',col:'#c47700'},
     {n:s.abUeberf.length,l:'AB überfällig',col:s.abUeberf.length>0?'#a01515':'#777'}
   ];
-  // Kritisch-Block
+  // Kritische Punkte
   const krit=[];
   s.abUeberf.forEach(p=>{
     const tage=daysBtw(p.bestelltAm,today());
@@ -1628,10 +1628,53 @@ function buildProjReportHTML(proj){
       <td class="num">${g.geliefert||'–'}</td>
       <td class="num">${g.abFehlt?'<span class="red">⚠ '+g.abFehlt+'</span>':'–'}</td>
     </tr>`).join('');
-  // Abruf-Tabelle (kommende + überfällige)
-  const abrufRows=s.abrufe7.map(o=>{
-    const d=o.d, st=d<0?'<span class="red">überfällig '+(-d)+'T</span>':d===0?'<b>heute</b>':d===1?'<b>morgen</b>':'in '+d+' T';
-    return `<tr><td>${e(o.p.pos)}</td><td>${e(o.p.bez)}</td><td>${e(o.p.lieferant||o.p.fabrikat||'')}</td><td>${st}</td></tr>`;
+  // Status-Label pro Position
+  const statusLabel=p=>{
+    if(istNichtBestellbar(p))return '<span class="lbl lbl-gray">'+e(nichtBestellbarLabel(p))+'</span>';
+    if(p.status==='geliefert')return '<span class="lbl lbl-green">Geliefert</span>';
+    if(p.status==='abgerufen')return '<span class="lbl lbl-amber">Abgerufen</span>';
+    if(p.status==='bestellt'){
+      if(p.abBestaetigt)return '<span class="lbl lbl-amber">Bestellt · AB ✓</span>';
+      const t=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
+      const frist=SETTINGS.abFrist||7;
+      if(p.bestelltAm&&t>=frist)return '<span class="lbl lbl-red">Bestellt · AB ⚠ '+t+'T</span>';
+      return '<span class="lbl lbl-amber">Bestellt · AB offen</span>';
+    }
+    if(p.quelle==='lager')return '<span class="lbl lbl-blue">Lager</span>';
+    if(p.quelle==='bestellt')return '<span class="lbl lbl-red">Zu bestellen</span>';
+    return '<span class="lbl lbl-gray">Offen</span>';
+  };
+  // Positionen nach Bereich gruppieren
+  const bSec={}, bOrder=[];
+  (proj.positionen||[]).forEach((p,idx)=>{
+    const k=p.bereich||'_';
+    if(!bSec[k]){bSec[k]={key:k,bez:p.bereichBez||'',items:[]};bOrder.push(k);}
+    bSec[k].items.push({p,idx});
+  });
+  const bereichBlocks=bOrder.map(k=>{
+    const sec=bSec[k];
+    const rows=sec.items.map(({p})=>{
+      const at=abrufTermin(p,proj);
+      const fab=[p.fabrikat,p.typ].filter(Boolean).join(' · ');
+      const liefer=p.lieferant||p.fabrikat||'';
+      const term=p.status==='geliefert'?(p.geliefertDatum?'Geliefert '+fd(p.geliefertDatum):''):(at?'Abruf '+fd(at):'');
+      const anm=[p.notiz, (p.kommNrs||[]).length?'Komm: '+p.kommNrs.join(', '):'', p.reklamation?'🚨 '+p.reklamation.grund:''].filter(Boolean).join(' · ');
+      return `<tr>
+        <td class="pos">${e(p.pos)}</td>
+        <td class="bez">${e(p.bez)}${fab?'<div class="sub">'+e(fab)+'</div>':''}</td>
+        <td class="num">${e(p.menge)} ${e(p.einh||'')}</td>
+        <td>${e(liefer)}</td>
+        <td>${statusLabel(p)}</td>
+        <td class="term">${e(term)}</td>
+        <td class="anm">${e(anm)}</td>
+      </tr>`;
+    }).join('');
+    return `<section class="bsec"><h3>${e(k==='_'?'(ohne Bereich)':k)}${sec.bez?' '+e(sec.bez):''} <span class="bcount">${sec.items.length} Position${sec.items.length===1?'':'en'}</span></h3>
+      <table class="postab">
+        <thead><tr><th style="width:60px">Pos</th><th>Bezeichnung / Fabrikat</th><th class="num" style="width:70px">Menge</th><th style="width:130px">Lieferant</th><th style="width:135px">Status</th><th style="width:120px">Termin</th><th>Anmerkung</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
   }).join('');
 
   return `<!DOCTYPE html>
@@ -1640,41 +1683,60 @@ function buildProjReportHTML(proj){
 <title>Statusbericht – ${e(proj.name)}</title>
 <style>
   *{box-sizing:border-box}
-  body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#1c1c1e;background:#f5f0e8;margin:0;padding:32px;line-height:1.5}
-  .page{max-width:900px;margin:0 auto;background:#fff;padding:40px 48px;box-shadow:0 4px 24px rgba(0,0,0,.06);border-radius:14px}
-  header{border-bottom:2px solid #6b5040;padding-bottom:16px;margin-bottom:28px}
+  body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#1c1c1e;background:#e8e3da;margin:0;padding:24px;line-height:1.5}
+  .page{max-width:1100px;margin:0 auto;background:#fff;padding:44px 52px;box-shadow:0 4px 28px rgba(0,0,0,.08);border-radius:14px}
+  header{border-bottom:3px solid #6b5040;padding-bottom:18px;margin-bottom:28px}
   .brand{font-size:11px;letter-spacing:3px;color:#6b5040;font-weight:700;margin-bottom:8px;text-transform:uppercase}
-  h1{font-size:28px;font-weight:800;color:#1c1c1e;letter-spacing:-.5px;margin:0 0 6px}
-  .meta{font-size:13px;color:rgba(28,28,30,.65)}
-  h2{font-size:14px;font-weight:700;color:#6b5040;letter-spacing:.5px;text-transform:uppercase;margin:32px 0 14px;border-bottom:.5px solid rgba(107,80,64,.2);padding-bottom:6px}
-  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0}
-  .kpi{background:rgba(45,41,38,.04);border:.5px solid rgba(45,41,38,.1);border-radius:10px;padding:14px;text-align:center}
-  .kpi .n{font-size:22px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
-  .kpi .l{font-size:10.5px;font-weight:600;letter-spacing:.4px;color:rgba(28,28,30,.55);margin-top:6px;text-transform:uppercase}
-  .bar{height:10px;background:rgba(0,0,0,.06);border-radius:6px;overflow:hidden;margin:8px 0 18px}
+  h1{font-size:32px;font-weight:800;color:#1c1c1e;letter-spacing:-.5px;margin:0 0 6px}
+  .meta{font-size:13.5px;color:rgba(28,28,30,.7)}
+  h2{font-size:14px;font-weight:700;color:#6b5040;letter-spacing:.5px;text-transform:uppercase;margin:30px 0 12px;border-bottom:.5px solid rgba(107,80,64,.2);padding-bottom:6px}
+  h3{font-size:15px;font-weight:700;color:#1c1c1e;margin:24px 0 10px;padding:9px 14px;background:rgba(107,80,64,.07);border-left:4px solid #6b5040;border-radius:0 6px 6px 0}
+  h3 .bcount{float:right;font-size:11px;font-weight:600;color:rgba(28,28,30,.55);background:rgba(255,255,255,.7);padding:2px 9px;border-radius:8px}
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:20px 0}
+  .kpi{background:rgba(45,41,38,.04);border:.5px solid rgba(45,41,38,.1);border-radius:10px;padding:13px 10px;text-align:center}
+  .kpi .n{font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+  .kpi .l{font-size:10px;font-weight:600;letter-spacing:.3px;color:rgba(28,28,30,.55);margin-top:6px;text-transform:uppercase}
+  .bar{height:12px;background:rgba(0,0,0,.06);border-radius:7px;overflow:hidden;margin:8px 0 18px}
   .bar div{height:100%;background:linear-gradient(90deg,#1e8a4a,#34c759)}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
-  th{text-align:left;padding:8px 10px;background:rgba(107,80,64,.06);font-weight:700;color:rgba(28,28,30,.7);border-bottom:1.5px solid rgba(107,80,64,.15);font-size:11.5px;letter-spacing:.3px;text-transform:uppercase}
-  td{padding:8px 10px;border-bottom:.5px solid rgba(0,0,0,.06);vertical-align:top}
-  td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:8px}
+  th{text-align:left;padding:8px 10px;background:rgba(107,80,64,.08);font-weight:700;color:rgba(28,28,30,.7);border-bottom:1.5px solid rgba(107,80,64,.2);font-size:10.5px;letter-spacing:.3px;text-transform:uppercase}
+  td{padding:9px 10px;border-bottom:.5px solid rgba(0,0,0,.06);vertical-align:top}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+  td.pos{font-weight:700;color:#6b5040;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.bez{font-weight:600}
+  td.bez .sub{font-size:11px;font-weight:500;color:rgba(28,28,30,.55);margin-top:2px}
+  td.term{white-space:nowrap;font-size:11.5px;color:rgba(28,28,30,.7)}
+  td.anm{font-size:11.5px;color:rgba(28,28,30,.7)}
   tr:last-child td{border-bottom:none}
   .red{color:#a01515;font-weight:700}
-  .crit{background:rgba(217,32,32,.06);border:.5px solid rgba(217,32,32,.2);border-radius:10px;padding:14px 18px;margin-bottom:8px}
+  .lbl{display:inline-block;padding:3px 8px;border-radius:6px;font-size:10.5px;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+  .lbl-red{background:rgba(217,32,32,.13);color:#a01515}
+  .lbl-amber{background:rgba(196,119,0,.15);color:#7d4d00}
+  .lbl-green{background:rgba(30,138,74,.13);color:#0f6332}
+  .lbl-blue{background:rgba(26,95,122,.13);color:#0e4a60}
+  .lbl-gray{background:rgba(120,120,128,.13);color:rgba(28,28,30,.6)}
+  .crit{background:rgba(217,32,32,.06);border:.5px solid rgba(217,32,32,.2);border-radius:10px;padding:13px 18px;margin-bottom:8px}
   .crit b{color:#a01515;display:block;font-size:12px;letter-spacing:.3px;text-transform:uppercase;margin-bottom:3px}
   .ok{background:rgba(30,138,74,.06);border:.5px solid rgba(30,138,74,.2);border-radius:10px;padding:14px 18px;color:#0f6332;font-weight:600;font-size:14px}
   footer{margin-top:36px;padding-top:14px;border-top:.5px solid rgba(0,0,0,.08);font-size:11px;color:rgba(28,28,30,.5);display:flex;justify-content:space-between}
-  .print-btn{position:fixed;top:20px;right:20px;background:#6b5040;color:#fff;border:none;padding:10px 18px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 4px 12px rgba(107,80,64,.3)}
+  .print-btn{position:fixed;top:20px;right:20px;background:#6b5040;color:#fff;border:none;padding:11px 20px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(107,80,64,.35);z-index:1000}
+  .print-btn:hover{background:#7a5d4a}
+  .bsec{margin-bottom:14px}
+  @page{size:A4 landscape;margin:14mm}
   @media print{
     body{background:#fff;padding:0}
-    .page{box-shadow:none;border-radius:0;padding:24px 32px;max-width:none}
+    .page{box-shadow:none;border-radius:0;padding:0;max-width:none}
     .print-btn{display:none}
-    h2{break-after:avoid}
-    table{break-inside:avoid}
-    .crit,.ok{break-inside:avoid}
+    h2,h3{break-after:avoid}
+    table{break-inside:auto}
+    tr{break-inside:avoid;break-after:auto}
+    thead{display:table-header-group}
+    .crit,.ok,.kpi{break-inside:avoid}
+    .bsec{break-inside:auto}
   }
 </style>
 </head><body>
-<button class="print-btn" onclick="window.print()">🖨 Drucken / als PDF speichern</button>
+<button class="print-btn" onclick="window.print()">🖨 PDF speichern / drucken</button>
 <div class="page">
 <header>
   <div class="brand">KPC GmbH · Statusbericht</div>
@@ -1699,30 +1761,24 @@ ${s.liefList.length?`<h2>Status pro Lieferant</h2>
   <tbody>${liefRows}</tbody>
 </table>`:''}
 
-${abrufRows?`<h2>Abrufe in den nächsten 7 Tagen</h2>
-<table>
-  <thead><tr><th>Pos</th><th>Bezeichnung</th><th>Lieferant</th><th>Fälligkeit</th></tr></thead>
-  <tbody>${abrufRows}</tbody>
-</table>`:''}
+<h2>Alle Positionen nach Bereich</h2>
+${bereichBlocks}
 
 <footer>
   <span>${e(proj.name)} · automatisch erzeugt</span>
   <span>${stand}</span>
 </footer>
 </div>
+<scr`+`ipt>setTimeout(function(){window.print();},350);</scr`+`ipt>
 </body></html>`;
 }
-function downloadProjReport(){
+function printProjReport(){
   const proj=PROJECTS.find(p=>p.id===_statusProjId); if(!proj)return;
   const html=buildProjReportHTML(proj);
-  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=`Statusbericht_${proj.name.replace(/[^\w\-]+/g,'_')}_${today()}.html`;
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),5000);
-  toast('Bericht heruntergeladen','ok');
+  const w=window.open('','_blank');
+  if(!w){toast('Popup blockiert – bitte fuer diese Seite erlauben','err',4500);return;}
+  w.document.open();w.document.write(html);w.document.close();
+  toast('PDF-Vorschau geoeffnet – im Druckdialog "Als PDF speichern" waehlen','ok',4000);
 }
 
 async function copyProjStatus(){
@@ -1731,23 +1787,6 @@ async function copyProjStatus(){
   try{await navigator.clipboard.writeText(text);toast('Status kopiert','ok');}
   catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);toast('Kopiert','ok');}
 }
-async function sendProjStatusWebhook(){
-  const proj=PROJECTS.find(p=>p.id===_statusProjId); if(!proj)return;
-  if(!SETTINGS.webhook){goSettings();toast('Bitte zuerst Power-Automate-URL in Einstellungen','err',4000);return;}
-  const s=buildProjStatus(proj);
-  const text=projStatusToText(proj);
-  await fireWebhook('proj_status',{
-    betreff:'KPC-Status: '+proj.name,
-    projekt:proj.name, liefertermin:proj.liefertermin||'',
-    progress:s.progress, geliefert:s.geliefert, aktiv:s.aktiv,
-    zuBestellen:s.zubest, abOffen:s.aboffen, inLieferung:s.inLieferung,
-    abUeberfaellig:s.abUeberf.length, reklamation:s.reklam,
-    lieferanten:s.liefList.map(g=>({lief:g.lief,offen:g.offen,bestellt:g.bestellt,geliefert:g.geliefert,abFehlt:g.abFehlt})),
-    abrufeNaechste7Tage:s.abrufe7.map(o=>({pos:o.p.pos,bez:o.p.bez,tageBis:o.d,lieferant:o.p.lieferant||o.p.fabrikat||''})),
-    textreport:text
-  });
-}
-
 // ── PROJEKT-DETAIL ──────────────────────────────────────────────────────
 function openProject(id){
   CUR=PROJECTS.find(p=>p.id===id);if(!CUR)return;
