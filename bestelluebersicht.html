@@ -93,6 +93,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard.s-green::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#1e8a4a;}
 .pcard h3{font-size:16px;font-weight:700;color:#1c1c1e;letter-spacing:-.2px;margin-bottom:4px;}
 .pcard .psub{font-size:11.5px;color:rgba(28,28,30,.55);font-weight:500;}
+.pcard .plast{font-size:10.5px;color:rgba(28,28,30,.5);font-weight:500;margin-top:2px;display:flex;align-items:center;gap:4px;}
 .pcard .pstats{display:flex;gap:12px;margin-top:10px;font-size:11px;font-weight:600;}
 .pcard .pst{display:flex;align-items:center;gap:4px;}
 .pcard .pst .dot{width:7px;height:7px;border-radius:50%;}
@@ -145,6 +146,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ptbtn.sel-on{background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border-color:transparent;}
 
 .cockpit{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.dlast{font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:10px;padding:6px 10px;background:rgba(26,95,122,.06);border-radius:8px;border-left:2px solid rgba(26,95,122,.3);}
+.dlast:empty{display:none;}
 .kpi{background:rgba(255,255,255,.7);border:.5px solid rgba(0,0,0,.06);border-radius:12px;
   padding:10px 8px;cursor:pointer;text-align:left;font-family:inherit;transition:all .15s;}
 .kpi:active{transform:scale(.97);}
@@ -217,6 +220,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ck.on.st-gel{background:linear-gradient(135deg,#1e8a4a,#34c759);box-shadow:0 3px 10px rgba(52,199,89,.35);}
 .ck.on.st-ab{background:linear-gradient(135deg,#0f7b8a,#13a0b0);box-shadow:0 3px 10px rgba(19,160,176,.35);}
 .cki{font-size:12px;line-height:1;}
+/* Inline-Meta neben aktiver Checkbox: wer hat angeklickt (Name · TT.MM) */
+.ckm{display:inline-block;margin-left:5px;padding:1px 5px;border-radius:8px;background:rgba(255,255,255,.22);font-size:9.5px;font-weight:600;letter-spacing:.2px;opacity:.95;line-height:1.3;white-space:nowrap;}
+.ck:not(.on) .ckm{background:rgba(0,0,0,.05);color:rgba(28,28,30,.55);}
 .ab-ok{margin-top:6px;padding:5px 10px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(19,160,176,.10);color:#0a6b78;border:.5px solid rgba(19,160,176,.22);}
 .fbtn-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
 .fbtn{flex:1;min-width:120px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 10px;border-radius:8px;border:.5px dashed rgba(107,80,64,.35);background:rgba(255,255,255,.55);color:rgba(45,41,38,.7);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.1;transition:all .15s ease;}
@@ -615,6 +621,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <input type="date" id="dTermin" onchange="updProjTermin()">
     </div>
   </div>
+  <div id="dLastEdit" class="dlast"></div>
   <div class="cockpit" id="dCockpit"></div>
   <div class="chipbar" id="dChips"></div>
   <div class="ptools">
@@ -1236,8 +1243,11 @@ function istBestellt(p){return p.quelle==='bestellt';}
 // Abgerufen/Geliefert sind Unterzustaende von bestellt
 function istAbgerufen(p){return istBestellt(p)&&p.status==='abgerufen';}
 function istGeliefert(p){return istBestellt(p)&&p.status==='geliefert';}
-// Bestellt, aber noch nicht abgerufen und noch nicht geliefert → wartet auf Abruf
-function wartetAufAbruf(p){return istBestellt(p)&&p.status!=='abgerufen'&&p.status!=='geliefert';}
+// Bestellt, aber noch nicht abgerufen und noch nicht geliefert → wartet auf Abruf.
+// STRIKT: status muss 'bestellt' sein. Eine Position, die nur als 'Bestellware' (quelle)
+// markiert ist aber status='offen' hat, ist faktisch noch nicht bestellt und darf nicht
+// im Abrufplan landen.
+function wartetAufAbruf(p){return istBestellt(p)&&p.status==='bestellt';}
 // Zentrale Definition: Welche Positionen MUESSEN jetzt abgerufen werden?
 // Strikt: muss bestellt sein (sonst kann man gar nicht abrufen) UND noch nicht
 // abgerufen/geliefert UND Abruftermin ist heute oder ueberfaellig.
@@ -1403,6 +1413,33 @@ function fmtAuditTime(iso){
   const d=new Date(iso);
   return d.toLocaleDateString('de-DE')+' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
 }
+function fmtAuditShort(iso){
+  const d=new Date(iso);
+  return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});
+}
+// Pro angeclickter Checkbox merken WANN sie zuletzt eingeschaltet wurde + von wem
+function recordCheck(p,key){
+  if(!p.checkMeta)p.checkMeta={};
+  p.checkMeta[key]={at:new Date().toISOString(),user:EDITOR||'?'};
+}
+function checkMeta(p,key){return p.checkMeta&&p.checkMeta[key];}
+// Tooltip-Text fuer eine Checkbox, basierend auf dem Meta-Eintrag
+function checkTip(p,key,labelOn){
+  const m=checkMeta(p,key);
+  if(!m)return '';
+  return `${labelOn||'Gesetzt'} von ${m.user} am ${fmtAuditTime(m.at)}`;
+}
+// Mini-Anzeige unter aktiver Checkbox (Name · Datum kurz)
+function checkInline(p,key,active){
+  if(!active)return '';
+  const m=checkMeta(p,key); if(!m)return '';
+  return `<span class="ckm" title="${escA('von '+m.user+' am '+fmtAuditTime(m.at))}">${esc(m.user)} · ${esc(fmtAuditShort(m.at))}</span>`;
+}
+// Wer hat zuletzt im Projekt gearbeitet? Wird bei jeder Aenderung aktualisiert.
+function touchProject(proj){
+  if(!proj||!EDITOR)return;
+  proj.lastEdit={at:new Date().toISOString(),user:EDITOR};
+}
 function openAuditModal(idx){
   const p=CUR.positionen[idx];
   const log=p.audit||[];
@@ -1506,8 +1543,11 @@ function renderHome(){
     const cls=(red>0||abrufUeberf>0)?'s-red':amb>0?'s-amber':gel===tot&&tot>0?'s-green':'';
     const d=document.createElement('div');d.className='pcard '+cls;
     d.onclick=()=>openProject(proj.id);
+    const le=proj.lastEdit;
+    const leTxt=le?`<div class="plast" title="${escA('Zuletzt bearbeitet von '+le.user+' am '+fmtAuditTime(le.at))}">✎ ${esc(le.user)} · ${esc(fmtAuditTime(le.at))}</div>`:'';
     d.innerHTML=`<h3>${esc(proj.name)}</h3>
       <div class="psub">${tot} Positionen${proj.liefertermin?' · Liefertermin: '+fmtD(proj.liefertermin):''}</div>
+      ${leTxt}
       <div class="pstats">
         ${abrufUeberf?`<span class="pst st-r"><span class="dot"></span>${abrufUeberf} Abruf überfällig</span>`:''}
         ${red&&!abrufUeberf?`<span class="pst st-r"><span class="dot"></span>${red} überfällig</span>`:''}
@@ -2343,6 +2383,10 @@ async function copyTvMail(which){
 
 function renderDetail(){
   if(!CUR)return;
+  // Zuletzt-bearbeitet-Anzeige
+  const le=CUR.lastEdit;
+  const leEl=document.getElementById('dLastEdit');
+  if(leEl)leEl.innerHTML=le?`✎ Zuletzt bearbeitet: <strong>${esc(le.user)}</strong> · ${esc(fmtAuditTime(le.at))}`:'';
   // Cockpit
   const cp=document.getElementById('dCockpit');
   const red=CUR.positionen.filter(p=>severity(p,CUR)==='red').length;
@@ -2419,18 +2463,23 @@ function renderDetail(){
       <button class="posdel" onclick="delPos(${idx})" title="Position löschen">✕</button>
     </div>${wt}`;
     
-    // Quelle (immer)
+    // Quelle (immer) – jede aktive Checkbox zeigt zusaetzlich Bearbeiter+Datum als Tooltip + Inline-Meta
+    const tipQB=checkTip(p,'quelle:bestellt','Bestellt gesetzt');
+    const tipQL=checkTip(p,'quelle:lager','Lagerware gesetzt');
     html+=`<div class="crow">
-      <div class="ck q-best${p.quelle==='bestellt'?' on':''}" onclick="setF(${idx},'quelle','bestellt')"><span class="cki">${p.quelle==='bestellt'?'✓':'○'}</span>Bestellt</div>
-      <div class="ck q-lager${p.quelle==='lager'?' on':''}" onclick="setF(${idx},'quelle','lager')"><span class="cki">${p.quelle==='lager'?'✓':'○'}</span>Lagerware</div>`;
-    // Nur bei BESTELLT: Lieferort + voller Status. Bei LAGER: nichts davon (nur Komm-Nr + Lager-Abruf)
+      <div class="ck q-best${p.quelle==='bestellt'?' on':''}" onclick="setF(${idx},'quelle','bestellt')" title="${escA(tipQB)}"><span class="cki">${p.quelle==='bestellt'?'✓':'○'}</span>Bestellt${checkInline(p,'quelle:bestellt',p.quelle==='bestellt')}</div>
+      <div class="ck q-lager${p.quelle==='lager'?' on':''}" onclick="setF(${idx},'quelle','lager')" title="${escA(tipQL)}"><span class="cki">${p.quelle==='lager'?'✓':'○'}</span>Lagerware${checkInline(p,'quelle:lager',p.quelle==='lager')}</div>`;
     if(p.quelle==='bestellt'){
-      html+=`<div class="ck p-bs${p.lieferort==='baustelle'?' on':''}" onclick="setF(${idx},'lieferort','baustelle')"><span class="cki">${p.lieferort==='baustelle'?'✓':'○'}</span>Baustelle</div>
-        <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager</div>`;
-      html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen</div>`;
-      html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert</div>`;
-      // Auftragsbestätigung – Klick oeffnet Datei-Picker; wenn bereits bestaetigt, kann zurueckgesetzt werden
-      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="${p.abBestaetigt?'toggleAB('+idx+')':'pickAb('+idx+')'}" title="${p.abBestaetigt?'Klicken zum Zuruecksetzen':'Klicken zum AB-PDF anhaengen'}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung</div>`;
+      const tipBS=checkTip(p,'lieferort:baustelle','Baustelle gewählt');
+      const tipLG=checkTip(p,'lieferort:lager','Lager gewählt');
+      const tipAbg=checkTip(p,'status:abgerufen','Abgerufen markiert');
+      const tipGel=checkTip(p,'status:geliefert','Geliefert markiert');
+      const tipAB=checkTip(p,'abBestaetigt','AB bestätigt');
+      html+=`<div class="ck p-bs${p.lieferort==='baustelle'?' on':''}" onclick="setF(${idx},'lieferort','baustelle')" title="${escA(tipBS)}"><span class="cki">${p.lieferort==='baustelle'?'✓':'○'}</span>Baustelle${checkInline(p,'lieferort:baustelle',p.lieferort==='baustelle')}</div>
+        <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')" title="${escA(tipLG)}"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager${checkInline(p,'lieferort:lager',p.lieferort==='lager')}</div>`;
+      html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')" title="${escA(tipAbg)}"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen${checkInline(p,'status:abgerufen',p.status==='abgerufen')}</div>`;
+      html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')" title="${escA(tipGel)}"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert${checkInline(p,'status:geliefert',p.status==='geliefert')}</div>`;
+      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="${p.abBestaetigt?'toggleAB('+idx+')':'pickAb('+idx+')'}" title="${escA(p.abBestaetigt?tipAB||'Klicken zum Zuruecksetzen':'Klicken zum AB-PDF anhaengen')}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung${checkInline(p,'abBestaetigt',p.abBestaetigt)}</div>`;
     }
     html+=`</div>`;
     // AB-Statuszeile + Drop-Zone: bei jeder Bestellware verfuegbar (unabhaengig vom Status)
@@ -2590,12 +2639,23 @@ async function setF(idx,field,val){
     }
     if(p.status==='bestellt'&&!p.bestelltAm)p.bestelltAm=today();
   }
-  // Audit-Trail
+  // Audit-Trail + Checkbox-Metadaten (welche Box wurde gerade EINGESCHALTET)
   const labelQ=v=>v==='bestellt'?'Bestellt':v==='lager'?'Lagerware':v==='bauseits'?'bauseits':v==='dienstleistung'?'Dienstleistung':v==='entfaellt'?'entfällt':(v||'offen');
   const labelS=v=>v==='bestellt'?'Bestellt':v==='abgerufen'?'Abgerufen':v==='geliefert'?'Geliefert':(v||'offen');
-  if(field==='quelle'&&prevQuelle!==p.quelle)logAction(p,`Quelle: ${labelQ(prevQuelle)} → ${labelQ(p.quelle)}`);
-  if(field==='lieferort'&&prevLieferort!==p.lieferort)logAction(p,`Lieferort: ${prevLieferort||'-'} → ${p.lieferort||'-'}`);
-  if(prevStatus!==p.status)logAction(p,`Status: ${labelS(prevStatus)} → ${labelS(p.status)}`);
+  if(field==='quelle'&&prevQuelle!==p.quelle){
+    logAction(p,`Quelle: ${labelQ(prevQuelle)} → ${labelQ(p.quelle)}`);
+    if(p.quelle)recordCheck(p,'quelle:'+p.quelle);
+    if(p.quelle==='bestellt'&&p.status==='bestellt'&&prevStatus!=='bestellt')recordCheck(p,'status:bestellt');
+  }
+  if(field==='lieferort'&&prevLieferort!==p.lieferort){
+    logAction(p,`Lieferort: ${prevLieferort||'-'} → ${p.lieferort||'-'}`);
+    if(p.lieferort)recordCheck(p,'lieferort:'+p.lieferort);
+  }
+  if(field==='status'&&prevStatus!==p.status){
+    logAction(p,`Status: ${labelS(prevStatus)} → ${labelS(p.status)}`);
+    if(p.status&&p.status!=='offen')recordCheck(p,'status:'+p.status);
+  }
+  touchProject(CUR);
   await saveCur();renderDetail();updateGlobalCounters();updateABBanner();
 }
 // Stoppt den Vorgang wenn niemand angemeldet ist – verhindert anonyme Eintraege im Audit-Trail
@@ -2613,14 +2673,24 @@ function updateGlobalCounters(){
 }
 // Auftragsbestätigung einer Position umschalten
 async function toggleAB(idx){
+  if(!requireLogin())return;
   const p=CUR.positionen[idx];
   p.abBestaetigt=!p.abBestaetigt;
-  if(p.abBestaetigt){p.abAm=today();p.abErinnertAm='';}
+  if(p.abBestaetigt){p.abAm=today();p.abErinnertAm='';recordCheck(p,'abBestaetigt');}
   else p.abAm='';
+  logAction(p,p.abBestaetigt?'AB bestätigt':'AB zurückgesetzt');
+  touchProject(CUR);
   await saveCur();renderDetail();updateABBanner();
   toast(p.abBestaetigt?'Auftragsbestätigung erfasst ✓':'Auftragsbestätigung zurückgesetzt','ok');
 }
-async function updF(idx,k,v){CUR.positionen[idx][k]=v;await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();}
+async function updF(idx,k,v){
+  const p=CUR.positionen[idx];
+  const prev=p[k];
+  p[k]=v;
+  if(prev!==v&&EDITOR)logAction(p,`${k}: ${prev||'-'} → ${v||'-'}`);
+  touchProject(CUR);
+  await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
+}
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
 
 // Tags
@@ -3197,6 +3267,9 @@ async function confirmLs(){
   if(kommNr)det.push('Komm-Nr '+kommNr);
   logAction(p,det.join(' · '));
   if(prevStatus!=='geliefert')logAction(p,'Status: '+(prevStatus||'offen')+' → Geliefert');
+  recordCheck(p,'status:geliefert');
+  recordCheck(p,'quelle:bestellt');
+  touchProject(CUR);
   await saveCur();
   closeLsModal();
   renderDetail();updateGlobalCounters();
@@ -3220,6 +3293,7 @@ async function delLs(idx){
     await dbDel('lieferscheine',p.lieferschein.id);p.lieferschein=null;
     logAction(p,`Lieferschein entfernt: ${fn}`);
   }
+  touchProject(CUR);
   await saveCur();renderDetail();toast('Lieferschein entfernt','ok');
 }
 
@@ -3277,7 +3351,11 @@ async function handleAbFile(idx,file){
   p.abBestaetigt=true;
   if(!p.abAm)p.abAm=datum||today();
   p.abErinnertAm='';
+  recordCheck(p,'abBestaetigt');
+  recordCheck(p,'quelle:bestellt');
+  if(p.status==='bestellt')recordCheck(p,'status:bestellt');
   logAction(p,`AB angehängt: ${file.name}${datum?' (Datum '+datum+')':''}`);
+  touchProject(CUR);
   await saveCur();renderDetail();updateABBanner();updateGlobalCounters();
   toast('Auftragsbestätigung erfasst ✓','ok');
 }
@@ -3299,6 +3377,7 @@ async function delAb(idx){
     try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}p.abDoc=null;
     logAction(p,`AB entfernt: ${fn}`);
   }
+  touchProject(CUR);
   await saveCur();renderDetail();toast('AB-Datei entfernt','ok');
 }
 
@@ -3492,6 +3571,9 @@ async function markBestellt(projId,idx){
   if(!p.bestelltAm)p.bestelltAm=today();
   if(!p.lieferant && p.fabrikat)p.lieferant=p.fabrikat;
   if(prevStatus!=='bestellt')logAction(p,'Status: '+(prevStatus||'offen')+' → Bestellt (über Zu-bestellen-Liste)');
+  recordCheck(p,'quelle:bestellt');
+  recordCheck(p,'status:bestellt');
+  touchProject(proj);
   await dbPut('projects',proj);markChanged();
   renderZuBestellen();updateABBanner();
   toast(p.pos+' als bestellt markiert','ok');
@@ -3935,6 +4017,9 @@ async function markAbgerufen(projId,idx){
   p.status='abgerufen';
   if(!p.lieferant&&p.fabrikat)p.lieferant=p.fabrikat;
   if(prevStatus!=='abgerufen')logAction(p,'Status: '+(prevStatus||'offen')+' → Abgerufen');
+  recordCheck(p,'status:abgerufen');
+  if(!checkMeta(p,'quelle:bestellt'))recordCheck(p,'quelle:bestellt');
+  touchProject(proj);
   await dbPut('projects',proj);markChanged();
   renderAbrufAnsicht();updateGlobalCounters();
   toast(p.pos+' als abgerufen markiert','ok');
