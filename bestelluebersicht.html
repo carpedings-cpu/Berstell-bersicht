@@ -2479,7 +2479,7 @@ function renderDetail(){
         <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')" title="${escA(tipLG)}"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager${checkInline(p,'lieferort:lager',p.lieferort==='lager')}</div>`;
       html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')" title="${escA(tipAbg)}"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen${checkInline(p,'status:abgerufen',p.status==='abgerufen')}</div>`;
       html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')" title="${escA(tipGel)}"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert${checkInline(p,'status:geliefert',p.status==='geliefert')}</div>`;
-      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="${p.abBestaetigt?'toggleAB('+idx+')':'pickAb('+idx+')'}" title="${escA(p.abBestaetigt?tipAB||'Klicken zum Zuruecksetzen':'Klicken zum AB-PDF anhaengen')}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung${checkInline(p,'abBestaetigt',p.abBestaetigt)}</div>`;
+      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})" title="${escA(p.abBestaetigt?(tipAB||'Klicken zum Zurücksetzen'):'Klicken um als bestätigt zu markieren – AB-Datei separat über 📄 AB anhängen')}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung${checkInline(p,'abBestaetigt',p.abBestaetigt)}</div>`;
     }
     html+=`</div>`;
     // AB-Statuszeile + Drop-Zone: bei jeder Bestellware verfuegbar (unabhaengig vom Status)
