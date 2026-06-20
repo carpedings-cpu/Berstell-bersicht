@@ -335,6 +335,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ab-item.ab-red::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#d92020,#ff4444);}
 .ab-item.ab-amber::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#c47700,#ffaa00);}
 .ab-item.ab-soon::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:rgba(28,28,30,.2);}
+.ab-item.ab-clickable{cursor:pointer;-webkit-tap-highlight-color:rgba(26,95,122,.18);touch-action:manipulation;transition:background .12s ease,transform .12s ease;}
+.ab-item.ab-clickable:hover,.ab-item.ab-clickable:active{background:rgba(255,255,255,.92);transform:translateY(-1px);}
 .ab-date{flex-shrink:0;text-align:center;min-width:62px;}
 .ab-date .ad-d{font-size:18px;font-weight:800;line-height:1;color:#1c1c1e;font-variant-numeric:tabular-nums;}
 .ab-date .ad-m{font-size:10px;font-weight:600;color:rgba(28,28,30,.5);text-transform:uppercase;margin-top:2px;}
@@ -385,9 +387,10 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-table tr.pr-sum:hover td{background:rgba(107,80,64,.10);}
 .pr-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;}
 .pr-bez{font-weight:600;color:#1c1c1e;}
-.pr-clickable{cursor:pointer;transition:background .12s ease;}
-.pr-clickable:hover{background:rgba(26,95,122,.08);}
+.pr-clickable{cursor:pointer;transition:background .12s ease;-webkit-tap-highlight-color:rgba(26,95,122,.18);touch-action:manipulation;}
+.pr-clickable:hover,.pr-clickable:active{background:rgba(26,95,122,.08);}
 .pr-clickable:hover .pr-bez{color:#0f4655;}
+.pr-clickable td{position:relative;}
 /* Hervorhebung der Karte, zu der nach einem Sprung navigiert wurde */
 @keyframes flashJump{
   0%{box-shadow:0 0 0 3px rgba(184,134,11,.65),0 8px 24px rgba(184,134,11,.35);transform:scale(1.015);}
@@ -2304,23 +2307,32 @@ function openProject(id,scrollToPos){
     }
   }
   renderDetail();
-  if(scrollToPos){
-    // Nach dem Rendern: zur Position scrollen + kurz hervorheben
-    requestAnimationFrame(()=>{
-      const idx=CUR.positionen.findIndex(p=>String(p.pos).trim()===String(scrollToPos).trim());
-      if(idx<0)return;
-      const el=document.getElementById('C'+idx);
-      if(!el)return;
-      el.scrollIntoView({behavior:'smooth',block:'center'});
-      el.classList.add('flash-jump');
-      setTimeout(()=>el.classList.remove('flash-jump'),2400);
-    });
-  }
+  if(scrollToPos)scrollToCardWhenReady(scrollToPos);
 }
-// Aus der Preisansicht zu einer Position springen – Projekt anhand des Namens finden
-function jumpToProjPos(projName,pos){
-  const proj=PROJECTS.find(p=>p.name===projName);
-  if(!proj){toast('Projekt nicht gefunden: '+projName,'err');return;}
+// Robustes Scroll-und-Highlight: wartet bis renderDetail die Karte ins DOM gepackt hat,
+// versucht es bis zu 20x mit 50 ms Pause. Wichtig fuer iPad/Safari, wo
+// requestAnimationFrame direkt nach showView() noch ein leeres DOM sieht.
+function scrollToCardWhenReady(scrollToPos,tries){
+  tries=tries||0;
+  if(tries>20)return; // ~1 Sek, dann aufgeben
+  const idx=CUR?CUR.positionen.findIndex(p=>String(p.pos).trim()===String(scrollToPos).trim()):-1;
+  if(idx<0)return;
+  const el=document.getElementById('C'+idx);
+  if(!el){setTimeout(()=>scrollToCardWhenReady(scrollToPos,tries+1),50);return;}
+  // Sticky Header beruecksichtigen: ca. 110 px Versatz
+  const rect=el.getBoundingClientRect();
+  const y=window.pageYOffset+rect.top-110;
+  // iOS Safari unterstuetzt 'behavior:smooth' nicht zuverlaessig – window.scrollTo geht immer
+  try{window.scrollTo({top:y,behavior:'smooth'});}catch(e){window.scrollTo(0,y);}
+  el.classList.remove('flash-jump');
+  void el.offsetWidth; // Reflow erzwingen, damit die Animation neu startet
+  el.classList.add('flash-jump');
+  setTimeout(()=>el.classList.remove('flash-jump'),2400);
+}
+// Aus Preis-/Abruf-Liste zu einer Position springen – Projekt anhand Name oder ID
+function jumpToProjPos(projNameOrId,pos){
+  const proj=PROJECTS.find(p=>p.id===projNameOrId)||PROJECTS.find(p=>p.name===projNameOrId);
+  if(!proj){toast('Projekt nicht gefunden','err');return;}
   openProject(proj.id,pos);
 }
 
@@ -4073,7 +4085,9 @@ function renderAbrufAnsicht(){
     const dt=new Date(it.abrufBis);
     const cls=d<0?'ab-red':d<=1?'ab-amber':d<=7?'ab-soon':'';
     const badge=d<0?`<div class="ad-badge red">${-d}T über</div>`:d<=1?`<div class="ad-badge amber">${d===0?'heute':'morgen'}</div>`:'';
-    html+=`<div class="ab-item ${cls}">
+    // Klick auf die Karte (ausser auf den Abgerufen-Button) springt zur Position im Projekt
+    const jump=`jumpToProjPos('${escA(it.projId)}','${escA(it.p.pos)}')`;
+    html+=`<div class="ab-item ab-clickable ${cls}" onclick="${jump}" title="${escA('Zu Position '+it.p.pos+' in '+it.projName+' springen')}">
       <div class="ab-date">
         <div class="ad-d">${dt.getDate()}</div>
         <div class="ad-m">${dt.toLocaleDateString('de-DE',{month:'short'})}</div>
@@ -4083,7 +4097,7 @@ function renderAbrufAnsicht(){
         <div class="ab-bez">${esc(it.p.pos)} · ${esc(it.p.bez)}</div>
         <div class="ab-meta"><span class="ab-lief">🏭 ${esc(it.lieferant)}</span> · 📁 ${esc(it.projName)} · ${esc(it.p.menge)} ${esc(it.p.einh)}${it.liefertermin?' · Liefer: '+fmtD(it.liefertermin):''}</div>
       </div>
-      <button class="ab-mark" onclick="markAbgerufen('${it.projId}',${it.idx})">✓ Abgerufen</button>
+      <button class="ab-mark" onclick="event.stopPropagation();markAbgerufen('${it.projId}',${it.idx})">✓ Abgerufen</button>
     </div>`;
   });
   wrap.innerHTML=html;
