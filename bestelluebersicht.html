@@ -385,6 +385,15 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-table tr.pr-sum:hover td{background:rgba(107,80,64,.10);}
 .pr-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;}
 .pr-bez{font-weight:600;color:#1c1c1e;}
+.pr-clickable{cursor:pointer;transition:background .12s ease;}
+.pr-clickable:hover{background:rgba(26,95,122,.08);}
+.pr-clickable:hover .pr-bez{color:#0f4655;}
+/* Hervorhebung der Karte, zu der nach einem Sprung navigiert wurde */
+@keyframes flashJump{
+  0%{box-shadow:0 0 0 3px rgba(184,134,11,.65),0 8px 24px rgba(184,134,11,.35);transform:scale(1.015);}
+  100%{box-shadow:none;transform:scale(1);}
+}
+.flash-jump{animation:flashJump 2.4s ease-out;}
 .pr-typ{font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px;}
 .pr-proj{display:inline-block;padding:2px 7px;background:rgba(200,168,130,.18);border-radius:5px;font-size:10.5px;font-weight:600;color:#6b5040;white-space:nowrap;}
 .pr-ek,.pr-vk{font-variant-numeric:tabular-nums;font-weight:600;text-align:right;white-space:nowrap;}
@@ -2277,13 +2286,42 @@ async function copyProjStatus(){
   catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);toast('Kopiert','ok');}
 }
 // ── PROJEKT-DETAIL ──────────────────────────────────────────────────────
-function openProject(id){
+function openProject(id,scrollToPos){
   CUR=PROJECTS.find(p=>p.id===id);if(!CUR)return;
   SEL.clear();SEL_MODE=false;
   document.getElementById('dTitle').textContent=CUR.name;
   document.getElementById('dTermin').value=CUR.liefertermin||'';
   showView('vDetail');
+  // Bei Sprung zu bestimmter Position: Filter zuruecksetzen + Bereich aufklappen, damit die Karte sichtbar ist
+  if(scrollToPos){
+    DFILTER='';
+    const targetIdx=CUR.positionen.findIndex(p=>String(p.pos).trim()===String(scrollToPos).trim());
+    if(targetIdx>=0){
+      const targetBereich=CUR.positionen[targetIdx].bereich||'_';
+      if(Array.isArray(CUR.collapsedBereiche)){
+        CUR.collapsedBereiche=CUR.collapsedBereiche.filter(k=>k!==targetBereich);
+      }
+    }
+  }
   renderDetail();
+  if(scrollToPos){
+    // Nach dem Rendern: zur Position scrollen + kurz hervorheben
+    requestAnimationFrame(()=>{
+      const idx=CUR.positionen.findIndex(p=>String(p.pos).trim()===String(scrollToPos).trim());
+      if(idx<0)return;
+      const el=document.getElementById('C'+idx);
+      if(!el)return;
+      el.scrollIntoView({behavior:'smooth',block:'center'});
+      el.classList.add('flash-jump');
+      setTimeout(()=>el.classList.remove('flash-jump'),2400);
+    });
+  }
+}
+// Aus der Preisansicht zu einer Position springen – Projekt anhand des Namens finden
+function jumpToProjPos(projName,pos){
+  const proj=PROJECTS.find(p=>p.name===projName);
+  if(!proj){toast('Projekt nicht gefunden: '+projName,'err');return;}
+  openProject(proj.id,pos);
 }
 
 async function updProjTermin(){
@@ -3903,7 +3941,10 @@ function renderPreise(){
     const rows=g.items.map(it=>{
       const marge=it.vk>0?((it.vk-it.ek)/it.vk*100):0;
       const lDat=it.termin?new Date(it.termin).toLocaleDateString('de-DE'):'';
-      return `<tr>
+      // Klick auf Zeile → springt zur Position im Projekt
+      const onclick=`jumpToProjPos('${escA(it.proj)}','${escA(it.pos)}')`;
+      const tip=escA('Springe zu Position '+it.pos+' in '+it.proj);
+      return `<tr class="pr-clickable" onclick="${onclick}" title="${tip}">
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
         <td><div class="pr-bez">${esc(it.bez)}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}</td>
         <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
