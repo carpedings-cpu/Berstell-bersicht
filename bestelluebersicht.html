@@ -1365,7 +1365,9 @@ function initEditor(){
 }
 function updateEditorBadge(){
   const el=document.getElementById('editorName');
-  if(el)el.textContent=EDITOR||'Anmelden';
+  const btn=document.getElementById('editorBadge');
+  if(el)el.textContent=EDITOR?editorShort(EDITOR):'?';
+  if(btn)btn.title=EDITOR?('Angemeldet als '+EDITOR+' · Klick zum Wechseln'):'Bearbeiter anmelden';
 }
 function openLogin(){
   const names=SETTINGS.editors||[];
@@ -1424,6 +1426,16 @@ function fmtAuditShort(iso){
   const d=new Date(iso);
   return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});
 }
+// Kuerzel fuer den Bearbeiter (Initialen). Bei Vor+Nachname zwei Buchstaben.
+// Wenn beide Bearbeiterinnen denselben Anfangsbuchstaben haben, auch zwei Buchstaben.
+function editorShort(name){
+  if(!name)return '?';
+  const parts=String(name).trim().split(/\s+/);
+  if(parts.length>=2&&parts[0][0]&&parts[1][0])return (parts[0][0]+parts[1][0]).toUpperCase();
+  const others=(SETTINGS.editors||[]).filter(n=>n&&n!==name);
+  if(others.some(o=>o[0]&&o[0].toLowerCase()===name[0].toLowerCase()))return name.slice(0,2).toUpperCase();
+  return name[0].toUpperCase();
+}
 // Pro angeclickter Checkbox merken WANN sie zuletzt eingeschaltet wurde + von wem
 function recordCheck(p,key){
   if(!p.checkMeta)p.checkMeta={};
@@ -1440,7 +1452,7 @@ function checkTip(p,key,labelOn){
 function checkInline(p,key,active){
   if(!active)return '';
   const m=checkMeta(p,key); if(!m)return '';
-  return `<span class="ckm" title="${escA('von '+m.user+' am '+fmtAuditTime(m.at))}">${esc(m.user)} · ${esc(fmtAuditShort(m.at))}</span>`;
+  return `<span class="ckm" title="${escA('von '+m.user+' am '+fmtAuditTime(m.at))}">${esc(editorShort(m.user))} · ${esc(fmtAuditShort(m.at))}</span>`;
 }
 // Wer hat zuletzt im Projekt gearbeitet? Wird bei jeder Aenderung aktualisiert.
 function touchProject(proj){
@@ -1548,7 +1560,7 @@ function renderHome(){
     const d=document.createElement('div');d.className='pcard '+cls;
     d.onclick=()=>openProject(proj.id);
     const le=proj.lastEdit;
-    const leTxt=le?`<div class="plast" title="${escA('Zuletzt bearbeitet von '+le.user+' am '+fmtAuditTime(le.at))}">✎ ${esc(le.user)} · ${esc(fmtAuditTime(le.at))}</div>`:'';
+    const leTxt=le?`<div class="plast" title="${escA('Zuletzt bearbeitet von '+le.user+' am '+fmtAuditTime(le.at))}">✎ ${esc(editorShort(le.user))} · ${esc(fmtAuditTime(le.at))}</div>`:'';
     d.innerHTML=`<h3>${esc(proj.name)}</h3>
       <div class="psub">${tot} Positionen${proj.liefertermin?' · Liefertermin: '+fmtD(proj.liefertermin):''}</div>
       ${leTxt}
@@ -2428,7 +2440,7 @@ function renderDetail(){
   // Zuletzt-bearbeitet-Anzeige
   const le=CUR.lastEdit;
   const leEl=document.getElementById('dLastEdit');
-  if(leEl)leEl.innerHTML=le?`✎ Zuletzt bearbeitet: <strong>${esc(le.user)}</strong> · ${esc(fmtAuditTime(le.at))}`:'';
+  if(leEl)leEl.innerHTML=le?`✎ Zuletzt bearbeitet: <strong title="${escA(le.user)}">${esc(editorShort(le.user))}</strong> · ${esc(fmtAuditTime(le.at))}`:'';
   // Cockpit
   const cp=document.getElementById('dCockpit');
   const red=CUR.positionen.filter(p=>severity(p,CUR)==='red').length;
