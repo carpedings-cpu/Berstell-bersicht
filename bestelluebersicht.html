@@ -421,6 +421,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .zb-grpcopy:active,.zb-grpall:active{transform:scale(.95);}
 .zb-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:.5px solid rgba(0,0,0,.05);}
 .zb-item:last-child{border-bottom:none;}
+.zb-item.zb-clickable{cursor:pointer;-webkit-tap-highlight-color:rgba(184,134,11,.18);touch-action:manipulation;transition:background .12s ease;}
+.zb-item.zb-clickable:hover,.zb-item.zb-clickable:active{background:rgba(184,134,11,.06);}
 .zb-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:10px;font-weight:700;padding:3px 7px;border-radius:5px;white-space:nowrap;flex-shrink:0;}
 .zb-bez{flex:1;min-width:0;font-size:12.5px;}
 .zb-menge{font-size:12px;font-weight:700;color:#6b5040;white-space:nowrap;flex-shrink:0;}
@@ -3617,14 +3619,16 @@ function renderZuBestellen(){
     const rows=g.items.map(it=>{
       const t=it.p.abrufTermin||it.projTermin||'';
       const termInfo=t?` · 📅 ${fmtD(t)}`:'';
-      return `<div class="zb-item">
+      // Klick auf die Zeile (ausser auf 'Bestellen') springt zur Position im Projekt
+      const jump=`jumpToProjPos('${escA(it.projId)}','${escA(it.p.pos)}')`;
+      return `<div class="zb-item zb-clickable" onclick="${jump}" title="${escA('Zu Position '+it.p.pos+' in '+it.projName+' springen')}">
         <div class="zb-pos">${esc(it.p.pos)}</div>
         <div class="zb-bez">
           <div style="font-weight:600">${esc(it.p.bez)}</div>
           <div style="font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px">📁 ${esc(it.projName)}${termInfo}</div>
         </div>
         <div class="zb-menge">${esc(it.p.menge)} ${esc(it.p.einh)}</div>
-        <button class="zb-mark" onclick="markBestellt('${it.projId}',${it.idx})">📦 Bestellen</button>
+        <button class="zb-mark" onclick="event.stopPropagation();markBestellt('${it.projId}',${it.idx})">📦 Bestellen</button>
       </div>`;
     }).join('');
     const key=normLief(g.lief)||'_';
