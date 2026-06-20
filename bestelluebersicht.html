@@ -3930,7 +3930,17 @@ function renderPreise(){
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
   const hasData=PREISE_DATA.length>0;
-  let items=PREISE_DATA.slice();
+  // Bestellte und entfallene Positionen aus dem Preisvergleich raus – die Preise sind dann
+  // irrelevant (Bestellung ist raus bzw. die Position kommt gar nicht mehr).
+  let items=PREISE_DATA.filter(it=>{
+    const proj=PROJECTS.find(p=>p.name===it.proj);
+    if(!proj)return true;
+    const pos=proj.positionen.find(p=>String(p.pos).trim()===String(it.pos).trim());
+    if(!pos)return true;
+    if(istBestellt(pos))return false;
+    if(istEntfallen(pos))return false;
+    return true;
+  });
   if(q){
     // Sucht primaer ueber den Lieferanten (mit Normalisierung – "cool" findet Cool Compact / CoolCompact,
     // aber nicht WMF, auch wenn 'cool' in Bezeichnung steht). Faellt auf Volltext zurueck, wenn kein Lieferant matched.
