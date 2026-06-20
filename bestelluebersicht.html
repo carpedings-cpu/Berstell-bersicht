@@ -2544,23 +2544,34 @@ function renderDetail(){
       <button class="posdel" onclick="delPos(${idx})" title="Position löschen">✕</button>
     </div>${wt}`;
     
-    // Quelle (immer) – jede aktive Checkbox zeigt zusaetzlich Bearbeiter+Datum als Tooltip + Inline-Meta
+    // Checkboxen – exklusive Paare zeigen NUR die gewaehlte Option, sobald eine
+    // gesetzt ist. Klick auf die aktive Box hebt die Wahl auf, dann erscheinen
+    // beide Optionen wieder. Das raeumt die Karte deutlich auf.
     const tipQB=checkTip(p,'quelle:bestellt','Bestellt gesetzt');
     const tipQL=checkTip(p,'quelle:lager','Lagerware gesetzt');
-    html+=`<div class="crow">
-      <div class="ck q-best${p.quelle==='bestellt'?' on':''}" onclick="setF(${idx},'quelle','bestellt')" title="${escA(tipQB)}"><span class="cki">${p.quelle==='bestellt'?'✓':'○'}</span>Bestellt${checkInline(p,'quelle:bestellt',p.quelle==='bestellt')}</div>
-      <div class="ck q-lager${p.quelle==='lager'?' on':''}" onclick="setF(${idx},'quelle','lager')" title="${escA(tipQL)}"><span class="cki">${p.quelle==='lager'?'✓':'○'}</span>Lagerware${checkInline(p,'quelle:lager',p.quelle==='lager')}</div>`;
+    const hintReset='Klick zum Aufheben';
+    html+=`<div class="crow">`;
+    // Quelle: Bestellt vs. Lagerware (exklusiv)
+    if(!p.quelle || p.quelle==='bestellt')
+      html+=`<div class="ck q-best${p.quelle==='bestellt'?' on':''}" onclick="setF(${idx},'quelle','bestellt')" title="${escA(p.quelle==='bestellt'?(tipQB?tipQB+' · ':'')+hintReset:'Als Bestellware markieren')}"><span class="cki">${p.quelle==='bestellt'?'✓':'○'}</span>Bestellt${checkInline(p,'quelle:bestellt',p.quelle==='bestellt')}</div>`;
+    if(!p.quelle || p.quelle==='lager')
+      html+=`<div class="ck q-lager${p.quelle==='lager'?' on':''}" onclick="setF(${idx},'quelle','lager')" title="${escA(p.quelle==='lager'?(tipQL?tipQL+' · ':'')+hintReset:'Als Lagerware markieren')}"><span class="cki">${p.quelle==='lager'?'✓':'○'}</span>Lagerware${checkInline(p,'quelle:lager',p.quelle==='lager')}</div>`;
     if(p.quelle==='bestellt'){
       const tipBS=checkTip(p,'lieferort:baustelle','Baustelle gewählt');
       const tipLG=checkTip(p,'lieferort:lager','Lager gewählt');
       const tipAbg=checkTip(p,'status:abgerufen','Abgerufen markiert');
       const tipGel=checkTip(p,'status:geliefert','Geliefert markiert');
       const tipAB=checkTip(p,'abBestaetigt','AB bestätigt');
-      html+=`<div class="ck p-bs${p.lieferort==='baustelle'?' on':''}" onclick="setF(${idx},'lieferort','baustelle')" title="${escA(tipBS)}"><span class="cki">${p.lieferort==='baustelle'?'✓':'○'}</span>Baustelle${checkInline(p,'lieferort:baustelle',p.lieferort==='baustelle')}</div>
-        <div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')" title="${escA(tipLG)}"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager${checkInline(p,'lieferort:lager',p.lieferort==='lager')}</div>`;
-      html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')" title="${escA(tipAbg)}"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen${checkInline(p,'status:abgerufen',p.status==='abgerufen')}</div>`;
-      html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')" title="${escA(tipGel)}"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert${checkInline(p,'status:geliefert',p.status==='geliefert')}</div>`;
-      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})" title="${escA(p.abBestaetigt?(tipAB||'Klicken zum Zurücksetzen'):'Klicken um als bestätigt zu markieren – AB-Datei separat über 📄 AB anhängen')}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung${checkInline(p,'abBestaetigt',p.abBestaetigt)}</div>`;
+      // Lieferort: Baustelle vs. Lager (exklusiv)
+      if(!p.lieferort || p.lieferort==='baustelle')
+        html+=`<div class="ck p-bs${p.lieferort==='baustelle'?' on':''}" onclick="setF(${idx},'lieferort','baustelle')" title="${escA(p.lieferort==='baustelle'?(tipBS?tipBS+' · ':'')+hintReset:'Lieferort Baustelle')}"><span class="cki">${p.lieferort==='baustelle'?'✓':'○'}</span>Baustelle${checkInline(p,'lieferort:baustelle',p.lieferort==='baustelle')}</div>`;
+      if(!p.lieferort || p.lieferort==='lager')
+        html+=`<div class="ck p-lg${p.lieferort==='lager'?' on':''}" onclick="setF(${idx},'lieferort','lager')" title="${escA(p.lieferort==='lager'?(tipLG?tipLG+' · ':'')+hintReset:'Lieferort Lager')}"><span class="cki">${p.lieferort==='lager'?'✓':'○'}</span>Lager${checkInline(p,'lieferort:lager',p.lieferort==='lager')}</div>`;
+      // Status: Abgerufen wird ausgeblendet, sobald Geliefert gesetzt ist (impliziert)
+      if(p.status!=='geliefert')
+        html+=`<div class="ck st-abg${p.status==='abgerufen'?' on':''}" onclick="setF(${idx},'status','abgerufen')" title="${escA(p.status==='abgerufen'?(tipAbg?tipAbg+' · ':'')+hintReset:'Als abgerufen markieren')}"><span class="cki">${p.status==='abgerufen'?'✓':'○'}</span>Abgerufen${checkInline(p,'status:abgerufen',p.status==='abgerufen')}</div>`;
+      html+=`<div class="ck st-gel${p.status==='geliefert'?' on':''}" onclick="setF(${idx},'status','geliefert')" title="${escA(p.status==='geliefert'?(tipGel?tipGel+' · ':'')+hintReset:'Als geliefert markieren')}"><span class="cki">${p.status==='geliefert'?'✓':'○'}</span>Geliefert${checkInline(p,'status:geliefert',p.status==='geliefert')}</div>`;
+      html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})" title="${escA(p.abBestaetigt?(tipAB?tipAB+' · ':'')+hintReset:'AB liegt vor – ohne Datei markieren (Datei separat über 📄 AB anhängen)')}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung${checkInline(p,'abBestaetigt',p.abBestaetigt)}</div>`;
     }
     html+=`</div>`;
     // AB-Statuszeile + Drop-Zone: bei jeder Bestellware verfuegbar (unabhaengig vom Status)
