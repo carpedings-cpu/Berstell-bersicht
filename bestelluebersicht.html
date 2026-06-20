@@ -168,7 +168,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .bsec-bez{flex:1;font-size:13px;font-weight:700;color:#3c342e;letter-spacing:.2px;}
 .bsec-stats{font-size:11px;color:rgba(28,28,30,.55);font-weight:500;}
 .zb-tog{font-size:10px;width:10px;color:#c8a882;}
-.nb-badge{display:inline-block;background:rgba(120,120,128,.15);color:rgba(28,28,30,.6);font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;margin-left:8px;letter-spacing:.2px;vertical-align:middle;}
+.nb-badge{display:inline-block;background:rgba(120,120,128,.15);color:rgba(28,28,30,.6);font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;margin-left:8px;letter-spacing:.2px;vertical-align:middle;cursor:pointer;transition:background .12s ease;}
+.nb-badge:hover{background:rgba(120,120,128,.28);}
+.nb-badge .nb-fix{opacity:.65;margin-left:3px;font-size:9px;}
+.nb-badge.nb-ok{background:rgba(30,138,74,.14);color:#0f6332;}
+.nb-badge.nb-ok:hover{background:rgba(30,138,74,.24);}
 
 .fbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
 .sw{position:relative;flex:1;min-width:180px;}
@@ -1201,10 +1205,14 @@ function istBauseits(p){
   return /\bbauseit/.test(hay);
 }
 // Dienstleistung = kein Produkt (Stundenlohn, Anschluesse durch Fachgewerk, Reinigung, Montage, Anfahrt, Pauschalen).
+// WICHTIG: 'reinigung' nur als eigenstaendiges Wort oder als Praefix fuer Dienstleistungs-Komposita
+// (reinigungsarbeit/-leistung/-personal/-kraft/-firma/-service/-kosten) matchen.
+// 'Reinigungsmittel', 'Reinigungstuch', 'Lagerregal fuer Reinigungsmittel' sind PRODUKTE und
+// duerfen NICHT als Dienstleistung gewertet werden.
 function istDienstleistung(p){
   if(!p)return false;
   const hay=[p.bez,p.typ,p.fabrikat,p.lieferant,p.notiz].filter(Boolean).join(' ').toLowerCase();
-  return /\b(stundenlohn|stundensatz|stundenverr|reinigung|reinigen|dienstleistung|elektroanschluss|wasseranschluss|gasanschluss|abwasseranschluss|montagearbeit|montagestund|anfahrt|entsorgung|pauschal)/.test(hay);
+  return /\b(stundenlohn|stundensatz|stundenverr|dienstleistung|elektroanschluss|wasseranschluss|gasanschluss|abwasseranschluss|montagearbeit|montagestund|anfahrt|entsorgung|pauschal|reinigung(?:\b|s(?:arbeit|leistung|personal|kraft|firma|service|kost))|reinigen\b)/.test(hay);
 }
 // Entfallen = Position wurde gestrichen.
 function istEntfallen(p){
@@ -1212,7 +1220,12 @@ function istEntfallen(p){
   const hay=[p.bez,p.typ,p.notiz].filter(Boolean).join(' ').toLowerCase();
   return /\bentf(ae|ä)ll|\bentfall/.test(hay);
 }
-function istNichtBestellbar(p){return istBauseits(p)||istDienstleistung(p)||istEntfallen(p);}
+function istNichtBestellbar(p){
+  // Manueller Override hat Vorrang vor der automatischen Heuristik
+  if(p&&p.nbOverride==='ja')return false;   // Bearbeiter sagt: ist doch bestellbar
+  if(p&&p.nbOverride==='nein')return true;  // Bearbeiter sagt: ist nicht bestellbar
+  return istBauseits(p)||istDienstleistung(p)||istEntfallen(p);
+}
 function nichtBestellbarLabel(p){
   if(istEntfallen(p))return 'Entfällt';
   if(istBauseits(p))return 'Bauseits';
@@ -2454,9 +2467,22 @@ function renderDetail(){
     }
     
     const nbLabel=nichtBestellbarLabel(p);
+    // Badge + Korrektur-Link: User kann automatische 'nicht bestellbar'-Erkennung uebersteuern.
+    // Auto-Erkennung (aus Schluesselwoertern) trifft nicht immer (z.B. 'Lagerregal fuer Reinigungsmittel'
+    // matched 'Reinigung' → faelschlich Dienstleistung). Override per Klick: 'Doch bestellbar'.
+    const nbAuto=istBauseits(p)||istDienstleistung(p)||istEntfallen(p);
+    const nbActive=istNichtBestellbar(p);
+    let nbBadge='';
+    if(nbActive){
+      const label=p.nbOverride==='nein'?'Nicht bestellbar (manuell)':nichtBestellbarLabel(p);
+      nbBadge=` <span class="nb-badge" title="Klicken zum Korrigieren: ist doch bestellbar" onclick="setNbOverride(${idx},'ja')">🚫 ${esc(label)} <span class="nb-fix">✎</span></span>`;
+    } else if(p.nbOverride==='ja' && nbAuto){
+      // Bearbeiter hat eine automatische Erkennung uebersteuert – kleiner Hinweis + Reset-Moeglichkeit
+      nbBadge=` <span class="nb-badge nb-ok" title="Automatik haette '${esc(nichtBestellbarLabel(p))}' gesagt – manuell als bestellbar markiert. Klick zum Zuruecksetzen." onclick="setNbOverride(${idx},'')">✓ Bestellbar (manuell)</span>`;
+    }
     let html=`<div class="ih">
       <span class="pb">${esc(p.pos)}</span>
-      <div class="ii"><div class="ibez">${esc(p.bez)}${nbLabel?' <span class="nb-badge">🚫 '+nbLabel+'</span>':''}</div>
+      <div class="ii"><div class="ibez">${esc(p.bez)}${nbBadge}</div>
         <div class="imet">${p.fabrikat?'🏭 '+esc(p.fabrikat):''}${p.typ?' · '+esc(p.typ):''}</div></div>
       <div class="img">${esc(p.menge)} ${esc(p.einh)}</div>
       <button class="poshist" onclick="openAuditModal(${idx})" title="Verlauf anzeigen">🕓${(p.audit&&p.audit.length)?'<span class="histcnt">'+p.audit.length+'</span>':''}</button>
@@ -2682,6 +2708,21 @@ async function toggleAB(idx){
   touchProject(CUR);
   await saveCur();renderDetail();updateABBanner();
   toast(p.abBestaetigt?'Auftragsbestätigung erfasst ✓':'Auftragsbestätigung zurückgesetzt','ok');
+}
+// Manueller Override: Auto-Erkennung 'nicht bestellbar' korrigieren.
+// val='ja'  → ist doch bestellbar (Auto-Erkennung wird ignoriert)
+// val='nein'→ ist nicht bestellbar (auch wenn Auto-Erkennung nichts findet)
+// val=''    → Override zuruecksetzen, wieder Automatik
+async function setNbOverride(idx,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx];
+  const prev=p.nbOverride||'';
+  p.nbOverride=val||'';
+  const lbl=v=>v==='ja'?'bestellbar (manuell)':v==='nein'?'nicht bestellbar (manuell)':'automatisch';
+  logAction(p,`Bestellbarkeit: ${lbl(prev)} → ${lbl(val||'')}`);
+  touchProject(CUR);
+  await saveCur();renderDetail();updateGlobalCounters();
+  toast('Bestellbarkeit angepasst','ok');
 }
 async function updF(idx,k,v){
   const p=CUR.positionen[idx];
