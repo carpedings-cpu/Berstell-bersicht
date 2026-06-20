@@ -858,43 +858,20 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="setbox">
     <h3>⚙ Einstellungen</h3>
     <div class="hint" style="margin-top:0;margin-bottom:10px">Eingaben werden automatisch gespeichert, sobald du das Feld verlässt.</div>
-    <label>Power Automate Webhook-URL</label>
-    <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt – auch Erinnerungen an fehlende Auftragsbestätigungen.</div>
-    <label>Deine E-Mail</label>
-    <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <label>E-Mail Kollegin</label>
-    <input type="email" id="setMail2" placeholder="kollegin@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <label>Abruf-Vorlauf (Tage vor Liefertermin)</label>
     <input type="number" id="setWarnDays" value="14" min="1" max="90" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Standard-Vorlaufzeit für den Abruftermin. Pro Position überschreibbar.</div>
     <label>Auftragsbestätigung-Frist (Tage nach Bestellung)</label>
     <input type="number" id="setAbFrist" value="7" min="1" max="60" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird gewarnt und – falls Power Automate eingerichtet ist – eine Erinnerung verschickt.</div>
-    <button onclick="saveSettings(false)">Speichern</button>
-    <div style="margin-top:14px;padding:10px 12px;background:rgba(19,160,176,.08);border:.5px solid rgba(19,160,176,.22);border-radius:9px">
-      <div style="font-size:11.5px;color:rgba(28,28,30,.7);line-height:1.5;margin-bottom:8px">
-        <strong>🔁 Autonomer Versand (auch wenn die App geschlossen ist):</strong><br>
-        Die App pusht den Stand offener Bestellungen einmal taeglich an Power Automate.
-        Dort werden sie in einer SharePoint-Liste gespiegelt; ein zeitgesteuerter Flow
-        prueft die Fristen und sendet die Mails – auch ohne offene App.
-      </div>
-      <button onclick="syncBestellungenToFlow(true)" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0)">🔁 Bestell-Stand jetzt synchronisieren</button>
-    </div>
+    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird die Position rot markiert.</div>
   </div>
   <div class="setbox">
-    <h3>💾 Backup &amp; Wiederherstellung</h3>
-    <div class="hint" style="margin-top:0;margin-bottom:10px">Deine Daten liegen nur in diesem Browser. Lade regelmäßig ein Backup herunter – damit kannst du die Daten wiederherstellen oder auf einen anderen PC übertragen.</div>
+    <h3>💾 Sicherheits-Backup</h3>
+    <div class="hint" style="margin-top:0;margin-bottom:10px">Cloud-Sync sichert alles automatisch. Für den Notfall (Anbieter-Ausfall, versehentliches Löschen) hier ein manuelles ZIP-Backup.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="zipExpAll()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">⬇️ Backup herunterladen</button>
       <button onclick="trigImportBackup()" style="background:linear-gradient(135deg,#b8860b,#c8961b)">⬆️ Backup wiederherstellen</button>
     </div>
-    <div class="hint" style="margin-top:8px">Wiederherstellen fügt die Projekte aus der Backup-Datei hinzu (gleiche Projekte werden überschrieben, vorhandene andere bleiben erhalten).</div>
-  </div>
-  <div class="setbox">
-    <h3>📦 Daten</h3>
-    <button onclick="resetDemo()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🔄 Demo zurücksetzen</button>
-    <div class="hint" style="margin-top:8px">Lädt das Demo-Projekt KiTa Hollerborn neu (alle Status zurück auf offen). Deine eigenen Projekte bleiben unberührt.</div>
   </div>
 </div>
 
@@ -1545,9 +1522,6 @@ async function goSearch(){
 }
 function goSettings(){
   showView('vSettings');
-  document.getElementById('setWebhook').value=SETTINGS.webhook||'';
-  document.getElementById('setMail1').value=SETTINGS.mail1||'';
-  document.getElementById('setMail2').value=SETTINGS.mail2||'';
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
   document.getElementById('setAbFrist').value=SETTINGS.abFrist||7;
 }
@@ -2589,8 +2563,8 @@ function renderDetail(){
         }
       }
       // Kompakte Datei-Buttons (AB + Lieferschein) in einer Zeile – Drag&Drop auf jedem Button (auch wenn schon Datei dran)
-      const abDrag=`id="AB${idx}" ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})"`;
-      const lsDrag=`id="LS${idx}" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})"`;
+      const abDrag=`id="AB${idx}" ondragenter="_enterDrop(event)" ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})"`;
+      const lsDrag=`id="LS${idx}" ondragenter="_enterDrop(event)" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})"`;
       const abBtn=p.abDoc
         ? `<button class="fbtn hasFile" ${abDrag} onclick="openAb(${idx})" title="${escA(p.abDoc.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📄</span> AB${p.abDoc.datum?' '+fmtD(p.abDoc.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delAb(${idx})" title="AB entfernen">✕</span></button>`
         : `<button class="fbtn" ${abDrag} onclick="pickAb(${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📄</span> AB anhängen</button>`;
@@ -3086,11 +3060,8 @@ async function checkWarnings(){
 
 // ── SETTINGS ────────────────────────────────────────────────────────────
 async function saveSettings(silent){
-  // Aktuelle Eingabewerte einsammeln
+  // Aktuelle Eingabewerte einsammeln (Webhook/Mail-Felder wurden entfernt – nicht benoetigt)
   const next={
-    webhook:document.getElementById('setWebhook').value.trim(),
-    mail1:document.getElementById('setMail1').value.trim(),
-    mail2:document.getElementById('setMail2').value.trim(),
     warnDays:parseInt(document.getElementById('setWarnDays').value)||14,
     abFrist:parseInt(document.getElementById('setAbFrist').value)||7
   };
@@ -3291,12 +3262,21 @@ function pickLs(idx){
   };
   fi.click();
 }
-function lsDragOver(ev,idx){ev.preventDefault();document.getElementById('LS'+idx).classList.add('dragover');}
-function lsDragLeave(ev,idx){document.getElementById('LS'+idx).classList.remove('dragover');}
+function lsDragOver(ev,idx){
+  ev.preventDefault();ev.stopPropagation();
+  if(ev.dataTransfer)ev.dataTransfer.dropEffect='copy';
+  const el=document.getElementById('LS'+idx);if(el)el.classList.add('dragover');
+}
+function lsDragLeave(ev,idx){
+  // Nur entfernen wenn wirklich aus dem Button raus (nicht nur in ein Kind-Element)
+  const el=document.getElementById('LS'+idx);
+  if(el&&(!ev.relatedTarget||!el.contains(ev.relatedTarget)))el.classList.remove('dragover');
+}
 async function lsDrop(ev,idx){
-  ev.preventDefault();
+  ev.preventDefault();ev.stopPropagation();
   const el=document.getElementById('LS'+idx);if(el)el.classList.remove('dragover');
-  const f=ev.dataTransfer.files[0];if(!f)return;
+  const f=ev.dataTransfer&&ev.dataTransfer.files&&ev.dataTransfer.files[0];
+  if(!f){toast('Keine Datei erkannt – bitte direkt auf den Button tippen','err');return;}
   await handleLsFile(idx,f);
 }
 async function handleLsFile(idx,file){
@@ -3416,14 +3396,32 @@ function pickAb(idx){
   };
   fi.click();
 }
-function abDragOver(ev,idx){ev.preventDefault();const el=document.getElementById('AB'+idx);if(el)el.classList.add('dragover');}
-function abDragLeave(ev,idx){const el=document.getElementById('AB'+idx);if(el)el.classList.remove('dragover');}
+function abDragOver(ev,idx){
+  ev.preventDefault();ev.stopPropagation();
+  if(ev.dataTransfer)ev.dataTransfer.dropEffect='copy';
+  const el=document.getElementById('AB'+idx);if(el)el.classList.add('dragover');
+}
+function abDragLeave(ev,idx){
+  const el=document.getElementById('AB'+idx);
+  if(el&&(!ev.relatedTarget||!el.contains(ev.relatedTarget)))el.classList.remove('dragover');
+}
 async function abDrop(ev,idx){
-  ev.preventDefault();
+  ev.preventDefault();ev.stopPropagation();
   const el=document.getElementById('AB'+idx);if(el)el.classList.remove('dragover');
-  const f=ev.dataTransfer.files[0];if(!f)return;
+  const f=ev.dataTransfer&&ev.dataTransfer.files&&ev.dataTransfer.files[0];
+  if(!f){toast('Keine Datei erkannt – bitte direkt auf den Button tippen','err');return;}
   await handleAbFile(idx,f);
 }
+// Globaler Schutz: ein Drop NEBEN die Buttons darf nicht dazu fuehren, dass der Browser
+// die PDF einfach in einem neuen Tab oeffnet (das wirkt wie 'App reagiert nicht').
+window.addEventListener('dragover',e=>{e.preventDefault();},false);
+window.addEventListener('drop',e=>{
+  // Wenn das Ziel keiner unserer Drop-Buttons war, einfach unterdruecken.
+  const tgt=e.target&&e.target.closest&&e.target.closest('#LS, [id^="LS"], #AB, [id^="AB"]');
+  if(!tgt){e.preventDefault();}
+},false);
+// dragenter braucht's auch, sonst feuert dragover bei manchen Browsern verzoegert
+function _enterDrop(ev){ev.preventDefault();ev.stopPropagation();if(ev.dataTransfer)ev.dataTransfer.dropEffect='copy';}
 async function handleAbFile(idx,file){
   if(!requireLogin())return;
   showLoader('Auftragsbestätigung wird gelesen …');
