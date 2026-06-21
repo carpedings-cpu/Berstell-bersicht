@@ -460,9 +460,12 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .bbanner.ab{background:linear-gradient(135deg,rgba(192,57,43,.96),rgba(217,32,32,.96));box-shadow:0 4px 12px rgba(217,32,32,.25);}
 .bbanner.ab button.bb-save{color:#9a1414;}
 .sb-st{font-size:10.5px;font-weight:700;letter-spacing:.2px;padding:3px 9px;border-radius:9px;margin-left:6px;cursor:default;font-family:inherit;background:rgba(120,120,128,.12);color:rgba(28,28,30,.55);}
-.sb-st.sb-ok{background:rgba(30,138,74,.13);color:#0f6332;}
 .sb-st.sb-sync{background:rgba(196,119,0,.13);color:#7d4d00;}
 .sb-st.sb-err{background:rgba(217,32,32,.13);color:#a01515;}
+/* Status nur anzeigen wenn etwas ungewoehnlich ist (Sync laufend, Fehler, offline).
+   Im Normalbetrieb (ok) ist der Indikator unsichtbar – kein nutzloses Dauer-Element. */
+.sb-st.sb-ok{display:none;}
+.sb-st.sb-off{display:none;}
 #toTopBtn{position:fixed;bottom:22px;right:22px;width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(45,41,38,.35);z-index:80;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity .25s, transform .15s;font-family:inherit;}
 #toTopBtn.show{display:flex;opacity:.92;}
 #toTopBtn:hover{opacity:1;}
