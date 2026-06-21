@@ -1317,6 +1317,14 @@ async function init(){
       }
       if(!('abAm' in p)){p.abAm='';migrated=true;}
       if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
+      // Konsistenz-Heilung: wenn der Status bereits bestellt/abgerufen/geliefert ist, MUSS
+      // auch quelle='bestellt' sein – sonst landet die Position widersprüchlich in 'Zu bestellen',
+      // obwohl sie faktisch laengst bestellt ist. Betrifft Altdaten aus vor dem quelle/status-
+      // Konsistenz-Fix.
+      if((p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')&&p.quelle!=='bestellt'&&p.quelle!=='lager'&&!istNichtBestellbar(p)){
+        p.quelle='bestellt';
+        migrated=true;
+      }
     }));
     if(migrated)for(const proj of PROJECTS)await dbPutLocal('projects',proj);
     // Cloud-Sync: vor dem Seed eines Demo-Projekts erst Cloud abfragen, sonst spammt jeder neue Client ein Demo in die Cloud
@@ -3594,6 +3602,8 @@ function istZuBestellen(p){
   if(p.quelle==='lager')return false;        // Lagerware muss man nicht bestellen
   if(istNichtBestellbar(p))return false;      // bauseits / Dienstleistung / entfallen
   if(istBestellt(p))return false;             // schon bestellt (quelle==='bestellt')
+  // Live-Sicherung gegen Altdaten: wenn status laengst weiter ist, ist es faktisch bestellt
+  if(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')return false;
   return true;                                // sonst: noch zu bestellen
 }
 function renderZuBestellen(){
