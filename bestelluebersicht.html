@@ -531,12 +531,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </header>
 
-<div class="bbanner ab" id="abBanner">
-  <span>📄</span>
-  <span class="bb-txt"></span>
-  <button class="bb-save" onclick="abBannerSend()">📧 Erinnern</button>
-  <button onclick="dismissABBanner()">Später</button>
-</div>
+<!-- AB-Erinnerungs-Banner entfernt: Power-Automate-Versand laeuft nicht mehr.
+     Ueberfaellige AB werden weiterhin direkt in der Karte rot markiert. -->
 
 <!-- Backup-Banner entfernt: Cloud-Sync sichert automatisch.
      Manuelles ZIP-Backup bleibt im Einstellungen-Menue erreichbar. -->
@@ -1303,6 +1299,11 @@ async function init(){
     // Settings
     const s=await dbGet('settings','main').catch(()=>null);
     if(s)Object.assign(SETTINGS,s);
+    // Alte Webhook/Mail-Werte verwerfen (Power-Automate-Versand wurde entfernt)
+    if(SETTINGS.webhook||SETTINGS.mail1||SETTINGS.mail2){
+      delete SETTINGS.webhook;delete SETTINGS.mail1;delete SETTINGS.mail2;
+      try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+    }
     PROJECTS=await dbAll('projects');
     // Preisdaten laden
     try{const pd=await dbGet('settings','preiseData');if(pd&&pd.v)PREISE_DATA=pd.v;}catch(e){}
@@ -2929,20 +2930,13 @@ async function doGlobalSearch(){
 
 function goToProject(id){openProject(id);}
 
-// ── WEBHOOK ─────────────────────────────────────────────────────────────
-async function fireWebhook(typ,data){
-  if(!SETTINGS.webhook)return;
-  try{
-    await fetch(SETTINGS.webhook,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({typ,mails:[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean),...data,timestamp:new Date().toISOString()})
-    });
-    toast('Benachrichtigung gesendet','ok');
-  }catch(e){console.warn('Webhook fehlgeschlagen:',e);toast('Webhook fehlgeschlagen','err');}
-}
+// ── Power Automate / Webhook komplett entfernt ──────────────────────────
+// Wurde fuer automatische Mail-Erinnerungen genutzt, ist aber nicht mehr
+// gewuenscht. Alle Webhook-Calls sind jetzt No-Ops, das AB-Banner wurde
+// aus dem DOM entfernt. Ueberfaellige AB sind weiterhin in der Karte
+// rot markiert (das reicht als visuelle Warnung).
 
-// ── AUFTRAGSBESTÄTIGUNG: Überfälligkeit + Erinnerung ─────────────────────
-// Überfällig = Bestellware, bestellt, noch keine AB erfasst, Bestelldatum ≥ Frist (Standard 7 Tage) her
+// abOffeneListe wird nur noch fuer eventuelle UI-Anzeigen verwendet
 function abOffeneListe(){
   const frist=SETTINGS.abFrist||7;
   const out=[];
@@ -2959,127 +2953,9 @@ function abOffeneListe(){
   }));
   return out;
 }
-
-// Erinnerungen über Power Automate verschicken.
-// auto=true: beim Laden, mit Dedupe (erst wieder nach Ablauf der Frist erneut erinnern)
-async function sendeABErinnerungen(auto){
-  const frist=SETTINGS.abFrist||7;
-  let liste=abOffeneListe();
-  if(auto)liste=liste.filter(it=>!it.p.abErinnertAm||daysBtw(it.p.abErinnertAm,today())>=frist);
-  if(liste.length===0){if(!auto)toast('Keine überfälligen Auftragsbestätigungen ✓','ok');return 0;}
-  if(!SETTINGS.webhook){
-    if(!auto){goSettings();toast('Bitte Power-Automate-URL in ⚙ Einstellungen hinterlegen','err',4500);}
-    return 0;
-  }
-  // Nach Lieferant gruppieren – der Flow kann pro Lieferant eine Mail senden
-  const groups={};
-  liste.forEach(it=>{(groups[it.lieferant]=groups[it.lieferant]||[]).push(it);});
-  const gruppen=Object.entries(groups).map(([lieferant,items])=>({
-    lieferant,
-    positionen:items.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))
-  }));
-  const betreff=`KPC: ${liste.length} fehlende Auftragsbestätigung(en) bei ${Object.keys(groups).length} Lieferant(en)`;
-  await fireWebhook('ab_ueberfaellig',{betreff,frist,gruppen,
-    positionen:liste.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,lieferant:it.lieferant,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))});
-  // Positionen als erinnert markieren (Dedupe)
-  const heute=today();const dirty=new Set();
-  liste.forEach(it=>{it.p.abErinnertAm=heute;dirty.add(it.proj);});
-  for(const proj of dirty)await dbPut('projects',proj);
-  markChanged();updateABBanner();
-  return liste.length;
-}
-
-function updateABBanner(){
-  const b=document.getElementById('abBanner');if(!b)return;
-  const list=abOffeneListe();
-  const dismissed=localStorage.getItem('kpc_abDismiss')===today();
-  if(list.length>0&&!dismissed){
-    const n=list.length,liefs=new Set(list.map(x=>x.lieferant)).size;
-    b.querySelector('.bb-txt').textContent=`${n} Auftragsbestätigung${n===1?'':'en'} überfällig (>${SETTINGS.abFrist||7} Tage) bei ${liefs} Lieferant(en)`;
-    b.classList.add('on');
-  }else b.classList.remove('on');
-}
-function dismissABBanner(){localStorage.setItem('kpc_abDismiss',today());updateABBanner();}
-async function abBannerSend(){
-  const n=await sendeABErinnerungen(false);
-  if(n>0)toast(n+' Erinnerung(en) an Power Automate übergeben','ok',3500);
-}
-
-// Vollständigen Snapshot offener Bestellungen an den Flow pushen.
-// Power Automate spiegelt den Stand in eine SharePoint-Liste; ein zeitgesteuerter Flow
-// prüft dort täglich die Fristen und versendet Mails – auch wenn die App nicht offen ist.
-function bestellungenSnapshot(){
-  const frist=SETTINGS.abFrist||7;
-  const items=[];
-  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
-    if(p.quelle!=='bestellt')return;
-    if(p.abBestaetigt)return;
-    if(!(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert'))return;
-    const tage=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
-    items.push({
-      key:proj.id+'/'+idx,
-      projekt:proj.name, pos:p.pos, bez:p.bez,
-      lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',
-      menge:p.menge, einheit:p.einh,
-      bestelltAm:p.bestelltAm||'', tageOffen:tage,
-      faellig:p.bestelltAm?tage>=frist:false
-    });
-  }));
-  return items;
-}
-async function syncBestellungenToFlow(manuell){
-  if(!SETTINGS.webhook){
-    if(manuell){goSettings();toast('Bitte Power-Automate-URL in ⚙ Einstellungen hinterlegen','err',4500);}
-    return 0;
-  }
-  if(!manuell){
-    const last=await dbGet('settings','lastSyncSent').catch(()=>null);
-    if(last?.v===today())return 0; // einmal pro Tag genuegt
-  }
-  const items=bestellungenSnapshot();
-  const frist=SETTINGS.abFrist||7;
-  await fireWebhook('sync_state',{
-    betreff:`KPC-Sync: ${items.length} offene Bestellung(en) ohne AB`,
-    frist, anzahl:items.length,
-    abFrist:frist,
-    positionen:items
-  });
-  await dbPut('settings',{k:'lastSyncSent',v:today()});
-  if(manuell)toast(items.length+' Position(en) an Power Automate uebermittelt','ok',3500);
-  return items.length;
-}
-
-// Automatische Prüfung beim Laden
-async function checkWarnings(){
-  if(!SETTINGS.webhook)return;
-  await sendeABErinnerungen(true);
-  await syncBestellungenToFlow(false);
-  // Sammelbericht: Abrufe die morgen oder heute fällig sind oder überfällig, noch nicht bestellt
-  const abrufFaellig=[];
-  PROJECTS.forEach(proj=>{
-    proj.positionen.forEach(p=>{
-      if(p.status==='abgerufen'||p.status==='geliefert')return;
-      const at=abrufTermin(p,proj);
-      if(!at)return;
-      const da=daysBtw(today(),at);
-      if(da<=1){ // heute, morgen oder überfällig
-        abrufFaellig.push({projekt:proj.name,pos:p.pos,bez:p.bez,
-          lieferant:p.lieferant||p.fabrikat||'',abrufBis:at,liefertermin:proj.liefertermin,
-          status:da<0?'überfällig':da===0?'heute':'morgen',menge:p.menge,einheit:p.einh});
-      }
-    });
-  });
-  if(abrufFaellig.length>0){
-    const lastSent=await dbGet('settings','lastWarnSent').catch(()=>null);
-    if(lastSent?.v===today())return;
-    // Sortiert nach Dringlichkeit
-    abrufFaellig.sort((a,b)=>new Date(a.abrufBis)-new Date(b.abrufBis));
-    const ueberf=abrufFaellig.filter(w=>w.status==='überfällig').length;
-    const betreff=ueberf>0?`KPC: ${ueberf} Abruf(e) überfällig, ${abrufFaellig.length} gesamt fällig`:`KPC: ${abrufFaellig.length} Abruf(e) fällig`;
-    await fireWebhook('abruf_sammelbericht',{betreff,positionen:abrufFaellig});
-    await dbPut('settings',{k:'lastWarnSent',v:today()});
-  }
-}
+// Alle frueheren Webhook-Funktionen sind No-Ops, damit bestehende Aufrufer nicht brechen
+function updateABBanner(){/* Banner entfernt – no-op */}
+async function checkWarnings(){/* Power-Automate-Versand entfernt – no-op */}
 
 // ── SETTINGS ────────────────────────────────────────────────────────────
 async function saveSettings(silent){
