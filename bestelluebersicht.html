@@ -892,6 +892,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button onclick="trigImportBackup()" style="background:linear-gradient(135deg,#b8860b,#c8961b)">⬆️ Backup wiederherstellen</button>
     </div>
   </div>
+  <div class="setbox">
+    <h3>ℹ️ Version</h3>
+    <div class="hint" style="margin-top:0">App-Stand: <strong id="appVersion">…</strong></div>
+    <div class="hint" style="margin-top:6px">Stimmt der Stand nicht? Auf dem iPad die App schließen (aus dem App-Umschalter wischen) und neu öffnen – dann lädt die neueste Version.</div>
+  </div>
 </div>
 
 <!-- Login: Auswahl der Bearbeiterin -->
@@ -1553,6 +1558,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
+const APP_VERSION='2026-06-21 · v15';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -1560,6 +1566,7 @@ function goSettings(){
   const m2=document.getElementById('setMail2');if(m2)m2.value=SETTINGS.mail2||'';
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
   document.getElementById('setAbFrist').value=SETTINGS.abFrist||7;
+  const ver=document.getElementById('appVersion');if(ver)ver.textContent=APP_VERSION;
 }
 
 // ── HOME ────────────────────────────────────────────────────────────────
@@ -2722,6 +2729,7 @@ async function setF(idx,field,val){
   const p=CUR.positionen[idx];
   const prevQuelle=p.quelle, prevStatus=p.status, prevLieferort=p.lieferort;
   if(field==='quelle'){
+    const wasBestellt=p.quelle==='bestellt';
     p.quelle=p.quelle===val?'':val;
     if(p.quelle==='bestellt'){
       if(!p.lieferant && p.fabrikat) p.lieferant=p.fabrikat;
@@ -2729,6 +2737,14 @@ async function setF(idx,field,val){
         p.status='bestellt';
         if(!p.bestelltAm)p.bestelltAm=today();
       }
+    } else if(wasBestellt){
+      // 'Bestellt' zurueckgenommen → ALLE Bestell-Felder zuruecksetzen, damit die Position
+      // garantiert und eindeutig wieder in 'Zu bestellen' erscheint (kein Rest-Status).
+      p.status='offen';
+      p.bestelltAm='';
+      p.abBestaetigt=false;
+      p.abAm='';
+      p.abErinnertAm='';
     }
   }
   else if(field==='lieferort')p.lieferort=p.lieferort===val?'':val;
