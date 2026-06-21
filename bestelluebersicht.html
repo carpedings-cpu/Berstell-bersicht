@@ -1558,7 +1558,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v15';
+const APP_VERSION='2026-06-21 · v16';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -3004,16 +3004,27 @@ async function sendeABErinnerungen(auto){
     if(!auto){goSettings();toast('Bitte Power-Automate-URL in ⚙ Einstellungen hinterlegen','err',4500);}
     return 0;
   }
-  // Nach Lieferant gruppieren – der Flow kann pro Lieferant eine Mail senden
+  // Nach Lieferant gruppieren – PRO LIEFERANT genau EINE Mail (auch wenn 10 Positionen offen sind)
   const groups={};
   liste.forEach(it=>{(groups[it.lieferant]=groups[it.lieferant]||[]).push(it);});
-  const gruppen=Object.entries(groups).map(([lieferant,items])=>({
-    lieferant,
-    positionen:items.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))
-  }));
+  // Vorgebaute Mail-Spezifikation: der Flow muss nur 'Apply to each mail → Send Mail' machen
+  const empfaenger=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
+  const mails=Object.entries(groups).map(([lieferant,items])=>{
+    const zeilen=items.map(it=>`• Projekt ${it.projekt} · Pos ${it.pos} · ${it.bez} · ${it.menge} ${it.einheit} · bestellt am ${it.bestelltAm} (${it.tageOffen} Tage)`).join('\n');
+    return {
+      to:empfaenger,
+      betreff:`AB fehlt seit >${frist} Tagen: ${lieferant} (${items.length} Position${items.length===1?'':'en'})`,
+      lieferant,
+      anzahl:items.length,
+      body:`Bei ${lieferant} stehen ${items.length} Auftragsbestätigung${items.length===1?'':'en'} aus (Frist ${frist} Tage):\n\n${zeilen}\n\nBitte beim Lieferanten nachhaken.`,
+      positionen:items.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))
+    };
+  });
   const betreff=`KPC: ${liste.length} fehlende Auftragsbestätigung(en) bei ${Object.keys(groups).length} Lieferant(en)`;
-  await fireWebhook('ab_ueberfaellig',{betreff,frist,gruppen,
-    positionen:liste.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,lieferant:it.lieferant,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))});
+  await fireWebhook('ab_ueberfaellig',{
+    betreff, frist, anzahlMails:mails.length, oneMailPerLieferant:true,
+    mails       // ← der Flow soll AUSSCHLIESSLICH ueber 'mails' iterieren
+  });
   // Positionen als erinnert markieren (Dedupe)
   const heute=today();const dirty=new Set();
   liste.forEach(it=>{it.p.abErinnertAm=heute;dirty.add(it.proj);});
@@ -3105,11 +3116,31 @@ async function checkWarnings(){
   if(abrufFaellig.length>0){
     const lastSent=await dbGet('settings','lastWarnSent').catch(()=>null);
     if(lastSent?.v===today())return;
-    // Sortiert nach Dringlichkeit
     abrufFaellig.sort((a,b)=>new Date(a.abrufBis)-new Date(b.abrufBis));
+    // Pro Lieferant gruppieren – PRO LIEFERANT genau EINE Abruf-Erinnerungsmail
+    const groups={};
+    abrufFaellig.forEach(it=>{const k=it.lieferant||'(ohne Lieferant)';(groups[k]=groups[k]||[]).push(it);});
+    const empfaenger=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
+    const mails=Object.entries(groups).map(([lieferant,items])=>{
+      const ueberfL=items.filter(w=>w.status==='überfällig').length;
+      const zeilen=items.map(it=>`• Projekt ${it.projekt} · Pos ${it.pos} · ${it.bez} · ${it.menge} ${it.einheit} · ${it.status} (Abruf bis ${it.abrufBis})`).join('\n');
+      return {
+        to:empfaenger,
+        betreff:ueberfL>0
+          ? `Abruf bei ${lieferant}: ${ueberfL} überfällig, ${items.length} gesamt`
+          : `Abruf bei ${lieferant}: ${items.length} Position${items.length===1?'':'en'} fällig`,
+        lieferant,
+        anzahl:items.length,
+        body:`Bei ${lieferant} stehen ${items.length} Abruf${items.length===1?'':'e'} an${ueberfL>0?` (davon ${ueberfL} überfällig)`:''}:\n\n${zeilen}\n\nBitte zeitnah abrufen.`,
+        positionen:items
+      };
+    });
     const ueberf=abrufFaellig.filter(w=>w.status==='überfällig').length;
     const betreff=ueberf>0?`KPC: ${ueberf} Abruf(e) überfällig, ${abrufFaellig.length} gesamt fällig`:`KPC: ${abrufFaellig.length} Abruf(e) fällig`;
-    await fireWebhook('abruf_sammelbericht',{betreff,positionen:abrufFaellig});
+    await fireWebhook('abruf_sammelbericht',{
+      betreff, anzahlMails:mails.length, oneMailPerLieferant:true,
+      mails       // ← der Flow soll AUSSCHLIESSLICH ueber 'mails' iterieren
+    });
     await dbPut('settings',{k:'lastWarnSent',v:today()});
   }
 }
