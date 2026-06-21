@@ -1117,6 +1117,15 @@ async function sbPullAll(){
       return true;
     }
     // Cloud ist Wahrheit: lokal mit Cloud-Stand ersetzen
+    // Vorher die Cloud-Daten direkt heilen (status=bestellt ohne quelle → quelle='bestellt')
+    cloudProjects.forEach(proj=>(proj.positionen||[]).forEach(p=>{
+      if((p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')
+         && p.quelle!=='bestellt' && p.quelle!=='lager'){
+        // istNichtBestellbar braucht das vollstaendige Position-Objekt – pragmatisch hier nur
+        // den status-Check, die feinere Pruefung passiert in healAllProjects nach dem Pull.
+        p.quelle='bestellt';
+      }
+    }));
     const tx=db.transaction(['projects','settings'],'readwrite');
     const ps=tx.objectStore('projects');
     await new Promise(res=>{const r=ps.clear();r.onsuccess=res;r.onerror=res;});
@@ -1147,7 +1156,11 @@ function sbSubscribe(){
         const p={id:row.id,name:row.name,liefertermin:row.liefertermin||'',positionen:row.positionen||[],
           collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
           demo:!!row.demo,created:row.created||new Date().toISOString()};
+        // Eingehende Realtime-Updates auch heilen (sonst kann ein anderes Geraet alte Daten liefern)
+        let healed=false;
+        (p.positionen||[]).forEach(pp=>{if(healPosition(pp))healed=true;});
         await dbPutLocal('projects',p);
+        if(healed){try{await dbPut('projects',p);}catch(e){}}
         const i=PROJECTS.findIndex(x=>x.id===p.id); if(i>=0)PROJECTS[i]=p; else PROJECTS.push(p);
         if(CUR&&CUR.id===p.id){
           // Bei aktiv editierten Karten kein Re-Render, sonst springt das Tipp-Feld weg
@@ -1336,14 +1349,6 @@ async function init(){
       }
       if(!('abAm' in p)){p.abAm='';migrated=true;}
       if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
-      // Konsistenz-Heilung: wenn der Status bereits bestellt/abgerufen/geliefert ist, MUSS
-      // auch quelle='bestellt' sein – sonst landet die Position widersprüchlich in 'Zu bestellen',
-      // obwohl sie faktisch laengst bestellt ist. Betrifft Altdaten aus vor dem quelle/status-
-      // Konsistenz-Fix.
-      if((p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')&&p.quelle!=='bestellt'&&p.quelle!=='lager'&&!istNichtBestellbar(p)){
-        p.quelle='bestellt';
-        migrated=true;
-      }
     }));
     if(migrated)for(const proj of PROJECTS)await dbPutLocal('projects',proj);
     // Cloud-Sync: vor dem Seed eines Demo-Projekts erst Cloud abfragen, sonst spammt jeder neue Client ein Demo in die Cloud
@@ -1354,9 +1359,16 @@ async function init(){
       // Settings neu aus lokaler (jetzt synchronisierter) DB lesen
       const s2=await dbGet('settings','main').catch(()=>null); if(s2)Object.assign(SETTINGS,s2);
       try{const pd2=await dbGet('settings','preiseData');if(pd2&&pd2.v)PREISE_DATA=pd2.v;}catch(e){}
+      // KRITISCH: Konsistenz-Heilung NACH dem Cloud-Pull (sbPullAll ueberschreibt sonst die Migration)
+      // + in die Cloud pushen, damit andere Geraete den geheilten Stand sehen.
+      try{await healAllProjects(true);}catch(e){console.warn('Heal err',e);}
       sbSubscribe();
       sbReady=true;
-    } else sbStatus('off','Cloud nicht verfuegbar – nur lokal');
+    } else {
+      sbStatus('off','Cloud nicht verfuegbar – nur lokal');
+      // Auch ohne Cloud: Konsistenz-Heilung
+      try{await healAllProjects(false);}catch(e){console.warn('Heal err',e);}
+    }
     // Seed Demo nur wenn auch nach Cloud-Pull immer noch leer
     if(PROJECTS.length===0){
       const demo=makeProjFromData('KiTa Hollerborn Wiesbaden',DEMO_DATA);
@@ -2746,6 +2758,10 @@ async function setF(idx,field,val){
       if(val==='geliefert'&&!p.geliefertDatum)p.geliefertDatum=today();
     }
     if(p.status==='bestellt'&&!p.bestelltAm)p.bestelltAm=today();
+    // Sicherheits-Sync: status bestellt/abgerufen/geliefert impliziert immer quelle='bestellt'
+    if((p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')&&p.quelle!=='bestellt'&&!istNichtBestellbar(p)){
+      p.quelle='bestellt';
+    }
   }
   // Audit-Trail + Checkbox-Metadaten (welche Box wurde gerade EINGESCHALTET)
   const labelQ=v=>v==='bestellt'?'Bestellt':v==='lager'?'Lagerware':v==='bauseits'?'bauseits':v==='dienstleistung'?'Dienstleistung':v==='entfaellt'?'entfällt':(v||'offen');
@@ -3630,6 +3646,29 @@ function istZuBestellen(p){
   // Live-Sicherung gegen Altdaten: wenn status laengst weiter ist, ist es faktisch bestellt
   if(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')return false;
   return true;                                // sonst: noch zu bestellen
+}
+// Heilt eine einzelne Position: wenn der Status bereits bestellt/abgerufen/geliefert ist,
+// MUSS quelle='bestellt' sein. Returns true wenn die Position geaendert wurde.
+function healPosition(p){
+  if((p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert')
+     && p.quelle!=='bestellt' && p.quelle!=='lager' && !istNichtBestellbar(p)){
+    p.quelle='bestellt';
+    return true;
+  }
+  return false;
+}
+// Heilt alle Projekte. pushToCloud=true: nutzt dbPut (lokal + Cloud). Sonst dbPutLocal.
+async function healAllProjects(pushToCloud){
+  const dirty=new Set();
+  PROJECTS.forEach(proj=>{
+    proj.positionen.forEach(p=>{ if(healPosition(p))dirty.add(proj); });
+  });
+  if(dirty.size===0)return false;
+  for(const proj of dirty){
+    if(pushToCloud)await dbPut('projects',proj);
+    else await dbPutLocal('projects',proj);
+  }
+  return true;
 }
 function renderZuBestellen(){
   const q=(document.getElementById('zubestSrch')?.value||'').toLowerCase().trim();
