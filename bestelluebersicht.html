@@ -861,12 +861,28 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="setbox">
     <h3>⚙ Einstellungen</h3>
     <div class="hint" style="margin-top:0;margin-bottom:10px">Eingaben werden automatisch gespeichert, sobald du das Feld verlässt.</div>
+    <label>Power Automate Webhook-URL</label>
+    <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…" onchange="saveSettings(true)" onblur="saveSettings(true)">
+    <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt – auch Erinnerungen an fehlende Auftragsbestätigungen.</div>
+    <label>Deine E-Mail</label>
+    <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
+    <label>E-Mail Kollegin</label>
+    <input type="email" id="setMail2" placeholder="kollegin@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <label>Abruf-Vorlauf (Tage vor Liefertermin)</label>
     <input type="number" id="setWarnDays" value="14" min="1" max="90" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Standard-Vorlaufzeit für den Abruftermin. Pro Position überschreibbar.</div>
     <label>Auftragsbestätigung-Frist (Tage nach Bestellung)</label>
     <input type="number" id="setAbFrist" value="7" min="1" max="60" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird die Position rot markiert.</div>
+    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird gewarnt und – falls Power Automate eingerichtet ist – eine Erinnerung verschickt.</div>
+    <div style="margin-top:14px;padding:10px 12px;background:rgba(19,160,176,.08);border:.5px solid rgba(19,160,176,.22);border-radius:9px">
+      <div style="font-size:11.5px;color:rgba(28,28,30,.7);line-height:1.5;margin-bottom:8px">
+        <strong>🔁 Autonomer Versand (auch wenn die App geschlossen ist):</strong><br>
+        Die App pusht den Stand offener Bestellungen einmal taeglich an Power Automate.
+        Dort werden sie in einer SharePoint-Liste gespiegelt; ein zeitgesteuerter Flow
+        prueft die Fristen und sendet die Mails – auch ohne offene App.
+      </div>
+      <button onclick="syncBestellungenToFlow(true)" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0)">🔁 Bestell-Stand jetzt synchronisieren</button>
+    </div>
   </div>
   <div class="setbox">
     <h3>💾 Sicherheits-Backup</h3>
@@ -1545,6 +1561,9 @@ async function goSearch(){
 }
 function goSettings(){
   showView('vSettings');
+  const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
+  const m1=document.getElementById('setMail1');if(m1)m1.value=SETTINGS.mail1||'';
+  const m2=document.getElementById('setMail2');if(m2)m2.value=SETTINGS.mail2||'';
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
   document.getElementById('setAbFrist').value=SETTINGS.abFrist||7;
 }
@@ -3083,8 +3102,11 @@ async function checkWarnings(){
 
 // ── SETTINGS ────────────────────────────────────────────────────────────
 async function saveSettings(silent){
-  // Aktuelle Eingabewerte einsammeln (Webhook/Mail-Felder wurden entfernt – nicht benoetigt)
+  // Aktuelle Eingabewerte einsammeln
   const next={
+    webhook:(document.getElementById('setWebhook')?.value||'').trim(),
+    mail1:(document.getElementById('setMail1')?.value||'').trim(),
+    mail2:(document.getElementById('setMail2')?.value||'').trim(),
     warnDays:parseInt(document.getElementById('setWarnDays').value)||14,
     abFrist:parseInt(document.getElementById('setAbFrist').value)||7
   };
