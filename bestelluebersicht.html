@@ -630,6 +630,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <option value="anzahl">Sortiert: Anzahl Artikel</option>
       <option value="vol">Sortiert: Auftragsvolumen</option>
     </select>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:rgba(28,28,30,.7);cursor:pointer" title="Auch bestellte, entfallene, Lager- und preislose Positionen anzeigen – mit Status-Badge">
+      <input type="checkbox" id="prShowAll" onchange="renderPreise()"> 🔍 Alle anzeigen (Diagnose)
+    </label>
   </div>
   <div id="prKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px"></div>
   <div id="prList"></div>
@@ -1558,7 +1561,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v17';
+const APP_VERSION='2026-06-21 · v18';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -4017,17 +4020,19 @@ function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 // Wenn der Bearbeiter spaeter den Lieferanten nachtraegt oder den Preis aendert,
 // blieb PREISE_DATA stehen und die Position fehlte in der Preisansicht (z.B. Narr
 // bei Mainz). Jetzt: bei jedem renderPreise neu aus PROJECTS aufbauen.
-function buildPreiseLive(){
+function buildPreiseLive(showAll){
   const out=[];
   PROJECTS.forEach(proj=>{
     (proj.positionen||[]).forEach(p=>{
-      // Nur offene Positionen (nicht bestellt, nicht entfallen, nicht bauseits/Dienstleistung)
-      if(istBestellt(p))return;
-      if(istNichtBestellbar(p))return;
-      if(p.quelle==='lager')return;
-      // Nur mit Preis
       const ek=p.ek||0, vk=p.vk||0;
-      if(ek===0 && vk===0)return;
+      // Status fuer Diagnose-Anzeige
+      let status='';
+      if(istBestellt(p))status='bestellt';
+      else if(istNichtBestellbar(p))status='nicht bestellbar';
+      else if(p.quelle==='lager')status='lager';
+      else if(ek===0 && vk===0)status='ohne preis';
+      // Im Normalbetrieb: filtern. Im Diagnose-Modus: alles zeigen.
+      if(!showAll && status)return;
       out.push({
         proj:proj.name,
         pos:p.pos,
@@ -4038,7 +4043,8 @@ function buildPreiseLive(){
         ek, vk,
         termin:proj.liefertermin||'',
         anm:'',
-        bindung:''
+        bindung:'',
+        _status:status   // nur fuer Diagnose-Anzeige
       });
     });
   });
@@ -4050,8 +4056,9 @@ function buildPreiseLive(){
 function renderPreise(){
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
+  const showAll=!!document.getElementById('prShowAll')?.checked;
   // LIVE aus PROJECTS: immer aktuell, keine veralteten Daten
-  let items=buildPreiseLive();
+  let items=buildPreiseLive(showAll);
   const hasData=items.length>0;
   if(q){
     // Sucht primaer ueber den Lieferanten (mit Normalisierung – "cool" findet Cool Compact / CoolCompact,
@@ -4104,9 +4111,11 @@ function renderPreise(){
       // Klick auf Zeile → springt zur Position im Projekt
       const onclick=`jumpToProjPos('${escA(it.proj)}','${escA(it.pos)}')`;
       const tip=escA('Springe zu Position '+it.pos+' in '+it.proj);
+      // Diagnose-Status-Badge: zeigt warum eine Position normalerweise nicht in der Preisliste waere
+      const statusBadge=it._status?` <span style="display:inline-block;background:rgba(217,32,32,.15);color:#a01515;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;text-transform:uppercase;letter-spacing:.3px">${esc(it._status)}</span>`:'';
       return `<tr class="pr-clickable" onclick="${onclick}" title="${tip}">
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
-        <td><div class="pr-bez">${esc(it.bez)}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}</td>
+        <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}</td>
         <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
         <td class="pr-ek">${fmtEur(it.ek)}</td>
