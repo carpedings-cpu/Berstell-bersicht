@@ -695,6 +695,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="ptools">
     <button class="ptbtn" id="selBtn" onclick="openLagerAbruf()">🖨 Lager-Abruf</button>
     <button class="ptbtn" onclick="openTermininfo()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;border-color:transparent">📧 Lieferanten zu Termin</button>
+    <button class="ptbtn" onclick="openZubehoerListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border-color:transparent">🔧 Zubehör-Liste</button>
   </div>
   <div class="fbar">
     <div class="sw"><span class="si">⌕</span>
@@ -1004,6 +1005,19 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
 <!-- Projekt-Status Modal -->
+<!-- Zubehör-Sammelliste pro Projekt (fuer die Planer zum Zeichnen) -->
+<div class="modal" id="zubListModal" onclick="if(event.target===this)closeZubehoerListe()">
+  <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
+    <button class="modal-x" onclick="closeZubehoerListe()" title="Schließen (Esc)">✕</button>
+    <div id="zubListBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeZubehoerListe()">Schließen</button>
+      <button class="mok" onclick="copyZubListe()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Liste kopieren</button>
+      <button class="mok" onclick="printZubListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🖨 Drucken / PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="projStatusModal" onclick="if(event.target===this)closeProjStatus()">
   <div class="modal-box flex-scroll" style="max-width:560px;max-height:88vh">
     <button class="modal-x" onclick="closeProjStatus()" title="Schließen (Esc)">✕</button>
@@ -1669,7 +1683,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v23';
+const APP_VERSION='2026-06-21 · v24';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -2184,6 +2198,8 @@ document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   const am=document.getElementById('auditModal');
   if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
+  const zlm=document.getElementById('zubListModal');
+  if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
   if(blm&&blm.classList.contains('on')){closeBestelltList();e.preventDefault();return;}
   const psm=document.getElementById('projStatusModal');
@@ -2603,12 +2619,14 @@ function renderDetail(){
   const cntABoffen=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.status==='bestellt'&&!p.abBestaetigt&&!istNichtBestellbar(p)).length;
   const cntInLief=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
   const cntBauseits=CUR.positionen.filter(istNichtBestellbar).length;
+  const cntZubehoer=CUR.positionen.filter(p=>Array.isArray(p.zubehoer)&&p.zubehoer.length>0).length;
   const totalP=CUR.positionen.length;
   document.getElementById('dChips').innerHTML=
     `<button class="chip${DFILTER===''?' on':''}" onclick="setDFilter('')">Alle <span class="cn">${totalP}</span></button>`+
     `<button class="chip${DFILTER==='zubest'?' on':''}" onclick="setDFilter('zubest')">Zu bestellen <span class="cn">${cntZB}</span></button>`+
     `<button class="chip${DFILTER==='aboffen'?' on':''}" onclick="setDFilter('aboffen')">AB offen <span class="cn">${cntABoffen}</span></button>`+
     `<button class="chip${DFILTER==='lieferung'?' on':''}" onclick="setDFilter('lieferung')">In Lieferung <span class="cn">${cntInLief}</span></button>`+
+    (cntZubehoer?`<button class="chip${DFILTER==='zubehoer'?' on':''}" onclick="setDFilter('zubehoer')" title="Nur Positionen mit Zubehör-Eintrag (Mischbatterien, Spender, GN-Behälter)">🔧 Mit Zubehör <span class="cn">${cntZubehoer}</span></button>`:'')+
     (cntBauseits?`<button class="chip${DFILTER==='bauseits'?' on':''}" onclick="setDFilter('bauseits')" title="Bauseits, Dienstleistungen (Stundenlohn, Anschluesse, Reinigung, Montage, Anfahrt, Entsorgung) und entfallene Positionen">Nicht bestellbar <span class="cn">${cntBauseits}</span></button>`:'')+
     `<button class="chip" onclick="toggleAllBereiche(true)" title="Alle Bereiche zuklappen">▶ Alle zu</button>`+
     `<button class="chip" onclick="toggleAllBereiche(false)" title="Alle Bereiche aufklappen">▼ Alle auf</button>`;
@@ -2818,6 +2836,7 @@ function passesDFilter(p){
   if(DFILTER==='aboffen')return p.quelle==='bestellt' && p.status==='bestellt' && !p.abBestaetigt && !istNichtBestellbar(p);
   if(DFILTER==='lieferung')return p.quelle==='bestellt' && p.abBestaetigt && p.status!=='geliefert' && !istNichtBestellbar(p);
   if(DFILTER==='bauseits')return istNichtBestellbar(p);
+  if(DFILTER==='zubehoer')return Array.isArray(p.zubehoer) && p.zubehoer.length>0;
   return severity(p,CUR)===DFILTER;
 }
 async function toggleBereich(key){
@@ -4122,6 +4141,151 @@ async function markZubBestellt(projId,posIdx,zi){
   await dbPut('projects',proj);markChanged();
   renderZuBestellen();updateGlobalCounters();
   toast(p.pos+' · '+(ZUB_LABEL[z.kat]||z.kat)+' als bestellt markiert','ok');
+}
+
+// ── Zubehoer-Sammelliste pro Projekt (fuer die Planer) ──────────────────
+// Sammelt alle Zubehoer-Eintraege im aktuellen Projekt, gruppiert nach Lieferant.
+// Zeigt jede Zeile mit Pos-Nr, Bezeichnung der Hauptposition, Zubehoer-Typ, Menge,
+// Bestell-Status, Komm-Nr. Druckbar/kopierbar fuer die Planungs-Sitzung.
+function buildZubListe(proj){
+  const items=[];
+  (proj.positionen||[]).forEach((p,idx)=>{
+    if(!Array.isArray(p.zubehoer))return;
+    p.zubehoer.forEach((z,zi)=>items.push({p,idx,z,zi}));
+  });
+  // Gruppieren nach Zubehoer-Lieferant (auto-erkannt wenn leer)
+  const groups={};
+  items.forEach(it=>{
+    const lief=it.z.lieferant||lieferantFromZubTyp(it.z.typ)||'(ohne Zuordnung)';
+    if(!groups[lief])groups[lief]={lief,items:[]};
+    groups[lief].items.push(it);
+  });
+  return {items,groups:Object.values(groups).sort((a,b)=>{
+    if(a.lief==='(ohne Zuordnung)')return 1;
+    if(b.lief==='(ohne Zuordnung)')return -1;
+    return a.lief.localeCompare(b.lief);
+  })};
+}
+function openZubehoerListe(){
+  if(!CUR)return;
+  const {items,groups}=buildZubListe(CUR);
+  const body=document.getElementById('zubListBody');
+  if(items.length===0){
+    body.innerHTML=`<h3 style="margin-bottom:6px">🔧 Zubehör-Liste</h3>
+      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(CUR.name)}</div>
+      <div style="padding:30px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">
+        Noch kein Zubehör angelegt.<br>Beim Anlegen einer Position mit Becken/Spender wird automatisch ein Vorschlag erzeugt – ansonsten 🔧 Zubehör-Block in jeder Position öffnen und ergänzen.
+      </div>`;
+  } else {
+    const offen=items.filter(it=>!it.z.quelle).length;
+    const bestellt=items.filter(it=>it.z.quelle==='bestellt').length;
+    const lager=items.filter(it=>it.z.quelle==='lager').length;
+    const head=`<h3 style="margin-bottom:6px">🔧 Zubehör-Liste</h3>
+      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(CUR.name)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)
+        ${offen?` · <span style="color:#a01515;font-weight:700">${offen} offen</span>`:''}
+        ${bestellt?` · <span style="color:#0f6332;font-weight:700">${bestellt} bestellt</span>`:''}
+        ${lager?` · <span style="color:#1a5f7a;font-weight:700">${lager} Lager</span>`:''}
+      </div>`;
+    const grpHtml=groups.map(g=>{
+      const rows=g.items.map(it=>{
+        const z=it.z, p=it.p;
+        const katLbl=ZUB_LABEL[z.kat]||z.kat||'?';
+        const stat=z.quelle==='bestellt'?'<span style="color:#0f6332;font-weight:700">✓ Bestellt</span>':z.quelle==='lager'?'<span style="color:#1a5f7a;font-weight:700">▣ Lager</span>':'<span style="color:#a01515;font-weight:700">○ offen</span>';
+        const komm=z.kommNr?` · 🏷 ${esc(z.kommNr)}`:'';
+        return `<tr>
+          <td style="padding:7px 9px;font-weight:700;color:#2d2926;font-size:11.5px;white-space:nowrap;vertical-align:top">${esc(p.pos)}</td>
+          <td style="padding:7px 9px;font-size:12px;color:#2d2926">
+            <div style="font-weight:600">${esc(z.typ||'(Typ fehlt)')}</div>
+            <div style="font-size:10.5px;color:rgba(28,28,30,.6);margin-top:2px">${esc(katLbl)} · für ${esc(p.bez)}${komm}</div>
+          </td>
+          <td style="padding:7px 9px;font-size:12px;font-weight:700;color:#6b5040;text-align:center;white-space:nowrap;vertical-align:top">${esc(z.menge||1)} Stk</td>
+          <td style="padding:7px 9px;font-size:11px;text-align:right;white-space:nowrap;vertical-align:top">${stat}</td>
+        </tr>`;
+      }).join('');
+      const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
+      return `<div style="margin-bottom:14px;border:.5px solid rgba(107,80,64,.25);border-radius:10px;overflow:hidden">
+        <div style="padding:8px 12px;background:linear-gradient(135deg,#6b5040,#3d2d22);color:#fff;font-size:12.5px;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+          <span>🏭 ${esc(g.lief)}</span>
+          <span style="font-size:11px;background:rgba(255,255,255,.18);padding:2px 9px;border-radius:7px">${g.items.length} Pos · ${sum} Stk</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;background:#fff">
+          ${rows}
+        </table>
+      </div>`;
+    }).join('');
+    body.innerHTML=head+grpHtml;
+  }
+  document.getElementById('zubListModal').classList.add('on');
+}
+function closeZubehoerListe(){document.getElementById('zubListModal').classList.remove('on');}
+function zubListeAsText(proj){
+  const {items,groups}=buildZubListe(proj);
+  if(items.length===0)return `🔧 Zubehör-Liste · ${proj.name}\n\n(keine Einträge)`;
+  const L=[`🔧 ZUBEHÖR-LISTE · ${proj.name}`,
+    `Stand: ${new Date().toLocaleString('de-DE')} · ${items.length} Einträge bei ${groups.length} Lieferant(en)`,''];
+  groups.forEach(g=>{
+    const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
+    L.push(`🏭 ${g.lief}  (${g.items.length} Pos · ${sum} Stk)`);
+    L.push('─'.repeat(60));
+    g.items.forEach(it=>{
+      const z=it.z, p=it.p;
+      const stat=z.quelle==='bestellt'?'✓ bestellt':z.quelle==='lager'?'▣ Lager':'○ offen';
+      const komm=z.kommNr?`  [Komm ${z.kommNr}]`:'';
+      L.push(`  Pos ${p.pos}  ${z.menge||1}× ${z.typ||'(Typ fehlt)'}  ·  ${ZUB_LABEL[z.kat]||z.kat}  ·  ${stat}${komm}`);
+      L.push(`    └ für: ${p.bez}`);
+    });
+    L.push('');
+  });
+  return L.join('\n');
+}
+async function copyZubListe(){
+  if(!CUR)return;
+  const txt=zubListeAsText(CUR);
+  try{await navigator.clipboard.writeText(txt);toast('Zubehör-Liste in Zwischenablage kopiert','ok');}
+  catch(e){
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');toast('Liste kopiert','ok');}catch(_){toast('Kopieren fehlgeschlagen','err');}
+    document.body.removeChild(ta);
+  }
+}
+function printZubListe(){
+  if(!CUR)return;
+  const {items,groups}=buildZubListe(CUR);
+  const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const stand=new Date().toLocaleString('de-DE');
+  const tablesHtml=groups.map(g=>{
+    const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
+    const rows=g.items.map(it=>{
+      const z=it.z, p=it.p;
+      const stat=z.quelle==='bestellt'?'✓ bestellt':z.quelle==='lager'?'Lager':'offen';
+      return `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #ddd;font-weight:600;white-space:nowrap">${e(p.pos)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #ddd">
+          <strong>${e(z.typ||'(Typ fehlt)')}</strong><br>
+          <small style="color:#666">${e(ZUB_LABEL[z.kat]||z.kat)} · für ${e(p.bez)}${z.kommNr?' · Komm '+e(z.kommNr):''}</small>
+        </td>
+        <td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;white-space:nowrap">${e(z.menge||1)} Stk</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;font-size:11px">${e(stat)}</td>
+      </tr>`;
+    }).join('');
+    return `<h2 style="font-size:14px;background:#3d2d22;color:#fff;padding:8px 12px;margin:18px 0 0;border-radius:6px 6px 0 0">🏭 ${e(g.lief)}  <span style="float:right;font-size:11px;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:5px">${g.items.length} Pos · ${sum} Stk</span></h2>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd">${rows}</table>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zubehör · ${e(CUR.name)}</title>
+    <style>
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:900px;margin:0 auto}
+      h1{font-size:20px;color:#6b5040;margin:0 0 4px}
+      .stand{font-size:11px;color:#888;margin-bottom:18px}
+      @media print{body{padding:10mm} h2{page-break-after:avoid}}
+    </style></head><body>
+    <h1>🔧 Zubehör-Liste · ${e(CUR.name)}</h1>
+    <div class="stand">Stand: ${e(stand)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)</div>
+    ${tablesHtml||'<p style="padding:30px;text-align:center;color:#888">Noch kein Zubehör angelegt.</p>'}
+    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
+    </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){toast('Bitte Pop-Ups erlauben','err');return;}
+  w.document.write(html);w.document.close();
 }
 
 function toggleZbGroup(key){
