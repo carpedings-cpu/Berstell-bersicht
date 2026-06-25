@@ -1558,7 +1558,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v16';
+const APP_VERSION='2026-06-21 · v17';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -4012,21 +4012,47 @@ function parsePreiseExcel(ab,fname){
 function fmtEur(n){return n.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
 function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 
+// Preisdaten LIVE aus PROJECTS aufbauen – statt verstaubtem Snapshot.
+// Vorher wurde syncPreiseFromProject nur beim Anlegen oder Excel-Re-Import gerufen.
+// Wenn der Bearbeiter spaeter den Lieferanten nachtraegt oder den Preis aendert,
+// blieb PREISE_DATA stehen und die Position fehlte in der Preisansicht (z.B. Narr
+// bei Mainz). Jetzt: bei jedem renderPreise neu aus PROJECTS aufbauen.
+function buildPreiseLive(){
+  const out=[];
+  PROJECTS.forEach(proj=>{
+    (proj.positionen||[]).forEach(p=>{
+      // Nur offene Positionen (nicht bestellt, nicht entfallen, nicht bauseits/Dienstleistung)
+      if(istBestellt(p))return;
+      if(istNichtBestellbar(p))return;
+      if(p.quelle==='lager')return;
+      // Nur mit Preis
+      const ek=p.ek||0, vk=p.vk||0;
+      if(ek===0 && vk===0)return;
+      out.push({
+        proj:proj.name,
+        pos:p.pos,
+        bez:p.bez,
+        typ:p.typ||'',
+        lief:p.lieferant||p.fabrikat||'(ohne Lieferant)',
+        menge:toI(p.menge)||1,
+        ek, vk,
+        termin:proj.liefertermin||'',
+        anm:'',
+        bindung:''
+      });
+    });
+  });
+  // Externe Preisdaten (manuelle EK/VK-Excel ohne echtes Projekt im System) bleiben erhalten
+  const projNames=new Set(PROJECTS.map(p=>p.name));
+  PREISE_DATA.forEach(e=>{ if(!projNames.has(e.proj))out.push(e); });
+  return out;
+}
 function renderPreise(){
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
-  const hasData=PREISE_DATA.length>0;
-  // Bestellte und entfallene Positionen aus dem Preisvergleich raus – die Preise sind dann
-  // irrelevant (Bestellung ist raus bzw. die Position kommt gar nicht mehr).
-  let items=PREISE_DATA.filter(it=>{
-    const proj=PROJECTS.find(p=>p.name===it.proj);
-    if(!proj)return true;
-    const pos=proj.positionen.find(p=>String(p.pos).trim()===String(it.pos).trim());
-    if(!pos)return true;
-    if(istBestellt(pos))return false;
-    if(istEntfallen(pos))return false;
-    return true;
-  });
+  // LIVE aus PROJECTS: immer aktuell, keine veralteten Daten
+  let items=buildPreiseLive();
+  const hasData=items.length>0;
   if(q){
     // Sucht primaer ueber den Lieferanten (mit Normalisierung – "cool" findet Cool Compact / CoolCompact,
     // aber nicht WMF, auch wenn 'cool' in Bezeichnung steht). Faellt auf Volltext zurueck, wenn kein Lieferant matched.
