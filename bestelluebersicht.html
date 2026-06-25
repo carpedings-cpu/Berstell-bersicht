@@ -627,6 +627,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <div class="sw"><span class="si">⌕</span>
       <input type="text" id="zubestSrch" placeholder="Filter: Lieferant oder Position …" oninput="renderZuBestellen()">
     </div>
+    <div class="seg-zb" style="display:inline-flex;border-radius:11px;background:rgba(255,255,255,.65);border:.5px solid rgba(0,0,0,.08);overflow:hidden">
+      <button class="seg-zb-btn" data-zbfilter="alle" onclick="setZbFilter('alle')" style="padding:8px 12px;border:none;background:transparent;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#2d2926">Alle</button>
+      <button class="seg-zb-btn" data-zbfilter="haupt" onclick="setZbFilter('haupt')" style="padding:8px 12px;border:none;background:transparent;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:rgba(28,28,30,.6);border-left:.5px solid rgba(0,0,0,.08)">Hauptpositionen</button>
+      <button class="seg-zb-btn" data-zbfilter="zub" onclick="setZbFilter('zub')" style="padding:8px 12px;border:none;background:transparent;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:rgba(28,28,30,.6);border-left:.5px solid rgba(0,0,0,.08)">🔧 Nur Zubehör</button>
+    </div>
     <button class="actbtn" onclick="copyAllZuBestellen()" style="padding:8px 13px;border-radius:11px;border:.5px solid rgba(0,0,0,.08);background:rgba(255,255,255,.7);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📋 Alles kopieren</button>
   </div>
   <div id="zubestList"></div>
@@ -670,6 +675,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     </label>
   </div>
   <div id="prKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px"></div>
+  <div id="prProjOhne"></div>
   <div id="prList"></div>
 </div>
 
@@ -1663,7 +1669,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v21';
+const APP_VERSION='2026-06-21 · v22';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -3969,7 +3975,7 @@ async function clearReklam(idx){
 async function goZuBestellen(){
   showView('vBestellen');
   PROJECTS=await dbAll('projects');
-  renderZuBestellen();
+  setZbFilter(ZB_FILTER||'alle'); // setzt Button-Optik + ruft renderZuBestellen
 }
 // Zentrale Definition: Was muss noch bestellt werden?
 // EINFACH UND VORHERSEHBAR: richtet sich NUR nach der 'Bestellt'-Checkbox (quelle).
@@ -3988,6 +3994,16 @@ function istZuBestellen(p){
 // (quelle). Diese No-Ops bleiben nur, damit bestehende Aufrufer nicht brechen.
 function healPosition(p){return false;}
 async function healAllProjects(pushToCloud){return false;}
+let ZB_FILTER='alle'; // 'alle' | 'haupt' | 'zub'
+function setZbFilter(v){
+  ZB_FILTER=v;
+  document.querySelectorAll('.seg-zb-btn').forEach(b=>{
+    const on=b.dataset.zbfilter===v;
+    b.style.background=on?'linear-gradient(135deg,#6b5040,#3d2d22)':'transparent';
+    b.style.color=on?'#fff':'rgba(28,28,30,.6)';
+  });
+  renderZuBestellen();
+}
 function renderZuBestellen(){
   const q=(document.getElementById('zubestSrch')?.value||'').toLowerCase().trim();
   // Sammeln: alle Positionen die noch zu bestellen sind
@@ -4025,11 +4041,7 @@ function renderZuBestellen(){
   document.getElementById('zubestInfo').innerHTML=`<strong>${filtered.length}</strong> Position${filtered.length===1?'':'en'} aus <strong>${new Set(filtered.map(i=>i.projId)).size}</strong> Projekt(en), gruppiert nach <strong>${groupList.length}</strong> Lieferant(en)`;
   // Render
   const wrap=document.getElementById('zubestList');
-  if(filtered.length===0){
-    wrap.innerHTML='<div class="empty">Alles bestellt. ✓</div>';
-    return;
-  }
-  let html=groupList.map(g=>{
+  let html=(ZB_FILTER==='zub'?[]:groupList).map(g=>{
     const rows=g.items.map(it=>{
       const t=it.p.abrufTermin||it.projTermin||'';
       const termInfo=t?` · 📅 ${fmtD(t)}`:'';
@@ -4071,7 +4083,7 @@ function renderZuBestellen(){
     const hay=[it.projName,it.p.pos,it.p.bez,it.z.kat,it.z.typ,it.z.lieferant].join(' ').toLowerCase();
     return hay.includes(q);
   }):zubItems;
-  if(zubFiltered.length>0){
+  if(zubFiltered.length>0 && ZB_FILTER!=='haupt'){
     const zg={};
     zubFiltered.forEach(it=>{
       const raw=it.z.lieferant||lieferantFromZubTyp(it.z.typ)||'(ohne Zuordnung)';
@@ -4115,7 +4127,10 @@ function renderZuBestellen(){
     }).join('');
   }
 
-  wrap.innerHTML=html;
+  if(!html){
+    const msg=ZB_FILTER==='zub'?'Kein Zubehör offen. ✓':ZB_FILTER==='haupt'?'Keine Hauptpositionen offen. ✓':'Alles bestellt. ✓';
+    wrap.innerHTML='<div class="empty">'+msg+'</div>';
+  } else wrap.innerHTML=html;
   // Counter auf Startseite aktualisieren (Hauptpositionen + Zubehoer-Zeilen, die noch offen sind)
   const cnt=document.getElementById('zubestCnt');
   if(cnt)cnt.textContent=items.length+zubItems.length;
@@ -4475,11 +4490,37 @@ function renderPreise(){
   const ekTot=items.reduce((s,it)=>s+it.ek*it.menge,0);
   const vkTot=items.reduce((s,it)=>s+it.vk*it.menge,0);
   const margeTot=vkTot>0?((vkTot-ekTot)/vkTot*100):0;
+  // Preis-Vollstaendigkeit pro Projekt: wieviel hat Preis, wieviel fehlt
+  const projStats={};
+  PROJECTS.forEach(proj=>{
+    let mit=0,ohne=0;
+    (proj.positionen||[]).forEach(p=>{
+      if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
+      if((p.ek||0)>0||(p.vk||0)>0)mit++; else ohne++;
+    });
+    if(mit+ohne>0)projStats[proj.name]={mit,ohne,total:mit+ohne};
+  });
+  const projOhnePreis=Object.entries(projStats).filter(([,s])=>s.ohne>0);
+  const gesOhne=Object.values(projStats).reduce((s,p)=>s+p.ohne,0);
   document.getElementById('prKpis').innerHTML=`
     <div class="pr-kpi"><div class="kn">${groupList.length}</div><div class="kl">Lieferanten</div></div>
-    <div class="pr-kpi"><div class="kn">${items.length}</div><div class="kl">Positionen</div></div>
-    <div class="pr-kpi"><div class="kn">${fmtEur(vkTot)}</div><div class="kl">Volumen VK</div></div>
+    <div class="pr-kpi"><div class="kn">${items.length}</div><div class="kl">Positionen mit Preis</div></div>
+    <div class="pr-kpi"><div class="kn" style="color:${gesOhne>0?'#a01515':'#0f6332'}">${gesOhne}</div><div class="kl">Ohne Preis</div></div>
     <div class="pr-kpi"><div class="kn" style="color:#1e8a4a">${Math.round(margeTot)}%</div><div class="kl">Ø Marge</div></div>`;
+  // Pro-Projekt-Übersicht: nur sichtbar wenn Projekte ohne Preis existieren
+  const projOhneEl=document.getElementById('prProjOhne');
+  if(projOhneEl){
+    if(projOhnePreis.length>0){
+      projOhneEl.innerHTML=`<div style="padding:10px 14px;background:rgba(217,32,32,.08);border:.5px solid rgba(217,32,32,.25);border-radius:11px;margin-bottom:14px;font-size:12px">
+        <strong style="color:#a01515">⚠ Preise unvollständig in ${projOhnePreis.length} Projekt(en):</strong>
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">
+          ${projOhnePreis.sort((a,b)=>b[1].ohne-a[1].ohne).map(([name,s])=>`<span style="padding:3px 8px;border-radius:7px;background:rgba(217,32,32,.12);color:#a01515;font-weight:700">${esc(name)}: ${s.ohne}/${s.total} ohne Preis</span>`).join('')}
+        </div>
+      </div>`;
+    } else {
+      projOhneEl.innerHTML=`<div style="padding:8px 14px;background:rgba(30,138,74,.08);border:.5px solid rgba(30,138,74,.25);border-radius:11px;margin-bottom:14px;font-size:12px;color:#0f6332;font-weight:600">✓ Alle aktiven Positionen haben Preise hinterlegt</div>`;
+    }
+  }
   const wrap=document.getElementById('prList');
   if(groupList.length===0){
     wrap.innerHTML=hasData?'<div class="empty">Keine Treffer.</div>':'<div class="empty">Noch keine Preisdaten.<br>Beim Hochladen eines Projekts werden EK/VK automatisch übernommen – oder lade oben gezielt eine EK/VK-Excel hoch.</div>';
