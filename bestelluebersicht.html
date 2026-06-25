@@ -330,6 +330,36 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .poshist:hover{background:rgba(26,95,122,.18);}
 .poshist:active{transform:scale(.9);}
 .poshist .histcnt{font-weight:700;font-size:10px;}
+
+/* Zubehoer-Block */
+.zub-block{margin-top:8px;border:.5px solid rgba(107,80,64,.25);border-radius:11px;background:rgba(244,239,232,.55);overflow:hidden;}
+.zub-block.open{background:rgba(244,239,232,.85);box-shadow:0 2px 8px rgba(107,80,64,.08);}
+.zub-hd{display:flex;align-items:center;gap:7px;padding:8px 12px;cursor:pointer;user-select:none;font-size:12px;font-weight:700;color:#6b5040;}
+.zub-hd:hover{background:rgba(200,168,130,.12);}
+.zub-tog{display:inline-block;width:14px;font-size:10px;color:#8a6a52;}
+.zub-title{flex:0 0 auto;}
+.zub-add-hint{font-size:10.5px;color:rgba(107,80,64,.55);font-weight:600;margin-left:auto;}
+.zub-bdg{display:inline-block;padding:1px 7px;border-radius:7px;font-size:10px;font-weight:700;letter-spacing:.2px;}
+.zub-bdg-r{background:rgba(217,32,32,.13);color:#a01515;}
+.zub-bdg-g{background:rgba(30,138,74,.13);color:#0f6332;}
+.zub-body{padding:6px 10px 10px;display:flex;flex-direction:column;gap:8px;}
+.zub-row{padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.6);border:.5px solid rgba(107,80,64,.15);display:flex;flex-direction:column;gap:6px;}
+.zub-r1{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.zub-r2{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.zub-kat{min-width:130px;padding:6px 8px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;color:#2d2926;}
+.zub-typ{flex:1;min-width:200px;padding:6px 8px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;color:#2d2926;}
+.zub-menge{width:55px;padding:6px 6px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;text-align:center;color:#2d2926;}
+.zub-del{flex:0 0 auto;width:26px;height:26px;border:none;border-radius:50%;background:rgba(139,34,34,.1);color:#8b2222;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;}
+.zub-del:hover{background:rgba(139,34,34,.2);}
+.zub-tg{flex:0 0 auto;padding:6px 11px;border-radius:14px;border:.5px solid rgba(107,80,64,.25);background:rgba(255,255,255,.6);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;color:#6b5040;display:inline-flex;align-items:center;gap:4px;}
+.zub-tg:hover{background:rgba(255,255,255,.85);}
+.zub-tg.on{color:#fff;border-color:transparent;}
+.zub-tg.zub-best.on{background:linear-gradient(135deg,#b8860b,#c8961b);box-shadow:0 2px 6px rgba(184,134,11,.3);}
+.zub-tg.zub-lag.on{background:linear-gradient(135deg,#1a5f7a,#1f6d8c);box-shadow:0 2px 6px rgba(26,95,122,.3);}
+.zub-komm{flex:1;min-width:120px;padding:6px 10px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;color:#2d2926;}
+.zub-lief{font-size:11px;color:rgba(107,80,64,.75);font-weight:600;white-space:nowrap;}
+.zub-add{align-self:flex-start;padding:6px 12px;border-radius:9px;border:.5px dashed rgba(107,80,64,.4);background:transparent;color:#6b5040;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
+.zub-add:hover{background:rgba(200,168,130,.15);border-style:solid;}
 .ab-item{display:flex;align-items:center;gap:11px;padding:11px 14px;background:rgba(255,255,255,.7);
   border:.5px solid rgba(255,255,255,.7);border-radius:12px;margin-bottom:8px;box-shadow:0 3px 12px rgba(45,41,38,.04);position:relative;overflow:hidden;}
 .ab-item.ab-red::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#d92020,#ff4444);}
@@ -429,6 +459,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .zb-menge{font-size:12px;font-weight:700;color:#6b5040;white-space:nowrap;flex-shrink:0;}
 .zb-mark{background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;border:none;padding:6px 12px;border-radius:9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;}
 .zb-mark:active{transform:scale(.94);}
+/* Zubehoer-Sektion in Zu-bestellen */
+.zb-section-hd{margin:24px 0 12px;padding:8px 16px;border-radius:11px;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;font-size:13px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;display:inline-block;box-shadow:0 4px 14px rgba(107,80,64,.3);}
+.zb-group.zb-group-zub .zb-grouphd{background:linear-gradient(135deg,#6b5040,#3d2d22);}
+.zb-item.zb-zub{background:rgba(244,239,232,.4);}
+.zb-item.zb-zub:hover,.zb-item.zb-zub.zb-clickable:active{background:rgba(200,168,130,.18);}
 
 .lsdrop{margin-top:8px;padding:9px 12px;border:1.5px dashed rgba(107,80,64,.3);border-radius:10px;
   background:rgba(255,255,255,.4);text-align:center;cursor:pointer;font-size:11.5px;font-weight:600;
@@ -1274,6 +1309,59 @@ function abrufTermin(p,proj){
 // status, weil status in Altdaten gesetzt sein kann, ohne dass quelle='bestellt' ist –
 // dann wuerde die Karte etwas zaehlen, das man im Projekt nicht als bestellt sieht.
 function istBestellt(p){return p.quelle==='bestellt';}
+
+// ── ZUBEHÖR-KATALOG ──────────────────────────────────────────────────────
+// Liste wird spaeter verfeinert. Lieferant wird aus dem Typ-Praefix abgeleitet.
+const ZUB_KATALOG={
+  mischbatterie:[
+    'KWC Isla 10.371.023.000FL (35mm)','KWC 130.1B.000FL (35mm)','KWC 130.1N.000FL (35mm)',
+    'KWC Luna-E 10.441.013.000FL (35mm)','KWC Luna (35mm)','KWC Gastro A300',
+    'KWC Wandmischbatterie 3/4"','KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
+    'Echtermann Sensorarmatur B 2314.21 (33mm)','Echtermann Sensorarmatur N 2314.20 (33mm)',
+    'Echtermann Zweigriff-Wandarmatur 1/2"','Echtermann Wand-Geschirrspülbrause 1/2"',
+    'Echtermann Wandmischbatterie 3/4" 2460.24/000','Echtermann Standventil 3/4" 6470.50/300.265 (43mm)',
+    'Echtermann Standventil 1/2" 6460.90/300.300 (30mm)','Echtermann Brause #6639',
+    'Armag Wandmischbatterie 306.R01.1M5.0PGT (42mm)',
+    'Knauss Standventil 3/4" VZ.130.262.HT2 (43mm)','Knauss Standventil 3/4" VZ.130.462.HT2 (42mm)',
+    'Knauss Standventil 1/2" VQ.130.261.HS1 (35mm)'
+  ],
+  seifenspender:['Kohlhoff Seifen-/Desinfektionsspender SDS 1 Liter','Seifenspender Aufputz','Seifenspender Einbau Z.538.409.000 (26mm)','Seifenspender Wand'],
+  desinfektionsspender:['Kohlhoff Seifen-/Desinfektionsspender SDS 1 Liter','Kohlhoff Hygienecenter HC-Primus II','Desinfektionsspender Aufputz','Desinfektionsspender 1 Liter'],
+  handtuchspender:['Kohlhoff Handtuchspender HS-AB abschließbar','Wagner Ewar WP 165 (Einbau)','Handtuchspender Aufputz','Handtuchspender Wand'],
+  gn:['GN 1/1-65','GN 1/1-100','GN 1/1-150','GN 1/1-200','GN 1/2-65','GN 1/2-100','GN 1/2-150','GN 1/3-100','GN 1/3-150','GN 2/3-150']
+};
+const ZUB_LABEL={becken:'Becken',mischbatterie:'Mischbatterie',seifenspender:'Seifenspender',desinfektionsspender:'Desinfektionsspender',handtuchspender:'Handtuchspender',gn:'GN-Behälter'};
+// Becken → standardmaessig Mischbatterie-Vorschlag
+const ZUB_KAT_TO_KATALOG={becken:'mischbatterie',mischbatterie:'mischbatterie',seifenspender:'seifenspender',desinfektionsspender:'desinfektionsspender',handtuchspender:'handtuchspender',gn:'gn'};
+// Auto-Erkennung: welche Zubehoer-Kategorie passt zur Position?
+function erkenneZubehoerKat(bez){
+  const t=String(bez||'').toLowerCase();
+  if(/handwasch|spülbecken|spuelbecken|\bbecken\b|hwb|hwak|spüle\b|spuele\b|spülk|spuelk/.test(t))return 'becken';
+  if(/seifenspender|seifen-\/desinfek/.test(t))return 'seifenspender';
+  if(/desinfektionsspender|hygienecenter/.test(t))return 'desinfektionsspender';
+  if(/handtuchspender/.test(t))return 'handtuchspender';
+  return null;
+}
+// Lieferant aus dem Typ-Praefix ableiten (KWC Isla → KWC)
+function lieferantFromZubTyp(typ){
+  const t=String(typ||'').trim();
+  if(/^kwc\b/i.test(t))return 'KWC';
+  if(/^echtermann\b/i.test(t))return 'Echtermann';
+  if(/^armag\b/i.test(t))return 'Armag';
+  if(/^kohlhoff\b/i.test(t))return 'Kohlhoff';
+  if(/^knauss\b/i.test(t))return 'Knauss';
+  if(/^wagner ewar\b/i.test(t))return 'Wagner Ewar';
+  if(/^hupfer\b/i.test(t))return 'Hupfer';
+  if(/^gn\b/i.test(t))return '(GN-Behälter)';
+  return '';
+}
+// Ist die Zubehoer-Zeile noch zu bestellen?
+function istZubZuBestellen(z){
+  if(!z)return false;
+  if(z.quelle==='bestellt'||z.quelle==='lager')return false;
+  if(!z.kat||!z.typ)return false; // erst wenn vollstaendig
+  return true;
+}
 // Abgerufen/Geliefert sind Unterzustaende von bestellt
 function istAbgerufen(p){return istBestellt(p)&&p.status==='abgerufen';}
 function istGeliefert(p){return istBestellt(p)&&p.status==='geliefert';}
@@ -1344,6 +1432,16 @@ async function init(){
       }
       if(!('abAm' in p)){p.abAm='';migrated=true;}
       if(!('abErinnertAm' in p)){p.abErinnertAm='';migrated=true;}
+      // Zubehoer-Migration: leeres Array + Auto-Vorschlag, wenn Bezeichnung auf Becken/Spender deutet
+      if(!Array.isArray(p.zubehoer)){
+        p.zubehoer=[];
+        const k=erkenneZubehoerKat(p.bez);
+        if(k && !istNichtBestellbar(p) && p.quelle!=='lager'){
+          const targetKat=ZUB_KAT_TO_KATALOG[k]||k;
+          p.zubehoer.push({kat:targetKat,typ:'',menge:parseInt(p.menge)||1,lieferant:'',quelle:'',kommNr:''});
+        }
+        migrated=true;
+      }
     }));
     if(migrated)for(const proj of PROJECTS)await dbPutLocal('projects',proj);
     // Cloud-Sync: vor dem Seed eines Demo-Projekts erst Cloud abfragen, sonst spammt jeder neue Client ein Demo in die Cloud
@@ -1515,6 +1613,9 @@ function makeProjFromData(name,data,termin=''){
   data.forEach(sec=>{
     (sec.subsections||[]).forEach(sub=>{
       sub.items.forEach(it=>{
+        const zub=[];
+        const zk=erkenneZubehoerKat(it.bez);
+        if(zk)zub.push({kat:ZUB_KAT_TO_KATALOG[zk]||zk,typ:'',menge:parseInt(it.menge)||1,lieferant:'',quelle:'',kommNr:''});
         positionen.push({
           pos:it.pos,bereich:sec.pos,bereichBez:sec.bez||sec.label||'',
           bez:it.bez,fabrikat:it.fabrikat||'',typ:it.typ||'',
@@ -1522,7 +1623,8 @@ function makeProjFromData(name,data,termin=''){
           ek:it.ek||0,vk:it.vk||0,
           quelle:'',lieferant:'',kommNrs:[],lieferort:'',
           abrufTermin:'',status:'offen',geliefertDatum:'',notiz:'',
-          bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:''
+          bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:'',
+          zubehoer:zub
         });
       });
     });
@@ -1561,7 +1663,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v18';
+const APP_VERSION='2026-06-21 · v19';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -2644,7 +2746,9 @@ function renderDetail(){
       html+=`<div style="display:flex;align-items:flex-end;padding-bottom:2px"><span style="font-size:11px;color:rgba(28,28,30,.5);font-style:italic">→ Lager-Abruf über Button oben</span></div>`;
       html+=`</div>`;
     }
-    
+    // Zubehoer-Block
+    html+=renderZubBlock(p,idx);
+
     // Reklamations-Button + Badge
     if(p.reklamation){
       html+=`<div style="margin-top:8px;padding:9px 11px;background:rgba(139,34,34,.08);border:.5px solid rgba(139,34,34,.25);border-radius:10px;font-size:12px;color:#8b2222;font-weight:600;display:flex;align-items:flex-start;gap:8px">
@@ -2792,8 +2896,12 @@ function requireLogin(){
 }
 // Globale Counter (Home-Buttons + Banner) refreshen, ohne den ganzen Home zu rendern
 function updateGlobalCounters(){
-  const zb=PROJECTS.reduce((s,proj)=>s+proj.positionen.filter(istZuBestellen).length,0);
-  const zbEl=document.getElementById('zubestCnt'); if(zbEl)zbEl.textContent=zb;
+  let zb=0,zub=0;
+  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
+    if(istZuBestellen(p))zb++;
+    if(Array.isArray(p.zubehoer))p.zubehoer.forEach(z=>{if(istZubZuBestellen(z))zub++;});
+  }));
+  const zbEl=document.getElementById('zubestCnt'); if(zbEl)zbEl.textContent=zb+zub;
   const abEl=document.getElementById('abrufCnt'); if(abEl)abEl.textContent=countAbrufFaellig();
 }
 // Auftragsbestätigung einer Position umschalten
@@ -2832,6 +2940,174 @@ async function updF(idx,k,v){
   await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
 }
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
+
+// ── ZUBEHÖR-BLOCK pro Position ───────────────────────────────────────────
+function isZubOpen(idx){
+  const ids=(localStorage.getItem('kpc_zubOpen')||'').split('|').filter(Boolean);
+  return ids.includes((CUR?CUR.id:'')+':'+idx);
+}
+function toggleZubBlock(idx){
+  const key=(CUR?CUR.id:'')+':'+idx;
+  let ids=(localStorage.getItem('kpc_zubOpen')||'').split('|').filter(Boolean);
+  const i=ids.indexOf(key);
+  if(i>=0)ids.splice(i,1); else ids.push(key);
+  localStorage.setItem('kpc_zubOpen',ids.join('|'));
+  renderDetail();
+}
+function renderZubBlock(p,idx){
+  if(!Array.isArray(p.zubehoer))p.zubehoer=[];
+  const n=p.zubehoer.length;
+  // Block nur zeigen wenn Zubehoer vorhanden ODER eine Hinzufuegen-Option gewuenscht
+  // (immer bei bestellbaren Positionen sichtbar, damit der Bearbeiter Zubehoer ergaenzen kann)
+  if(istNichtBestellbar(p))return '';
+  const open=n===0?false:isZubOpen(idx);
+  const offen=p.zubehoer.filter(z=>istZubZuBestellen(z)).length;
+  const bestellt=p.zubehoer.filter(z=>z.quelle==='bestellt').length;
+  let badges='';
+  if(offen)badges+=`<span class="zub-bdg zub-bdg-r">${offen} offen</span>`;
+  if(bestellt)badges+=`<span class="zub-bdg zub-bdg-g">${bestellt} bestellt</span>`;
+  let html=`<div class="zub-block${open?' open':''}">
+    <div class="zub-hd" onclick="toggleZubBlock(${idx})">
+      <span class="zub-tog">${open?'▼':'▶'}</span>
+      <span class="zub-title">🔧 Zubehör${n?' ('+n+')':''}</span>
+      ${badges}
+      ${n===0?'<span class="zub-add-hint">+ hinzufügen</span>':''}
+    </div>`;
+  if(open||n===0){
+    html+=`<div class="zub-body">`;
+    p.zubehoer.forEach((z,zi)=>{html+=renderZubRow(p,idx,zi,z);});
+    html+=`<button class="zub-add" onclick="addZubehoer(${idx})">+ Zubehör hinzufügen</button>`;
+    html+=`</div>`;
+  }
+  html+=`</div>`;
+  return html;
+}
+function renderZubRow(p,idx,zi,z){
+  const katOpts=`<option value="">— Kategorie —</option>`+
+    Object.keys(ZUB_LABEL).filter(k=>k!=='becken').map(k=>`<option value="${k}"${z.kat===k?' selected':''}>${ZUB_LABEL[k]}</option>`).join('');
+  let typEl='';
+  if(z.kat && ZUB_KATALOG[z.kat]){
+    const list=ZUB_KATALOG[z.kat];
+    const isCustom=z.typ && !list.includes(z.typ);
+    if(isCustom){
+      typEl=`<input class="zub-typ" value="${escA(z.typ)}" placeholder="eigener Typ" onchange="setZubTyp(${idx},${zi},this.value)">`;
+    } else {
+      typEl=`<select class="zub-typ" onchange="onZubTypSel(${idx},${zi},this.value)">
+        <option value="">— Typ wählen —</option>
+        ${list.map(t=>`<option value="${escA(t)}"${z.typ===t?' selected':''}>${esc(t)}</option>`).join('')}
+        <option value="__custom__">+ eigener Typ…</option>
+      </select>`;
+    }
+  } else {
+    typEl=`<select class="zub-typ" disabled><option>— erst Kategorie —</option></select>`;
+  }
+  const liefHint=z.lieferant?`<span class="zub-lief">🏭 ${esc(z.lieferant)}</span>`:'';
+  const hasQ=!!z.quelle;
+  const showBest=!hasQ||z.quelle==='bestellt';
+  const showLag=!hasQ||z.quelle==='lager';
+  const metaTip=z.meta?`Gesetzt von ${z.meta.user} am ${fmtAuditTime(z.meta.at)} · Klick zum Aufheben`:'';
+  const metaInline=z.meta&&z.quelle?`<span class="ckm">${esc(editorShort(z.meta.user))} · ${esc(fmtAuditShort(z.meta.at))}</span>`:'';
+  let actions='';
+  if(showBest)actions+=`<button class="zub-tg zub-best${z.quelle==='bestellt'?' on':''}" onclick="setZubQuelle(${idx},${zi},'bestellt')" title="${escA(z.quelle==='bestellt'?metaTip:'Als bestellt markieren')}">${z.quelle==='bestellt'?'✓':'○'} Bestellt${z.quelle==='bestellt'?metaInline:''}</button>`;
+  if(showLag)actions+=`<button class="zub-tg zub-lag${z.quelle==='lager'?' on':''}" onclick="setZubQuelle(${idx},${zi},'lager')" title="${escA(z.quelle==='lager'?metaTip:'Aus Lager nehmen')}">${z.quelle==='lager'?'✓':'○'} Lager${z.quelle==='lager'?metaInline:''}</button>`;
+  return `<div class="zub-row">
+    <div class="zub-r1">
+      <select class="zub-kat" onchange="setZubKat(${idx},${zi},this.value)">${katOpts}</select>
+      ${typEl}
+      <input class="zub-menge" type="number" min="1" value="${z.menge||1}" onchange="setZubMenge(${idx},${zi},this.value)" title="Menge">
+      <button class="zub-del" onclick="delZubehoer(${idx},${zi})" title="Zubehör entfernen">✕</button>
+    </div>
+    <div class="zub-r2">
+      ${actions}
+      <input class="zub-komm" type="text" placeholder="Komm-Nr (optional)" value="${escA(z.kommNr||'')}" onchange="setZubKomm(${idx},${zi},this.value)">
+      ${liefHint}
+    </div>
+  </div>`;
+}
+async function addZubehoer(idx){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx];
+  if(!Array.isArray(p.zubehoer))p.zubehoer=[];
+  p.zubehoer.push({kat:'',typ:'',menge:1,lieferant:'',quelle:'',kommNr:''});
+  logAction(p,'Zubehör hinzugefügt');
+  touchProject(CUR);
+  // Block auf 'open' setzen, falls noch zu
+  const key=CUR.id+':'+idx;
+  let ids=(localStorage.getItem('kpc_zubOpen')||'').split('|').filter(Boolean);
+  if(!ids.includes(key)){ids.push(key);localStorage.setItem('kpc_zubOpen',ids.join('|'));}
+  await saveCur();renderDetail();
+}
+async function delZubehoer(idx,zi){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx];
+  const z=p.zubehoer[zi]; if(!z)return;
+  const label=(z.kat?ZUB_LABEL[z.kat]||z.kat:'?')+(z.typ?' · '+z.typ:'');
+  if(!confirm('Zubehör entfernen?\n'+label))return;
+  p.zubehoer.splice(zi,1);
+  logAction(p,'Zubehör entfernt: '+label);
+  touchProject(CUR);
+  await saveCur();renderDetail();updateGlobalCounters();
+}
+async function setZubKat(idx,zi,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z)return;
+  const prev=z.kat;
+  z.kat=val;
+  if(prev!==val){z.typ='';z.lieferant='';}
+  if(prev!==val)logAction(p,`Zubehör Kategorie: ${ZUB_LABEL[prev]||prev||'-'} → ${ZUB_LABEL[val]||val||'-'}`);
+  touchProject(CUR);
+  await saveCur();renderDetail();
+}
+function onZubTypSel(idx,zi,val){
+  if(val==='__custom__'){
+    const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z)return;
+    z.typ=' '; // Hack: leerer String triggert Custom-Eingabefeld
+    saveCur().then(()=>renderDetail());
+    return;
+  }
+  setZubTyp(idx,zi,val);
+}
+async function setZubTyp(idx,zi,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z)return;
+  const prev=z.typ;
+  z.typ=String(val||'').trim();
+  // Auto-Lieferant aus Typ-Praefix
+  const auto=lieferantFromZubTyp(z.typ);
+  if(auto)z.lieferant=auto;
+  if(prev!==z.typ)logAction(p,`Zubehör Typ: ${prev||'-'} → ${z.typ||'-'}`);
+  touchProject(CUR);
+  await saveCur();renderDetail();updateGlobalCounters();
+}
+async function setZubMenge(idx,zi,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z)return;
+  const v=parseInt(val)||1;
+  if(z.menge!==v){logAction(p,`Zubehör Menge: ${z.menge} → ${v}`);z.menge=v;}
+  touchProject(CUR);
+  await saveCur();
+}
+async function setZubQuelle(idx,zi,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z)return;
+  const prev=z.quelle;
+  z.quelle=z.quelle===val?'':val;  // Toggle
+  if(z.quelle){
+    z.meta={at:new Date().toISOString(),user:EDITOR||'?'};
+  }
+  const lbl=v=>v==='bestellt'?'Bestellt':v==='lager'?'Lager':'(offen)';
+  logAction(p,`Zubehör "${z.typ||z.kat||'?'}" → ${lbl(z.quelle)}`);
+  touchProject(CUR);
+  await saveCur();renderDetail();updateGlobalCounters();
+}
+async function setZubKomm(idx,zi,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z)return;
+  const v=String(val||'').trim();
+  if((z.kommNr||'')!==v){logAction(p,`Zubehör Komm-Nr: ${z.kommNr||'-'} → ${v||'-'}`);z.kommNr=v;}
+  touchProject(CUR);
+  await saveCur();
+}
 
 // Tags
 function tagKey(ev,idx){if(ev.key==='Enter'||ev.key===','){ev.preventDefault();tagCommit(idx);}}
@@ -3726,11 +4002,10 @@ function renderZuBestellen(){
     wrap.innerHTML='<div class="empty">Alles bestellt. ✓</div>';
     return;
   }
-  wrap.innerHTML=groupList.map(g=>{
+  let html=groupList.map(g=>{
     const rows=g.items.map(it=>{
       const t=it.p.abrufTermin||it.projTermin||'';
       const termInfo=t?` · 📅 ${fmtD(t)}`:'';
-      // Klick auf die Zeile (ausser auf 'Bestellen') springt zur Position im Projekt
       const jump=`jumpToProjPos('${escA(it.projId)}','${escA(it.p.pos)}')`;
       return `<div class="zb-item zb-clickable" onclick="${jump}" title="${escA('Zu Position '+it.p.pos+' in '+it.projName+' springen')}">
         <div class="zb-pos">${esc(it.p.pos)}</div>
@@ -3756,9 +4031,82 @@ function renderZuBestellen(){
       ${isCollapsed?'':rows}
     </div>`;
   }).join('');
-  // Counter auf Startseite aktualisieren
+
+  // ── Zubehoer-Sektion: alle offenen Zubehoer-Zeilen, gruppiert nach Zubehoer-Lieferant ──
+  const zubItems=[];
+  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
+    if(!Array.isArray(p.zubehoer))return;
+    p.zubehoer.forEach((z,zi)=>{
+      if(istZubZuBestellen(z))zubItems.push({projId:proj.id,projName:proj.name,p,idx,z,zi});
+    });
+  }));
+  const zubFiltered=q?zubItems.filter(it=>{
+    const hay=[it.projName,it.p.pos,it.p.bez,it.z.kat,it.z.typ,it.z.lieferant].join(' ').toLowerCase();
+    return hay.includes(q);
+  }):zubItems;
+  if(zubFiltered.length>0){
+    const zg={};
+    zubFiltered.forEach(it=>{
+      const raw=it.z.lieferant||lieferantFromZubTyp(it.z.typ)||'(ohne Zuordnung)';
+      const key=normLief(raw)||'(ohne)';
+      if(!zg[key])zg[key]={key,items:[],variants:{}};
+      zg[key].items.push(it);
+      zg[key].variants[raw]=(zg[key].variants[raw]||0)+1;
+    });
+    Object.values(zg).forEach(g=>{g.lief=Object.entries(g.variants).sort((a,b)=>b[1]-a[1])[0][0];});
+    const zgList=Object.values(zg).sort((a,b)=>{
+      if(a.lief==='(ohne Zuordnung)')return 1;
+      if(b.lief==='(ohne Zuordnung)')return -1;
+      return a.lief.localeCompare(b.lief);
+    });
+    html+=`<div class="zb-section-hd">🔧 Zubehör</div>`;
+    html+=zgList.map(g=>{
+      const rows=g.items.map(it=>{
+        const jump=`jumpToProjPos('${escA(it.projId)}','${escA(it.p.pos)}')`;
+        const katLbl=ZUB_LABEL[it.z.kat]||it.z.kat;
+        return `<div class="zb-item zb-clickable zb-zub" onclick="${jump}" title="${escA('Zu Position '+it.p.pos+' in '+it.projName+' springen')}">
+          <div class="zb-pos">${esc(it.p.pos)}</div>
+          <div class="zb-bez">
+            <div style="font-weight:600">${esc(it.z.typ||'(Typ fehlt)')}</div>
+            <div style="font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px">${esc(katLbl)} · für ${esc(it.p.bez)} · 📁 ${esc(it.projName)}</div>
+          </div>
+          <div class="zb-menge">${esc(it.z.menge||1)} Stk</div>
+          <button class="zb-mark" onclick="event.stopPropagation();markZubBestellt('${it.projId}',${it.idx},${it.zi})">📦 Bestellen</button>
+        </div>`;
+      }).join('');
+      const key='zub_'+(normLief(g.lief)||'_');
+      const zbCollapsed=(localStorage.getItem('kpc_zbCollapsed')||'').split('|').filter(Boolean);
+      const isCollapsed=zbCollapsed.includes(key);
+      return `<div class="zb-group zb-group-zub">
+        <div class="zb-grouphd" onclick="toggleZbGroup('${escA(key)}')" style="cursor:pointer">
+          <span class="zb-tog">${isCollapsed?'▶':'▼'}</span>
+          <span>🏭 ${esc(g.lief)}</span>
+          <span class="zb-count">${g.items.length}</span>
+        </div>
+        ${isCollapsed?'':rows}
+      </div>`;
+    }).join('');
+  }
+
+  wrap.innerHTML=html;
+  // Counter auf Startseite aktualisieren (Hauptpositionen + Zubehoer-Zeilen, die noch offen sind)
   const cnt=document.getElementById('zubestCnt');
-  if(cnt)cnt.textContent=items.length;
+  if(cnt)cnt.textContent=items.length+zubItems.length;
+}
+
+async function markZubBestellt(projId,posIdx,zi){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.id===projId); if(!proj)return;
+  const p=proj.positionen[posIdx]; if(!p||!Array.isArray(p.zubehoer))return;
+  const z=p.zubehoer[zi]; if(!z)return;
+  z.quelle='bestellt';
+  z.meta={at:new Date().toISOString(),user:EDITOR||'?'};
+  if(!z.lieferant)z.lieferant=lieferantFromZubTyp(z.typ)||'';
+  logAction(p,`Zubehör "${z.typ||z.kat}" → Bestellt (über Zu-bestellen-Liste)`);
+  touchProject(proj);
+  await dbPut('projects',proj);markChanged();
+  renderZuBestellen();updateGlobalCounters();
+  toast(p.pos+' · '+(ZUB_LABEL[z.kat]||z.kat)+' als bestellt markiert','ok');
 }
 
 function toggleZbGroup(key){
