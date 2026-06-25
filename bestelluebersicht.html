@@ -1669,7 +1669,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v22';
+const APP_VERSION='2026-06-21 · v23';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -2752,18 +2752,6 @@ function renderDetail(){
       html+=`<div style="display:flex;align-items:flex-end;padding-bottom:2px"><span style="font-size:11px;color:rgba(28,28,30,.5);font-style:italic">→ Lager-Abruf über Button oben</span></div>`;
       html+=`</div>`;
     }
-    // Preis-Zeile (EK/VK) – immer editierbar, damit fehlende Preise nachgetragen werden koennen
-    if(!istNichtBestellbar(p)){
-      const ekV=p.ek||0, vkV=p.vk||0;
-      const marge=vkV>0?Math.round((vkV-ekV)/vkV*100):0;
-      const margeCol=marge>=35?'#0f6332':marge>=20?'#7d4d00':'#a01515';
-      const margeTxt=ekV>0||vkV>0?`<span style="font-size:11px;color:${margeCol};font-weight:700;align-self:center">Marge ${marge}%</span>`:'';
-      html+=`<div class="irow" style="margin-top:6px;align-items:center">
-        <div style="flex:0 0 auto"><label>EK €</label><input type="number" step="0.01" value="${ekV||''}" placeholder="0" onchange="updPreis(${idx},'ek',this.value)" style="width:95px;text-align:right"></div>
-        <div style="flex:0 0 auto"><label>VK €</label><input type="number" step="0.01" value="${vkV||''}" placeholder="0" onchange="updPreis(${idx},'vk',this.value)" style="width:95px;text-align:right"></div>
-        ${margeTxt}
-      </div>`;
-    }
     // Zubehoer-Block
     html+=renderZubBlock(p,idx);
 
@@ -2956,21 +2944,6 @@ async function updF(idx,k,v){
   if(prev!==v&&EDITOR)logAction(p,`${k}: ${prev||'-'} → ${v||'-'}`);
   touchProject(CUR);
   await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
-}
-// EK/VK direkt am Position-Card editierbar – damit fehlende Preise nachgetragen werden
-// koennen, ohne die Excel neu importieren zu muessen.
-async function updPreis(idx,k,v){
-  if(!requireLogin())return;
-  const p=CUR.positionen[idx];
-  // Deutsches Komma in Punkt wandeln, sonst parseFloat
-  const n=parseFloat(String(v||'').replace(/\./g,'').replace(',','.'))||0;
-  const prev=p[k]||0;
-  if(prev===n)return;
-  p[k]=n;
-  logAction(p,`${k.toUpperCase()}: ${prev||'-'} € → ${n||'-'} €`);
-  touchProject(CUR);
-  await saveCur();
-  renderDetail(); // damit die Marge sich aktualisiert
 }
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
 
