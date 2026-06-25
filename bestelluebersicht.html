@@ -1663,7 +1663,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v19';
+const APP_VERSION='2026-06-21 · v20';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -4252,7 +4252,13 @@ const DEMO_BINDUNGEN={
   'B.Pro':{status:'ok',text:'PL 2025 · gültig bis 31.12.2025'},
 };
 
-function goPreise(){showView('vPreise');renderPreise();}
+async function goPreise(){
+  showView('vPreise');
+  // KRITISCH: PROJECTS aus lokaler DB neu laden, sonst zeigt die Preisansicht
+  // einen veralteten Stand (z.B. wenn Lieferant gerade nachgetragen wurde).
+  try{PROJECTS=await dbAll('projects');}catch(e){console.warn('dbAll fail',e);}
+  renderPreise();
+}
 
 async function syncAllProjectPrices(){
   let total=0,projWithPrices=0;
@@ -4387,6 +4393,8 @@ function buildPreiseLive(showAll){
         bez:p.bez,
         typ:p.typ||'',
         lief:p.lieferant||p.fabrikat||'(ohne Lieferant)',
+        _liefRaw:p.lieferant||'',         // Diagnose: was steht im Feld 'lieferant'?
+        _fabRaw:p.fabrikat||'',           // Diagnose: was steht im Feld 'fabrikat'?
         menge:toI(p.menge)||1,
         ek, vk,
         termin:proj.liefertermin||'',
@@ -4461,9 +4469,11 @@ function renderPreise(){
       const tip=escA('Springe zu Position '+it.pos+' in '+it.proj);
       // Diagnose-Status-Badge: zeigt warum eine Position normalerweise nicht in der Preisliste waere
       const statusBadge=it._status?` <span style="display:inline-block;background:rgba(217,32,32,.15);color:#a01515;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;text-transform:uppercase;letter-spacing:.3px">${esc(it._status)}</span>`:'';
+      // Diagnose-Detail: was steht WIRKLICH in den Lieferant/Fabrikat-Feldern + Preis-Status
+      const diag=showAll?`<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">Lief='${esc(it._liefRaw||'(leer)')}' · Fab='${esc(it._fabRaw||'(leer)')}' · EK=${it.ek} · VK=${it.vk}</div>`:'';
       return `<tr class="pr-clickable" onclick="${onclick}" title="${tip}">
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
-        <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}</td>
+        <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}${diag}</td>
         <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
         <td class="pr-ek">${fmtEur(it.ek)}</td>
