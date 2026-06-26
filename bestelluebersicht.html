@@ -1409,6 +1409,22 @@ function istAbrufFaellig(p,proj){
   const at=abrufTermin(p,proj); if(!at)return false;
   return daysBtw(today(),at)<=0; // heute oder ueberfaellig
 }
+// ── AB-Status (zentral, damit Karten-Warnung + Detail-Filter identisch sind) ──
+// AB gilt als bestaetigt, wenn entweder das Flag p.abBestaetigt gesetzt ist
+// ODER eine AB-Datei (p.abDoc) angehaengt wurde. Das verhindert false-positives
+// 'AB fehlt', obwohl die Datei laengst da ist.
+function hatAB(p){return !!(p.abBestaetigt||p.abDoc);}
+// AB offen = bestellte Bestellware ohne AB. Egal wie alt.
+function istABOffen(p){
+  return p.quelle==='bestellt' && p.status==='bestellt' && !hatAB(p) && !istNichtBestellbar(p);
+}
+// AB ueberfaellig = AB offen UND Bestelldatum laenger zurueck als die Frist.
+function istABUeberfaellig(p){
+  if(!istABOffen(p))return false;
+  if(!p.bestelltAm)return false;
+  const frist=SETTINGS.abFrist||7;
+  return daysBtw(p.bestelltAm,today())>=frist;
+}
 function countAbrufFaellig(){
   let n=0;
   PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{if(istAbrufFaellig(p,proj))n++;}));
@@ -1694,7 +1710,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v32';
+const APP_VERSION='2026-06-21 · v33';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -1720,12 +1736,8 @@ function renderHome(){
       const at=abrufTermin(p,proj);if(!at)return false;
       return daysBtw(today(),at)<0;
     }).length;
-    // Warnungen fuer die Startseite: fehlende AB + notwendige Abrufe
-    const frist=SETTINGS.abFrist||7;
-    const abFehlt=proj.positionen.filter(p=>
-      p.quelle==='bestellt' && p.status==='bestellt' && !p.abBestaetigt && !istNichtBestellbar(p)
-      && p.bestelltAm && daysBtw(p.bestelltAm,today())>=frist
-    ).length;
+    // Warnungen fuer die Startseite: fehlende AB + notwendige Abrufe (zentrale Helper)
+    const abFehlt=proj.positionen.filter(istABUeberfaellig).length;
     const abrufNoetig=proj.positionen.filter(p=>istAbrufFaellig(p,proj)).length;
     const cls=(red>0||abrufUeberf>0)?'s-red':amb>0?'s-amber':gel===tot&&tot>0?'s-green':'';
     const d=document.createElement('div');d.className='pcard '+cls;
@@ -2108,7 +2120,7 @@ function buildProjStatus(proj){
     .filter(o=>o.d<=7).sort((a,b)=>a.d-b.d);
   // AB-Faelligkeiten
   const frist=SETTINGS.abFrist||7;
-  const abUeberf=ps.filter(p=>p.quelle==='bestellt'&&!p.abBestaetigt&&p.status==='bestellt'&&p.bestelltAm&&daysBtw(p.bestelltAm,today())>=frist);
+  const abUeberf=ps.filter(istABUeberfaellig);
   // Pro Lieferant
   const liefMap={};
   ps.forEach(p=>{
@@ -2120,7 +2132,7 @@ function buildProjStatus(proj){
     if(istZuBestellen(p))liefMap[key].offen++;
     if(p.quelle==='bestellt'&&(p.status==='bestellt'||p.status==='abgerufen'))liefMap[key].bestellt++;
     if(p.status==='geliefert')liefMap[key].geliefert++;
-    if(p.quelle==='bestellt'&&!p.abBestaetigt&&p.status==='bestellt'&&p.bestelltAm&&daysBtw(p.bestelltAm,today())>=frist)liefMap[key].abFehlt++;
+    if(istABUeberfaellig(p))liefMap[key].abFehlt++;
   });
   Object.values(liefMap).forEach(g=>{g.lief=Object.entries(g.variants).sort((a,b)=>b[1]-a[1])[0][0];});
   const liefList=Object.values(liefMap).filter(g=>g.offen+g.bestellt+g.geliefert+g.abFehlt>0)
@@ -2641,7 +2653,7 @@ function renderDetail(){
     <button class="kpi kg${DFILTER==='green'?' on':''}" onclick="setDFilter('green')"><div class="kn">${gel}</div><div class="kl">Geliefert</div></button>`;
   // Status-Filter-Chips (zaehlen ueber ALLE Positionen, unabhaengig vom aktuellen Filter)
   const cntZB=CUR.positionen.filter(istZuBestellen).length;
-  const cntABoffen=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.status==='bestellt'&&!p.abBestaetigt&&!istNichtBestellbar(p)).length;
+  const cntABoffen=CUR.positionen.filter(istABUeberfaellig).length;
   const cntInLief=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
   const cntBauseits=CUR.positionen.filter(istNichtBestellbar).length;
   const cntZubehoer=CUR.positionen.filter(p=>Array.isArray(p.zubehoer)&&p.zubehoer.length>0).length;
@@ -2658,13 +2670,11 @@ function renderDetail(){
   // Cards: gruppiert nach Bereich, mit Akkordeon
   const q=(document.getElementById('dSrch').value||'').toLowerCase().trim();
   const wrap=document.getElementById('dCards');wrap.innerHTML='';
-  // AB-offen-Filter: Sammel-Mail-Leiste pro Lieferant oben einblenden
+  // AB-offen-Filter: Sammel-Mail-Leiste pro Lieferant oben einblenden (identische Logik)
   if(DFILTER==='aboffen'){
-    const frist=SETTINGS.abFrist||7;
     const liefMap={};
     CUR.positionen.forEach(p=>{
-      if(p.quelle!=='bestellt'||p.abBestaetigt||!p.bestelltAm)return;
-      if(daysBtw(p.bestelltAm,today())<frist)return;
+      if(!istABUeberfaellig(p))return;
       const lief=p.lieferant||p.fabrikat||'(ohne Lieferant)';
       liefMap[lief]=(liefMap[lief]||0)+1;
     });
@@ -2882,7 +2892,7 @@ function passesDFilter(p){
     return daysBtw(today(),at)<=1;
   }
   if(DFILTER==='zubest')return istZuBestellen(p);
-  if(DFILTER==='aboffen')return p.quelle==='bestellt' && p.status==='bestellt' && !p.abBestaetigt && !istNichtBestellbar(p);
+  if(DFILTER==='aboffen')return istABUeberfaellig(p);   // identisch mit Karten-Warnung 'AB fehlt'
   if(DFILTER==='lieferung')return p.quelle==='bestellt' && p.abBestaetigt && p.status!=='geliefert' && !istNichtBestellbar(p);
   if(DFILTER==='bauseits')return istNichtBestellbar(p);
   if(DFILTER==='zubehoer')return Array.isArray(p.zubehoer) && p.zubehoer.length>0;
@@ -3390,18 +3400,14 @@ function goToProject(id){openProject(id);}
 // ── AUFTRAGSBESTÄTIGUNG: Überfälligkeit + Erinnerung ─────────────────────
 // Überfällig = Bestellware, bestellt, noch keine AB erfasst, Bestelldatum ≥ Frist (Standard 7 Tage) her
 function abOffeneListe(){
-  const frist=SETTINGS.abFrist||7;
+  // Identisch zur Karten-Warnung + dem Detail-Filter (zentrale Helper)
   const out=[];
   PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
-    if(p.quelle!=='bestellt'||p.abBestaetigt)return;
-    if(!(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert'))return;
-    if(!p.bestelltAm)return;
-    const tage=daysBtw(p.bestelltAm,today());
-    if(tage>=frist){
-      out.push({proj,idx,p,projekt:proj.name,pos:p.pos,bez:p.bez,
-        lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',
-        menge:p.menge,einheit:p.einh,bestelltAm:p.bestelltAm,tageOffen:tage});
-    }
+    if(!istABUeberfaellig(p))return;
+    out.push({proj,idx,p,projekt:proj.name,pos:p.pos,bez:p.bez,
+      lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',
+      menge:p.menge,einheit:p.einh,bestelltAm:p.bestelltAm,
+      tageOffen:daysBtw(p.bestelltAm,today())});
   }));
   return out;
 }
