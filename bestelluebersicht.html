@@ -1694,7 +1694,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v25';
+const APP_VERSION='2026-06-21 · v26';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -4291,10 +4291,13 @@ function openZubehoerListe(){
 }
 function closeZubehoerListe(){document.getElementById('zubListModal').classList.remove('on');}
 function zubListeAsText(proj){
-  const {items,groups}=buildZubListe(proj);
-  if(items.length===0)return `🔧 Zubehör-Liste · ${proj.name}\n\n(keine Einträge)`;
+  // Respektiert die Kategorie-Auswahl (Chips im Modal) – Kopieren gibt nur die aktiven Kategorien aus.
+  const {items,groups}=buildZubListe(proj,zubExcludeSet());
+  if(items.length===0)return `🔧 Zubehör-Liste · ${proj.name}\n\n(keine Einträge in der Auswahl)`;
+  const aktiveKats=ZUB_LISTE_KATS?[...ZUB_LISTE_KATS].map(k=>ZUB_LABEL[k]||k).join(', '):'alle';
   const L=[`🔧 ZUBEHÖR-LISTE · ${proj.name}`,
-    `Stand: ${new Date().toLocaleString('de-DE')} · ${items.length} Einträge bei ${groups.length} Lieferant(en)`,''];
+    `Stand: ${new Date().toLocaleString('de-DE')} · ${items.length} Einträge bei ${groups.length} Lieferant(en)`,
+    `Kategorien: ${aktiveKats}`,''];
   groups.forEach(g=>{
     const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
     L.push(`🏭 ${g.lief}  (${g.items.length} Pos · ${sum} Stk)`);
@@ -4322,9 +4325,11 @@ async function copyZubListe(){
 }
 function printZubListe(){
   if(!CUR)return;
-  const {items,groups}=buildZubListe(CUR);
+  // Respektiert die Kategorie-Auswahl (Chips) – Druck enthaelt nur die aktiven Kategorien.
+  const {items,groups}=buildZubListe(CUR,zubExcludeSet());
   const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const stand=new Date().toLocaleString('de-DE');
+  const aktiveKats=ZUB_LISTE_KATS?[...ZUB_LISTE_KATS].map(k=>ZUB_LABEL[k]||k).join(', '):'alle';
   const tablesHtml=groups.map(g=>{
     const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
     const rows=g.items.map(it=>{
@@ -4351,8 +4356,8 @@ function printZubListe(){
       @media print{body{padding:10mm} h2{page-break-after:avoid}}
     </style></head><body>
     <h1>🔧 Zubehör-Liste · ${e(CUR.name)}</h1>
-    <div class="stand">Stand: ${e(stand)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)</div>
-    ${tablesHtml||'<p style="padding:30px;text-align:center;color:#888">Noch kein Zubehör angelegt.</p>'}
+    <div class="stand">Stand: ${e(stand)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)<br>Kategorien: ${e(aktiveKats)}</div>
+    ${tablesHtml||'<p style="padding:30px;text-align:center;color:#888">Keine Einträge in der gewählten Kategorie-Auswahl.</p>'}
     <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
     </body></html>`;
   const w=window.open('','_blank');
