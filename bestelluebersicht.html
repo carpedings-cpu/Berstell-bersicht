@@ -1697,7 +1697,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v28';
+const APP_VERSION='2026-06-21 · v29';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -2659,6 +2659,27 @@ function renderDetail(){
   // Cards: gruppiert nach Bereich, mit Akkordeon
   const q=(document.getElementById('dSrch').value||'').toLowerCase().trim();
   const wrap=document.getElementById('dCards');wrap.innerHTML='';
+  // AB-offen-Filter: Sammel-Mail-Leiste pro Lieferant oben einblenden
+  if(DFILTER==='aboffen'){
+    const frist=SETTINGS.abFrist||7;
+    const liefMap={};
+    CUR.positionen.forEach(p=>{
+      if(p.quelle!=='bestellt'||p.abBestaetigt||!p.bestelltAm)return;
+      if(daysBtw(p.bestelltAm,today())<frist)return;
+      const lief=p.lieferant||p.fabrikat||'(ohne Lieferant)';
+      liefMap[lief]=(liefMap[lief]||0)+1;
+    });
+    const liefs=Object.entries(liefMap);
+    if(liefs.length>0){
+      const bar=document.createElement('div');
+      bar.style.cssText='margin-bottom:12px;padding:11px 13px;background:rgba(139,34,34,.07);border:.5px solid rgba(139,34,34,.25);border-radius:11px';
+      bar.innerHTML=`<div style="font-size:12px;font-weight:700;color:#8b2222;margin-bottom:8px">📧 Erinnerung an Lieferant senden – öffnet fertige Mail:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px">
+          ${liefs.sort((a,b)=>b[1]-a[1]).map(([lief,n])=>`<button onclick="mailABSammel('${escA(lief)}')" style="padding:6px 12px;border-radius:9px;border:.5px solid rgba(139,34,34,.3);background:rgba(255,255,255,.7);color:#8b2222;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🏭 ${esc(lief)} <span style="opacity:.7">(${n})</span></button>`).join('')}
+        </div>`;
+      wrap.appendChild(bar);
+    }
+  }
   let shown=0;
   if(!Array.isArray(CUR.collapsedBereiche))CUR.collapsedBereiche=[];
   const collapsedSet=new Set(CUR.collapsedBereiche);
@@ -2755,7 +2776,10 @@ function renderDetail(){
         const tage=daysBtw(p.bestelltAm,today());
         const frist=SETTINGS.abFrist||7;
         if(tage>=frist){
-          html+=`<div class="warn red">⚠ Auftragsbestätigung fehlt seit ${tage} Tagen (bestellt am ${fmtD(p.bestelltAm)}) – erinnern!</div>`;
+          html+=`<div class="warn red" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="flex:1;min-width:160px">⚠ Auftragsbestätigung fehlt seit ${tage} Tagen (bestellt am ${fmtD(p.bestelltAm)})</span>
+            <button onclick="mailABErinnerung(${idx})" style="flex:0 0 auto;background:linear-gradient(135deg,#8b2222,#a83232);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📧 Erinnerung mailen</button>
+          </div>`;
         } else {
           html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
         }
@@ -3373,6 +3397,51 @@ function abOffeneListe(){
     }
   }));
   return out;
+}
+
+// ── Mail-Erinnerung per mailto (funktioniert IMMER, ohne Power Automate) ──
+// Oeffnet das Standard-Mailprogramm (Outlook/Apple Mail) mit fertiger Mail
+// an den Lieferanten. Der Bearbeiter muss nur noch auf Senden druecken.
+function mailABErinnerung(idx){
+  const p=CUR.positionen[idx]; if(!p)return;
+  const lief=p.lieferant||p.fabrikat||'';
+  const tage=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
+  const betreff=`Auftragsbestätigung ausstehend – ${p.pos} ${p.bez}`;
+  const zeilen=[
+    `Sehr geehrte Damen und Herren${lief?' von '+lief:''},`,'',
+    `zu unten stehender Bestellung liegt uns noch keine Auftragsbestätigung vor.`,
+    `Wir bitten um kurzfristige Zusendung.`,'',
+    `Projekt: ${CUR.name}`,
+    `Position: ${p.pos} – ${p.bez}`,
+    p.fabrikat?`Fabrikat/Typ: ${p.fabrikat}${p.typ?' '+p.typ:''}`:'',
+    `Menge: ${p.menge} ${p.einh}`,
+    `Bestellt am: ${fmtD(p.bestelltAm)} (seit ${tage} Tagen offen)`,
+    (p.kommNrs&&p.kommNrs.length)?`Kommission: ${p.kommNrs.join(', ')}`:'',
+    '',
+    `Mit freundlichen Grüßen`,
+    EDITOR?`${EDITOR} · KPC GmbH`:`KPC GmbH`
+  ].filter(l=>l!=='').join('\n');
+  const href=`mailto:?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(zeilen)}`;
+  logAction(p,'AB-Erinnerung als Mail geöffnet');
+  saveCur();
+  window.location.href=href;
+}
+// Sammel-Erinnerung: alle ueberfaelligen AB EINES Lieferanten in EINER Mail
+function mailABSammel(lief){
+  const k=normLief(lief);
+  const liste=abOffeneListe().filter(it=>normLief(it.lieferant)===k);
+  if(liste.length===0){toast('Keine überfälligen AB für '+lief,'ok');return;}
+  const betreff=`Ausstehende Auftragsbestätigungen (${liste.length}) – ${lief}`;
+  const head=[
+    `Sehr geehrte Damen und Herren von ${lief},`,'',
+    `zu folgenden Bestellungen liegt uns noch keine Auftragsbestätigung vor.`,
+    `Wir bitten um kurzfristige Zusendung:`,''
+  ];
+  const body=liste.map(it=>`• Projekt ${it.projekt} · Pos ${it.pos} · ${it.bez} · ${it.menge} ${it.einheit} · bestellt am ${fmtD(it.bestelltAm)} (${it.tageOffen} T offen)`);
+  const foot=['',`Mit freundlichen Grüßen`,EDITOR?`${EDITOR} · KPC GmbH`:`KPC GmbH`];
+  const txt=[...head,...body,...foot].join('\n');
+  const href=`mailto:?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(txt)}`;
+  window.location.href=href;
 }
 
 // Erinnerungen über Power Automate verschicken.
