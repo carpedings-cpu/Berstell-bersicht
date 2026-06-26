@@ -909,6 +909,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <label>Power Automate Webhook-URL</label>
     <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt – auch Erinnerungen an fehlende Auftragsbestätigungen.</div>
+    <div id="webhookStatus" style="margin-top:8px"></div>
+    <button onclick="testWebhook()" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0);margin-top:8px">✉️ Test-Mail jetzt senden</button>
+    <div class="hint" style="margin-top:6px">Schickt sofort eine Test-Nachricht an den Flow. Damit siehst du, ob die Verbindung steht und der Flow die Mail verschickt.</div>
     <label>Deine E-Mail</label>
     <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <label>E-Mail Kollegin</label>
@@ -1694,7 +1697,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v26';
+const APP_VERSION='2026-06-21 · v27';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -1703,6 +1706,16 @@ function goSettings(){
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
   document.getElementById('setAbFrist').value=SETTINGS.abFrist||7;
   const ver=document.getElementById('appVersion');if(ver)ver.textContent=APP_VERSION;
+  // Webhook-Konfigurationsstatus anzeigen
+  const hasUrl=!!(SETTINGS.webhook||'').trim();
+  const mails=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
+  if(!hasUrl){
+    setWebhookStatus('err','⚠ Keine Webhook-URL hinterlegt – es werden KEINE Mails verschickt. Power-Automate-URL oben eintragen.');
+  } else if(mails.length===0){
+    setWebhookStatus('warn','Webhook-URL ist da, aber keine E-Mail-Adresse. Trage oben mindestens eine ein.');
+  } else {
+    setWebhookStatus('ok',`✓ Konfiguriert: Webhook gesetzt, ${mails.length} Empfänger (${esc(mails.join(', '))}). Mit „Test-Mail" prüfen.`);
+  }
 }
 
 // ── HOME ────────────────────────────────────────────────────────────────
@@ -3281,14 +3294,55 @@ function goToProject(id){openProject(id);}
 
 // ── WEBHOOK ─────────────────────────────────────────────────────────────
 async function fireWebhook(typ,data){
-  if(!SETTINGS.webhook)return;
+  if(!SETTINGS.webhook)return {ok:false,reason:'keine URL'};
   try{
-    await fetch(SETTINGS.webhook,{
+    const res=await fetch(SETTINGS.webhook,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({typ,mails:[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean),...data,timestamp:new Date().toISOString()})
     });
-    toast('Benachrichtigung gesendet','ok');
-  }catch(e){console.warn('Webhook fehlgeschlagen:',e);toast('Webhook fehlgeschlagen','err');}
+    if(res.ok||res.status===202){
+      return {ok:true,status:res.status};
+    } else {
+      console.warn('Webhook HTTP',res.status);
+      return {ok:false,reason:'HTTP '+res.status,status:res.status};
+    }
+  }catch(e){
+    console.warn('Webhook fehlgeschlagen:',e);
+    return {ok:false,reason:(e&&e.message)||'Netzwerk/CORS'};
+  }
+}
+// Test-Versand mit klarer Rueckmeldung
+async function testWebhook(){
+  const url=(document.getElementById('setWebhook')?.value||'').trim();
+  if(url)SETTINGS.webhook=url;
+  if(!SETTINGS.webhook){
+    setWebhookStatus('err','Keine Webhook-URL eingetragen. Bitte oben die Power-Automate-URL einfügen und das Feld verlassen (speichert automatisch).');
+    return;
+  }
+  const mails=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
+  if(mails.length===0){
+    setWebhookStatus('warn','Webhook-URL ist da, aber keine E-Mail-Adresse hinterlegt. Trage oben mindestens eine E-Mail ein.');
+    return;
+  }
+  setWebhookStatus('sync','Sende Test an Power Automate …');
+  const r=await fireWebhook('test',{betreff:'KPC Test-Mail',body:'Dies ist eine Testnachricht aus der KPC Bestellübersicht. Wenn du das liest, funktioniert der Flow.',
+    mails, oneMailPerLieferant:false,
+    mailsList:[{to:mails,betreff:'KPC Test-Mail',body:'Test erfolgreich – der Power-Automate-Flow ist erreichbar.'}]});
+  if(r.ok){
+    setWebhookStatus('ok',`✓ Test gesendet (HTTP ${r.status||200}). Wenn in 1-2 Min keine Mail ankommt, liegt es am Flow selbst (Mail-Aktion/Empfänger prüfen), nicht an der App.`);
+  } else if(/CORS|Failed to fetch|NetworkError|Netzwerk/i.test(r.reason||'')){
+    setWebhookStatus('warn',`Die App konnte die Antwort nicht lesen (${r.reason}). Das ist bei Power Automate oft normal – die Nachricht KANN trotzdem angekommen sein. Prüfe im Flow-Verlauf (Power Automate → Ausführungsverlauf), ob ein Lauf ausgelöst wurde.`);
+  } else {
+    setWebhookStatus('err',`Fehlgeschlagen: ${r.reason}. URL korrekt? Flow aktiv? (HTTP-Trigger muss 'When a HTTP request is received' sein.)`);
+  }
+}
+function setWebhookStatus(state,msg){
+  const el=document.getElementById('webhookStatus'); if(!el)return;
+  const col={ok:['rgba(30,138,74,.1)','#0f6332','rgba(30,138,74,.3)'],
+    warn:['rgba(196,119,0,.1)','#7d4d00','rgba(196,119,0,.3)'],
+    err:['rgba(217,32,32,.1)','#a01515','rgba(217,32,32,.3)'],
+    sync:['rgba(26,95,122,.1)','#0f4655','rgba(26,95,122,.3)']}[state]||['rgba(0,0,0,.05)','#555','rgba(0,0,0,.1)'];
+  el.innerHTML=`<div style="padding:9px 12px;background:${col[0]};border:.5px solid ${col[2]};border-radius:9px;font-size:11.5px;color:${col[1]};font-weight:600;line-height:1.5">${msg}</div>`;
 }
 
 // ── AUFTRAGSBESTÄTIGUNG: Überfälligkeit + Erinnerung ─────────────────────
