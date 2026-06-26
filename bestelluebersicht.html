@@ -1005,6 +1005,17 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
 <!-- Projekt-Status Modal -->
+<!-- Preislücken pro Projekt: Positionen ohne EK/VK direkt nachtragen (nur in der Preisansicht) -->
+<div class="modal" id="preisLueckenModal" onclick="if(event.target===this)closePreisLuecken()">
+  <div class="modal-box flex-scroll" style="max-width:680px;max-height:90vh">
+    <button class="modal-x" onclick="closePreisLuecken()" title="Schließen (Esc)">✕</button>
+    <div id="preisLueckenBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closePreisLuecken()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Zubehör-Sammelliste pro Projekt (fuer die Planer zum Zeichnen) -->
 <div class="modal" id="zubListModal" onclick="if(event.target===this)closeZubehoerListe()">
   <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
@@ -1683,7 +1694,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v24';
+const APP_VERSION='2026-06-21 · v25';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -2198,6 +2209,8 @@ document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   const am=document.getElementById('auditModal');
   if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
+  const plm=document.getElementById('preisLueckenModal');
+  if(plm&&plm.classList.contains('on')){closePreisLuecken();e.preventDefault();return;}
   const zlm=document.getElementById('zubListModal');
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
@@ -4147,11 +4160,17 @@ async function markZubBestellt(projId,posIdx,zi){
 // Sammelt alle Zubehoer-Eintraege im aktuellen Projekt, gruppiert nach Lieferant.
 // Zeigt jede Zeile mit Pos-Nr, Bezeichnung der Hauptposition, Zubehoer-Typ, Menge,
 // Bestell-Status, Komm-Nr. Druckbar/kopierbar fuer die Planungs-Sitzung.
-function buildZubListe(proj){
+// Welche Zubehoer-Kategorien sind im Sammellisten-Modal aktiv (sichtbar)?
+// Wird beim ersten Oeffnen mit allen vorhandenen Kategorien initialisiert.
+let ZUB_LISTE_KATS=null;
+function buildZubListe(proj,excludeKats){
   const items=[];
   (proj.positionen||[]).forEach((p,idx)=>{
     if(!Array.isArray(p.zubehoer))return;
-    p.zubehoer.forEach((z,zi)=>items.push({p,idx,z,zi}));
+    p.zubehoer.forEach((z,zi)=>{
+      if(excludeKats && excludeKats.has(z.kat||''))return; // Kategorie ausgeblendet → ueberspringen
+      items.push({p,idx,z,zi});
+    });
   });
   // Gruppieren nach Zubehoer-Lieferant (auto-erkannt wenn leer)
   const groups={};
@@ -4166,26 +4185,79 @@ function buildZubListe(proj){
     return a.lief.localeCompare(b.lief);
   })};
 }
+// Alle in diesem Projekt tatsaechlich vorhandenen Zubehoer-Kategorien
+function zubKategorienInProjekt(proj){
+  const m={};
+  (proj.positionen||[]).forEach(p=>(p.zubehoer||[]).forEach(z=>{
+    const k=z.kat||'(ohne)';
+    m[k]=(m[k]||0)+1;
+  }));
+  return m; // {mischbatterie:5, seifenspender:8, ...}
+}
+function zubExcludeSet(){
+  // Kategorien, die NICHT aktiv (also ausgeblendet) sind
+  if(!ZUB_LISTE_KATS||!CUR)return new Set();
+  const kats=zubKategorienInProjekt(CUR);
+  const exc=new Set();
+  Object.keys(kats).forEach(k=>{if(!ZUB_LISTE_KATS.has(k))exc.add(k);});
+  return exc;
+}
+function toggleZubKat(k){
+  if(!ZUB_LISTE_KATS)ZUB_LISTE_KATS=new Set();
+  if(ZUB_LISTE_KATS.has(k))ZUB_LISTE_KATS.delete(k); else ZUB_LISTE_KATS.add(k);
+  openZubehoerListe(); // neu rendern
+}
+function zubKatAlleSetzen(an){
+  if(!CUR)return;
+  ZUB_LISTE_KATS=new Set(an?Object.keys(zubKategorienInProjekt(CUR)):[]);
+  openZubehoerListe();
+}
 function openZubehoerListe(){
   if(!CUR)return;
-  const {items,groups}=buildZubListe(CUR);
+  // Beim ersten Oeffnen: alle Kategorien als 'aktiv' markieren
+  const katsAll=zubKategorienInProjekt(CUR);
+  if(ZUB_LISTE_KATS===null)ZUB_LISTE_KATS=new Set(Object.keys(katsAll));
+  // Defensive: Kategorien die nicht mehr im Projekt sind, aus dem Set entfernen
+  [...ZUB_LISTE_KATS].forEach(k=>{if(!(k in katsAll))ZUB_LISTE_KATS.delete(k);});
+  const excludeKats=zubExcludeSet();
+  const {items,groups}=buildZubListe(CUR,excludeKats);
   const body=document.getElementById('zubListBody');
+  // Filter-Chips fuer Kategorien (immer da, wenn Zubehoer ueberhaupt vorhanden)
+  const katChips=Object.entries(katsAll).length===0?'':`
+    <div style="margin:8px 0 12px;padding:10px 12px;background:rgba(200,168,130,.12);border-radius:10px;border:.5px solid rgba(107,80,64,.2)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:11.5px;font-weight:700;color:#6b5040">📋 Welche Kategorien anzeigen?</span>
+        <button onclick="zubKatAlleSetzen(true)" style="padding:3px 9px;border-radius:7px;border:.5px solid rgba(107,80,64,.3);background:rgba(255,255,255,.7);font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;color:#6b5040">Alle ✓</button>
+        <button onclick="zubKatAlleSetzen(false)" style="padding:3px 9px;border-radius:7px;border:.5px solid rgba(107,80,64,.3);background:rgba(255,255,255,.7);font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;color:#6b5040">Keine</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${Object.entries(katsAll).sort((a,b)=>(ZUB_LABEL[a[0]]||a[0]).localeCompare(ZUB_LABEL[b[0]]||b[0])).map(([k,n])=>{
+          const on=ZUB_LISTE_KATS.has(k);
+          const lbl=ZUB_LABEL[k]||k;
+          return `<button onclick="toggleZubKat('${escA(k)}')" style="padding:5px 11px;border-radius:9px;border:.5px solid ${on?'transparent':'rgba(107,80,64,.3)'};background:${on?'linear-gradient(135deg,#6b5040,#3d2d22)':'rgba(255,255,255,.7)'};color:${on?'#fff':'rgba(107,80,64,.7)'};font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">${on?'✓':'○'} ${esc(lbl)} <span style="opacity:.75;font-weight:600">${n}</span></button>`;
+        }).join('')}
+      </div>
+    </div>`;
   if(items.length===0){
     body.innerHTML=`<h3 style="margin-bottom:6px">🔧 Zubehör-Liste</h3>
       <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(CUR.name)}</div>
+      ${katChips}
       <div style="padding:30px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">
-        Noch kein Zubehör angelegt.<br>Beim Anlegen einer Position mit Becken/Spender wird automatisch ein Vorschlag erzeugt – ansonsten 🔧 Zubehör-Block in jeder Position öffnen und ergänzen.
+        ${Object.keys(katsAll).length===0
+          ? 'Noch kein Zubehör angelegt.<br>Beim Anlegen einer Position mit Becken/Spender wird automatisch ein Vorschlag erzeugt – ansonsten 🔧 Zubehör-Block in jeder Position öffnen und ergänzen.'
+          : 'Keine Kategorie ausgewählt – nichts anzuzeigen.<br>Oben mindestens eine Kategorie aktivieren.'}
       </div>`;
   } else {
     const offen=items.filter(it=>!it.z.quelle).length;
     const bestellt=items.filter(it=>it.z.quelle==='bestellt').length;
     const lager=items.filter(it=>it.z.quelle==='lager').length;
     const head=`<h3 style="margin-bottom:6px">🔧 Zubehör-Liste</h3>
-      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(CUR.name)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)
+      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:6px">${esc(CUR.name)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)
         ${offen?` · <span style="color:#a01515;font-weight:700">${offen} offen</span>`:''}
         ${bestellt?` · <span style="color:#0f6332;font-weight:700">${bestellt} bestellt</span>`:''}
         ${lager?` · <span style="color:#1a5f7a;font-weight:700">${lager} Lager</span>`:''}
-      </div>`;
+      </div>
+      ${katChips}`;
     const grpHtml=groups.map(g=>{
       const rows=g.items.map(it=>{
         const z=it.z, p=it.p;
@@ -4546,6 +4618,74 @@ function parsePreiseExcel(ab,fname){
 }
 
 function fmtEur(n){return n.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+
+// ── Preislücken: Positionen ohne Preis pro Projekt anzeigen + direkt eintragen ──
+// Nur in der Preisansicht erreichbar (Klick auf das 'X ohne Preis'-Projekt im Banner).
+let _preisLueckenProj=null;
+function openPreisLuecken(projName){
+  const proj=PROJECTS.find(p=>p.name===projName); if(!proj)return;
+  _preisLueckenProj=projName;
+  renderPreisLuecken();
+  document.getElementById('preisLueckenModal').classList.add('on');
+}
+function closePreisLuecken(){document.getElementById('preisLueckenModal').classList.remove('on');_preisLueckenProj=null;}
+function renderPreisLuecken(){
+  const proj=PROJECTS.find(p=>p.name===_preisLueckenProj); if(!proj)return;
+  const body=document.getElementById('preisLueckenBody');
+  // Positionen ohne Preis (aktive, bestellbare, noch nicht bestellte)
+  const luecken=[];
+  proj.positionen.forEach((p,idx)=>{
+    if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
+    if((p.ek||0)>0||(p.vk||0)>0)return;
+    luecken.push({p,idx});
+  });
+  const mitPreis=proj.positionen.filter(p=>!istNichtBestellbar(p)&&!istBestellt(p)&&p.quelle!=='lager'&&((p.ek||0)>0||(p.vk||0)>0)).length;
+  let html=`<h3 style="margin-bottom:4px">💶 Preise nachtragen</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(proj.name)} · <strong style="color:#a01515">${luecken.length}</strong> ohne Preis · ${mitPreis} mit Preis</div>`;
+  if(luecken.length===0){
+    html+=`<div style="padding:30px;text-align:center;color:#0f6332;font-size:13px;font-weight:600">✓ Alle Positionen dieses Projekts haben jetzt einen Preis</div>`;
+  } else {
+    html+=`<div style="display:flex;flex-direction:column;gap:8px">`;
+    luecken.forEach(({p,idx})=>{
+      html+=`<div style="padding:10px 12px;border:.5px solid rgba(0,0,0,.1);border-radius:10px;background:rgba(255,255,255,.6)">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:12.5px;color:#2d2926">${esc(p.pos)} · ${esc(p.bez)}</div>
+            <div style="font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px">${p.fabrikat?'🏭 '+esc(p.fabrikat):''}${p.typ?' · '+esc(p.typ):''} · ${esc(p.menge)} ${esc(p.einh)}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <div><label style="font-size:9.5px;font-weight:700;color:rgba(45,41,38,.6);display:block;margin-bottom:2px">EK €</label>
+            <input type="number" step="0.01" placeholder="0" value="${p.ek||''}" onchange="setPreisLuecke(${idx},'ek',this.value)" style="width:100px;padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right;outline:none"></div>
+          <div><label style="font-size:9.5px;font-weight:700;color:rgba(45,41,38,.6);display:block;margin-bottom:2px">VK €</label>
+            <input type="number" step="0.01" placeholder="0" value="${p.vk||''}" onchange="setPreisLuecke(${idx},'vk',this.value)" style="width:100px;padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right;outline:none"></div>
+          <button onclick="jumpFromPreisLuecke('${escA(proj.id)}','${escA(p.pos)}')" style="margin-left:auto;align-self:flex-end;padding:7px 11px;border-radius:8px;border:.5px solid rgba(26,95,122,.3);background:rgba(26,95,122,.08);color:#0f4655;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">→ Zur Position</button>
+        </div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+  body.innerHTML=html;
+}
+async function setPreisLuecke(idx,k,val){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.name===_preisLueckenProj); if(!proj)return;
+  const p=proj.positionen[idx]; if(!p)return;
+  const n=parseFloat(String(val||'').replace(/\./g,'').replace(',','.'))||0;
+  const prev=p[k]||0;
+  if(prev===n)return;
+  p[k]=n;
+  logAction(p,`${k.toUpperCase()}: ${prev||'-'} € → ${n||'-'} € (Preisansicht)`);
+  touchProject(proj);
+  await dbPut('projects',proj);markChanged();
+  // Liste neu rendern (Position verschwindet sobald EK oder VK > 0) + Preisansicht im Hintergrund
+  renderPreisLuecken();
+  renderPreise();
+}
+function jumpFromPreisLuecke(projId,pos){
+  closePreisLuecken();
+  jumpToProjPos(projId,pos);
+}
 function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 
 // Preisdaten LIVE aus PROJECTS aufbauen – statt verstaubtem Snapshot.
@@ -4651,8 +4791,9 @@ function renderPreise(){
       projOhneEl.innerHTML=`<div style="padding:10px 14px;background:rgba(217,32,32,.08);border:.5px solid rgba(217,32,32,.25);border-radius:11px;margin-bottom:14px;font-size:12px">
         <strong style="color:#a01515">⚠ Preise unvollständig in ${projOhnePreis.length} Projekt(en):</strong>
         <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">
-          ${projOhnePreis.sort((a,b)=>b[1].ohne-a[1].ohne).map(([name,s])=>`<span style="padding:3px 8px;border-radius:7px;background:rgba(217,32,32,.12);color:#a01515;font-weight:700">${esc(name)}: ${s.ohne}/${s.total} ohne Preis</span>`).join('')}
+          ${projOhnePreis.sort((a,b)=>b[1].ohne-a[1].ohne).map(([name,s])=>`<button onclick="openPreisLuecken('${escA(name)}')" title="Anklicken: Positionen ohne Preis anzeigen und ergänzen" style="padding:4px 10px;border-radius:7px;border:none;background:rgba(217,32,32,.14);color:#a01515;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">${esc(name)}: ${s.ohne}/${s.total} ohne Preis ›</button>`).join('')}
         </div>
+        <div style="margin-top:6px;font-size:10.5px;color:rgba(28,28,30,.5)">Auf ein Projekt tippen → Positionen ohne Preis anzeigen und direkt eintragen.</div>
       </div>`;
     } else {
       projOhneEl.innerHTML=`<div style="padding:8px 14px;background:rgba(30,138,74,.08);border:.5px solid rgba(30,138,74,.25);border-radius:11px;margin-bottom:14px;font-size:12px;color:#0f6332;font-weight:600">✓ Alle aktiven Positionen haben Preise hinterlegt</div>`;
