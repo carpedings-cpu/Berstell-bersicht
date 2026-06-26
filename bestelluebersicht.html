@@ -96,6 +96,13 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard h3{font-size:16px;font-weight:700;color:#1c1c1e;letter-spacing:-.2px;margin-bottom:4px;}
 .pcard .psub{font-size:11.5px;color:rgba(28,28,30,.55);font-weight:500;}
 .pcard .plast{font-size:10.5px;color:rgba(28,28,30,.5);font-weight:500;margin-top:2px;display:flex;align-items:center;gap:4px;}
+.pcard .pwarn{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.pcard .pwarn-b{border:none;padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;transition:transform .1s ease;}
+.pcard .pwarn-b:active{transform:scale(.95);}
+.pcard .pwarn-r{background:rgba(217,32,32,.13);color:#a01515;}
+.pcard .pwarn-r:hover{background:rgba(217,32,32,.22);}
+.pcard .pwarn-a{background:rgba(196,119,0,.14);color:#7d4d00;}
+.pcard .pwarn-a:hover{background:rgba(196,119,0,.24);}
 .pcard .pstats{display:flex;gap:12px;margin-top:10px;font-size:11px;font-weight:600;}
 .pcard .pst{display:flex;align-items:center;gap:4px;}
 .pcard .pst .dot{width:7px;height:7px;border-radius:50%;}
@@ -1687,7 +1694,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v31';
+const APP_VERSION='2026-06-21 · v32';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -1713,6 +1720,13 @@ function renderHome(){
       const at=abrufTermin(p,proj);if(!at)return false;
       return daysBtw(today(),at)<0;
     }).length;
+    // Warnungen fuer die Startseite: fehlende AB + notwendige Abrufe
+    const frist=SETTINGS.abFrist||7;
+    const abFehlt=proj.positionen.filter(p=>
+      p.quelle==='bestellt' && p.status==='bestellt' && !p.abBestaetigt && !istNichtBestellbar(p)
+      && p.bestelltAm && daysBtw(p.bestelltAm,today())>=frist
+    ).length;
+    const abrufNoetig=proj.positionen.filter(p=>istAbrufFaellig(p,proj)).length;
     const cls=(red>0||abrufUeberf>0)?'s-red':amb>0?'s-amber':gel===tot&&tot>0?'s-green':'';
     const d=document.createElement('div');d.className='pcard '+cls;
     d.onclick=()=>openProject(proj.id);
@@ -1727,6 +1741,10 @@ function renderHome(){
         ${amb?`<span class="pst st-a"><span class="dot"></span>${amb} bald fällig</span>`:''}
         <span class="pst st-g pst-click" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?"><span class="dot"></span>${best}/${tot} bestellt</span>
       </div>
+      ${(abFehlt||abrufNoetig)?`<div class="pwarn">
+        ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
+        ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
+      </div>`:''}
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
     g.appendChild(d);
@@ -2441,12 +2459,14 @@ async function copyProjStatus(){
   catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);toast('Kopiert','ok');}
 }
 // ── PROJEKT-DETAIL ──────────────────────────────────────────────────────
-function openProject(id,scrollToPos){
+function openProject(id,scrollToPos,filter){
   CUR=PROJECTS.find(p=>p.id===id);if(!CUR)return;
   SEL.clear();SEL_MODE=false;
   document.getElementById('dTitle').textContent=CUR.name;
   document.getElementById('dTermin').value=CUR.liefertermin||'';
   showView('vDetail');
+  // Direkt mit gesetztem Filter oeffnen (z.B. von der Startseiten-Warnung 'AB fehlt' / 'Abruf nötig')
+  if(filter!==undefined)DFILTER=filter;
   // Bei Sprung zu bestimmter Position: Filter zuruecksetzen + Bereich aufklappen, damit die Karte sichtbar ist
   if(scrollToPos){
     DFILTER='';
