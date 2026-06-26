@@ -1697,7 +1697,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v27';
+const APP_VERSION='2026-06-21 · v28';
 function goSettings(){
   showView('vSettings');
   const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
@@ -3295,20 +3295,31 @@ function goToProject(id){openProject(id);}
 // ── WEBHOOK ─────────────────────────────────────────────────────────────
 async function fireWebhook(typ,data){
   if(!SETTINGS.webhook)return {ok:false,reason:'keine URL'};
+  const payload=JSON.stringify({typ,mails:[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean),...data,timestamp:new Date().toISOString()});
+  // VERSUCH 1: normaler CORS-POST (kann den HTTP-Status lesen, wenn der Flow CORS erlaubt)
   try{
     const res=await fetch(SETTINGS.webhook,{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({typ,mails:[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean),...data,timestamp:new Date().toISOString()})
+      body:payload
     });
-    if(res.ok||res.status===202){
-      return {ok:true,status:res.status};
-    } else {
-      console.warn('Webhook HTTP',res.status);
-      return {ok:false,reason:'HTTP '+res.status,status:res.status};
-    }
+    if(res.ok||res.status===202)return {ok:true,status:res.status,mode:'cors'};
+    return {ok:false,reason:'HTTP '+res.status,status:res.status};
   }catch(e){
-    console.warn('Webhook fehlgeschlagen:',e);
-    return {ok:false,reason:(e&&e.message)||'Netzwerk/CORS'};
+    // CORS/Netzwerk-Fehler → VERSUCH 2: no-cors mit text/plain.
+    // Vermeidet die CORS-Vorabanfrage (Preflight), sodass der POST das Geraet
+    // tatsaechlich verlaesst. Power Automate liest den Body trotzdem (ggf. via
+    // json(triggerBody()) im Flow). Antwort ist 'opaque' – Status nicht lesbar.
+    try{
+      await fetch(SETTINGS.webhook,{
+        method:'POST',mode:'no-cors',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:payload
+      });
+      return {ok:true,opaque:true,mode:'no-cors'};
+    }catch(e2){
+      console.warn('Webhook fehlgeschlagen (beide Versuche):',e,e2);
+      return {ok:false,reason:(e2&&e2.message)||(e&&e.message)||'Netzwerk'};
+    }
   }
 }
 // Test-Versand mit klarer Rueckmeldung
@@ -3328,12 +3339,12 @@ async function testWebhook(){
   const r=await fireWebhook('test',{betreff:'KPC Test-Mail',body:'Dies ist eine Testnachricht aus der KPC Bestellübersicht. Wenn du das liest, funktioniert der Flow.',
     mails, oneMailPerLieferant:false,
     mailsList:[{to:mails,betreff:'KPC Test-Mail',body:'Test erfolgreich – der Power-Automate-Flow ist erreichbar.'}]});
-  if(r.ok){
-    setWebhookStatus('ok',`✓ Test gesendet (HTTP ${r.status||200}). Wenn in 1-2 Min keine Mail ankommt, liegt es am Flow selbst (Mail-Aktion/Empfänger prüfen), nicht an der App.`);
-  } else if(/CORS|Failed to fetch|NetworkError|Netzwerk/i.test(r.reason||'')){
-    setWebhookStatus('warn',`Die App konnte die Antwort nicht lesen (${r.reason}). Das ist bei Power Automate oft normal – die Nachricht KANN trotzdem angekommen sein. Prüfe im Flow-Verlauf (Power Automate → Ausführungsverlauf), ob ein Lauf ausgelöst wurde.`);
+  if(r.ok && r.mode==='cors'){
+    setWebhookStatus('ok',`✓ Test gesendet und vom Flow bestätigt (HTTP ${r.status||200}). Wenn in 1-2 Min keine Mail kommt, liegt es am Flow selbst (Mail-Aktion / Empfänger prüfen).`);
+  } else if(r.ok && r.opaque){
+    setWebhookStatus('warn',`📤 Test abgeschickt (no-cors). Die App konnte die Antwort nicht lesen – das ist bei Power Automate normal. Prüfe jetzt in Power Automate → Ausführungsverlauf, ob ein Lauf ausgelöst wurde:<br>• Lauf erscheint + grün → Flow läuft, ggf. Mail-Aktion/Empfänger prüfen.<br>• KEIN Lauf → die URL braucht Anmeldung oder ist unvollständig (klassischer HTTP-Trigger endet mit „&sig=…").`);
   } else {
-    setWebhookStatus('err',`Fehlgeschlagen: ${r.reason}. URL korrekt? Flow aktiv? (HTTP-Trigger muss 'When a HTTP request is received' sein.)`);
+    setWebhookStatus('err',`Fehlgeschlagen: ${r.reason}. URL korrekt? Flow aktiv?`);
   }
 }
 function setWebhookStatus(state,msg){
