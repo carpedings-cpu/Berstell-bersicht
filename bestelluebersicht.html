@@ -566,13 +566,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </header>
 
-<div class="bbanner ab" id="abBanner">
-  <span>📄</span>
-  <span class="bb-txt"></span>
-  <button class="bb-save" onclick="abBannerSend()">📧 Erinnern</button>
-  <button onclick="dismissABBanner()">Später</button>
-</div>
-
 <!-- Backup-Banner entfernt: Cloud-Sync sichert automatisch.
      Manuelles ZIP-Backup bleibt im Einstellungen-Menue erreichbar. -->
 
@@ -906,31 +899,12 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="setbox">
     <h3>⚙ Einstellungen</h3>
     <div class="hint" style="margin-top:0;margin-bottom:10px">Eingaben werden automatisch gespeichert, sobald du das Feld verlässt.</div>
-    <label>Power Automate Webhook-URL</label>
-    <input type="url" id="setWebhook" placeholder="https://prod-XX.westeurope.logic.azure.com/…" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <div class="hint">Wenn gesetzt, werden bei Handlungsbedarf automatisch E-Mails über den Flow verschickt – auch Erinnerungen an fehlende Auftragsbestätigungen.</div>
-    <div id="webhookStatus" style="margin-top:8px"></div>
-    <button onclick="testWebhook()" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0);margin-top:8px">✉️ Test-Mail jetzt senden</button>
-    <div class="hint" style="margin-top:6px">Schickt sofort eine Test-Nachricht an den Flow. Damit siehst du, ob die Verbindung steht und der Flow die Mail verschickt.</div>
-    <label>Deine E-Mail</label>
-    <input type="email" id="setMail1" placeholder="diana@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <label>E-Mail Kollegin</label>
-    <input type="email" id="setMail2" placeholder="kollegin@kpc-gmbh.de" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <label>Abruf-Vorlauf (Tage vor Liefertermin)</label>
     <input type="number" id="setWarnDays" value="14" min="1" max="90" onchange="saveSettings(true)" onblur="saveSettings(true)">
     <div class="hint">Standard-Vorlaufzeit für den Abruftermin. Pro Position überschreibbar.</div>
     <label>Auftragsbestätigung-Frist (Tage nach Bestellung)</label>
     <input type="number" id="setAbFrist" value="7" min="1" max="60" onchange="saveSettings(true)" onblur="saveSettings(true)">
-    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird gewarnt und – falls Power Automate eingerichtet ist – eine Erinnerung verschickt.</div>
-    <div style="margin-top:14px;padding:10px 12px;background:rgba(19,160,176,.08);border:.5px solid rgba(19,160,176,.22);border-radius:9px">
-      <div style="font-size:11.5px;color:rgba(28,28,30,.7);line-height:1.5;margin-bottom:8px">
-        <strong>🔁 Autonomer Versand (auch wenn die App geschlossen ist):</strong><br>
-        Die App pusht den Stand offener Bestellungen einmal taeglich an Power Automate.
-        Dort werden sie in einer SharePoint-Liste gespiegelt; ein zeitgesteuerter Flow
-        prueft die Fristen und sendet die Mails – auch ohne offene App.
-      </div>
-      <button onclick="syncBestellungenToFlow(true)" style="background:linear-gradient(135deg,#0f7b8a,#13a0b0)">🔁 Bestell-Stand jetzt synchronisieren</button>
-    </div>
+    <div class="hint">Ist nach so vielen Tagen keine Auftragsbestätigung erfasst, wird die Position rot markiert. Mit dem 📧-Button an der Position lässt sich eine Erinnerung als fertige Mail öffnen.</div>
   </div>
   <div class="setbox">
     <h3>💾 Sicherheits-Backup</h3>
@@ -1252,7 +1226,7 @@ function isEditingInput(){
 }
 
 // ── STATE ───────────────────────────────────────────────────────────────
-let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,abFrist:7,lastBackup:'',changesSinceBackup:0}, PREISE_DATA=[];
+let PROJECTS=[], CUR=null, SEL=new Set(), SEL_MODE=false, SETTINGS={warnDays:14,abFrist:7,lastBackup:'',changesSinceBackup:0}, PREISE_DATA=[];
 
 // ── BACKUP-ERINNERUNG ──────────────────────────────────────────────────
 async function markChanged(){
@@ -1697,25 +1671,12 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v29';
+const APP_VERSION='2026-06-21 · v30';
 function goSettings(){
   showView('vSettings');
-  const w=document.getElementById('setWebhook');if(w)w.value=SETTINGS.webhook||'';
-  const m1=document.getElementById('setMail1');if(m1)m1.value=SETTINGS.mail1||'';
-  const m2=document.getElementById('setMail2');if(m2)m2.value=SETTINGS.mail2||'';
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
   document.getElementById('setAbFrist').value=SETTINGS.abFrist||7;
   const ver=document.getElementById('appVersion');if(ver)ver.textContent=APP_VERSION;
-  // Webhook-Konfigurationsstatus anzeigen
-  const hasUrl=!!(SETTINGS.webhook||'').trim();
-  const mails=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
-  if(!hasUrl){
-    setWebhookStatus('err','⚠ Keine Webhook-URL hinterlegt – es werden KEINE Mails verschickt. Power-Automate-URL oben eintragen.');
-  } else if(mails.length===0){
-    setWebhookStatus('warn','Webhook-URL ist da, aber keine E-Mail-Adresse. Trage oben mindestens eine ein.');
-  } else {
-    setWebhookStatus('ok',`✓ Konfiguriert: Webhook gesetzt, ${mails.length} Empfänger (${esc(mails.join(', '))}). Mit „Test-Mail" prüfen.`);
-  }
 }
 
 // ── HOME ────────────────────────────────────────────────────────────────
@@ -3316,69 +3277,6 @@ async function doGlobalSearch(){
 
 function goToProject(id){openProject(id);}
 
-// ── WEBHOOK ─────────────────────────────────────────────────────────────
-async function fireWebhook(typ,data){
-  if(!SETTINGS.webhook)return {ok:false,reason:'keine URL'};
-  const payload=JSON.stringify({typ,mails:[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean),...data,timestamp:new Date().toISOString()});
-  // VERSUCH 1: normaler CORS-POST (kann den HTTP-Status lesen, wenn der Flow CORS erlaubt)
-  try{
-    const res=await fetch(SETTINGS.webhook,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:payload
-    });
-    if(res.ok||res.status===202)return {ok:true,status:res.status,mode:'cors'};
-    return {ok:false,reason:'HTTP '+res.status,status:res.status};
-  }catch(e){
-    // CORS/Netzwerk-Fehler → VERSUCH 2: no-cors mit text/plain.
-    // Vermeidet die CORS-Vorabanfrage (Preflight), sodass der POST das Geraet
-    // tatsaechlich verlaesst. Power Automate liest den Body trotzdem (ggf. via
-    // json(triggerBody()) im Flow). Antwort ist 'opaque' – Status nicht lesbar.
-    try{
-      await fetch(SETTINGS.webhook,{
-        method:'POST',mode:'no-cors',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:payload
-      });
-      return {ok:true,opaque:true,mode:'no-cors'};
-    }catch(e2){
-      console.warn('Webhook fehlgeschlagen (beide Versuche):',e,e2);
-      return {ok:false,reason:(e2&&e2.message)||(e&&e.message)||'Netzwerk'};
-    }
-  }
-}
-// Test-Versand mit klarer Rueckmeldung
-async function testWebhook(){
-  const url=(document.getElementById('setWebhook')?.value||'').trim();
-  if(url)SETTINGS.webhook=url;
-  if(!SETTINGS.webhook){
-    setWebhookStatus('err','Keine Webhook-URL eingetragen. Bitte oben die Power-Automate-URL einfügen und das Feld verlassen (speichert automatisch).');
-    return;
-  }
-  const mails=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
-  if(mails.length===0){
-    setWebhookStatus('warn','Webhook-URL ist da, aber keine E-Mail-Adresse hinterlegt. Trage oben mindestens eine E-Mail ein.');
-    return;
-  }
-  setWebhookStatus('sync','Sende Test an Power Automate …');
-  const r=await fireWebhook('test',{betreff:'KPC Test-Mail',body:'Dies ist eine Testnachricht aus der KPC Bestellübersicht. Wenn du das liest, funktioniert der Flow.',
-    mails, oneMailPerLieferant:false,
-    mailsList:[{to:mails,betreff:'KPC Test-Mail',body:'Test erfolgreich – der Power-Automate-Flow ist erreichbar.'}]});
-  if(r.ok && r.mode==='cors'){
-    setWebhookStatus('ok',`✓ Test gesendet und vom Flow bestätigt (HTTP ${r.status||200}). Wenn in 1-2 Min keine Mail kommt, liegt es am Flow selbst (Mail-Aktion / Empfänger prüfen).`);
-  } else if(r.ok && r.opaque){
-    setWebhookStatus('warn',`📤 Test abgeschickt (no-cors). Die App konnte die Antwort nicht lesen – das ist bei Power Automate normal. Prüfe jetzt in Power Automate → Ausführungsverlauf, ob ein Lauf ausgelöst wurde:<br>• Lauf erscheint + grün → Flow läuft, ggf. Mail-Aktion/Empfänger prüfen.<br>• KEIN Lauf → die URL braucht Anmeldung oder ist unvollständig (klassischer HTTP-Trigger endet mit „&sig=…").`);
-  } else {
-    setWebhookStatus('err',`Fehlgeschlagen: ${r.reason}. URL korrekt? Flow aktiv?`);
-  }
-}
-function setWebhookStatus(state,msg){
-  const el=document.getElementById('webhookStatus'); if(!el)return;
-  const col={ok:['rgba(30,138,74,.1)','#0f6332','rgba(30,138,74,.3)'],
-    warn:['rgba(196,119,0,.1)','#7d4d00','rgba(196,119,0,.3)'],
-    err:['rgba(217,32,32,.1)','#a01515','rgba(217,32,32,.3)'],
-    sync:['rgba(26,95,122,.1)','#0f4655','rgba(26,95,122,.3)']}[state]||['rgba(0,0,0,.05)','#555','rgba(0,0,0,.1)'];
-  el.innerHTML=`<div style="padding:9px 12px;background:${col[0]};border:.5px solid ${col[2]};border-radius:9px;font-size:11.5px;color:${col[1]};font-weight:600;line-height:1.5">${msg}</div>`;
-}
 
 // ── AUFTRAGSBESTÄTIGUNG: Überfälligkeit + Erinnerung ─────────────────────
 // Überfällig = Bestellware, bestellt, noch keine AB erfasst, Bestelldatum ≥ Frist (Standard 7 Tage) her
@@ -3444,165 +3342,17 @@ function mailABSammel(lief){
   window.location.href=href;
 }
 
-// Erinnerungen über Power Automate verschicken.
-// auto=true: beim Laden, mit Dedupe (erst wieder nach Ablauf der Frist erneut erinnern)
-async function sendeABErinnerungen(auto){
-  const frist=SETTINGS.abFrist||7;
-  let liste=abOffeneListe();
-  if(auto)liste=liste.filter(it=>!it.p.abErinnertAm||daysBtw(it.p.abErinnertAm,today())>=frist);
-  if(liste.length===0){if(!auto)toast('Keine überfälligen Auftragsbestätigungen ✓','ok');return 0;}
-  if(!SETTINGS.webhook){
-    if(!auto){goSettings();toast('Bitte Power-Automate-URL in ⚙ Einstellungen hinterlegen','err',4500);}
-    return 0;
-  }
-  // Nach Lieferant gruppieren – PRO LIEFERANT genau EINE Mail (auch wenn 10 Positionen offen sind)
-  const groups={};
-  liste.forEach(it=>{(groups[it.lieferant]=groups[it.lieferant]||[]).push(it);});
-  // Vorgebaute Mail-Spezifikation: der Flow muss nur 'Apply to each mail → Send Mail' machen
-  const empfaenger=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
-  const mails=Object.entries(groups).map(([lieferant,items])=>{
-    const zeilen=items.map(it=>`• Projekt ${it.projekt} · Pos ${it.pos} · ${it.bez} · ${it.menge} ${it.einheit} · bestellt am ${it.bestelltAm} (${it.tageOffen} Tage)`).join('\n');
-    return {
-      to:empfaenger,
-      betreff:`AB fehlt seit >${frist} Tagen: ${lieferant} (${items.length} Position${items.length===1?'':'en'})`,
-      lieferant,
-      anzahl:items.length,
-      body:`Bei ${lieferant} stehen ${items.length} Auftragsbestätigung${items.length===1?'':'en'} aus (Frist ${frist} Tage):\n\n${zeilen}\n\nBitte beim Lieferanten nachhaken.`,
-      positionen:items.map(it=>({projekt:it.projekt,pos:it.pos,bez:it.bez,menge:it.menge,einheit:it.einheit,bestelltAm:it.bestelltAm,tageOffen:it.tageOffen}))
-    };
-  });
-  const betreff=`KPC: ${liste.length} fehlende Auftragsbestätigung(en) bei ${Object.keys(groups).length} Lieferant(en)`;
-  await fireWebhook('ab_ueberfaellig',{
-    betreff, frist, anzahlMails:mails.length, oneMailPerLieferant:true,
-    mails       // ← der Flow soll AUSSCHLIESSLICH ueber 'mails' iterieren
-  });
-  // Positionen als erinnert markieren (Dedupe)
-  const heute=today();const dirty=new Set();
-  liste.forEach(it=>{it.p.abErinnertAm=heute;dirty.add(it.proj);});
-  for(const proj of dirty)await dbPut('projects',proj);
-  markChanged();updateABBanner();
-  return liste.length;
-}
-
-function updateABBanner(){
-  const b=document.getElementById('abBanner');if(!b)return;
-  const list=abOffeneListe();
-  const dismissed=localStorage.getItem('kpc_abDismiss')===today();
-  if(list.length>0&&!dismissed){
-    const n=list.length,liefs=new Set(list.map(x=>x.lieferant)).size;
-    b.querySelector('.bb-txt').textContent=`${n} Auftragsbestätigung${n===1?'':'en'} überfällig (>${SETTINGS.abFrist||7} Tage) bei ${liefs} Lieferant(en)`;
-    b.classList.add('on');
-  }else b.classList.remove('on');
-}
-function dismissABBanner(){localStorage.setItem('kpc_abDismiss',today());updateABBanner();}
-async function abBannerSend(){
-  const n=await sendeABErinnerungen(false);
-  if(n>0)toast(n+' Erinnerung(en) an Power Automate übergeben','ok',3500);
-}
-
-// Vollständigen Snapshot offener Bestellungen an den Flow pushen.
-// Power Automate spiegelt den Stand in eine SharePoint-Liste; ein zeitgesteuerter Flow
-// prüft dort täglich die Fristen und versendet Mails – auch wenn die App nicht offen ist.
-function bestellungenSnapshot(){
-  const frist=SETTINGS.abFrist||7;
-  const items=[];
-  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
-    if(p.quelle!=='bestellt')return;
-    if(p.abBestaetigt)return;
-    if(!(p.status==='bestellt'||p.status==='abgerufen'||p.status==='geliefert'))return;
-    const tage=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
-    items.push({
-      key:proj.id+'/'+idx,
-      projekt:proj.name, pos:p.pos, bez:p.bez,
-      lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',
-      menge:p.menge, einheit:p.einh,
-      bestelltAm:p.bestelltAm||'', tageOffen:tage,
-      faellig:p.bestelltAm?tage>=frist:false
-    });
-  }));
-  return items;
-}
-async function syncBestellungenToFlow(manuell){
-  if(!SETTINGS.webhook){
-    if(manuell){goSettings();toast('Bitte Power-Automate-URL in ⚙ Einstellungen hinterlegen','err',4500);}
-    return 0;
-  }
-  if(!manuell){
-    const last=await dbGet('settings','lastSyncSent').catch(()=>null);
-    if(last?.v===today())return 0; // einmal pro Tag genuegt
-  }
-  const items=bestellungenSnapshot();
-  const frist=SETTINGS.abFrist||7;
-  await fireWebhook('sync_state',{
-    betreff:`KPC-Sync: ${items.length} offene Bestellung(en) ohne AB`,
-    frist, anzahl:items.length,
-    abFrist:frist,
-    positionen:items
-  });
-  await dbPut('settings',{k:'lastSyncSent',v:today()});
-  if(manuell)toast(items.length+' Position(en) an Power Automate uebermittelt','ok',3500);
-  return items.length;
-}
-
-// Automatische Prüfung beim Laden
-async function checkWarnings(){
-  if(!SETTINGS.webhook)return;
-  await sendeABErinnerungen(true);
-  await syncBestellungenToFlow(false);
-  // Sammelbericht: Abrufe die morgen oder heute fällig sind oder überfällig, noch nicht bestellt
-  const abrufFaellig=[];
-  PROJECTS.forEach(proj=>{
-    proj.positionen.forEach(p=>{
-      if(p.status==='abgerufen'||p.status==='geliefert')return;
-      const at=abrufTermin(p,proj);
-      if(!at)return;
-      const da=daysBtw(today(),at);
-      if(da<=1){ // heute, morgen oder überfällig
-        abrufFaellig.push({projekt:proj.name,pos:p.pos,bez:p.bez,
-          lieferant:p.lieferant||p.fabrikat||'',abrufBis:at,liefertermin:proj.liefertermin,
-          status:da<0?'überfällig':da===0?'heute':'morgen',menge:p.menge,einheit:p.einh});
-      }
-    });
-  });
-  if(abrufFaellig.length>0){
-    const lastSent=await dbGet('settings','lastWarnSent').catch(()=>null);
-    if(lastSent?.v===today())return;
-    abrufFaellig.sort((a,b)=>new Date(a.abrufBis)-new Date(b.abrufBis));
-    // Pro Lieferant gruppieren – PRO LIEFERANT genau EINE Abruf-Erinnerungsmail
-    const groups={};
-    abrufFaellig.forEach(it=>{const k=it.lieferant||'(ohne Lieferant)';(groups[k]=groups[k]||[]).push(it);});
-    const empfaenger=[SETTINGS.mail1,SETTINGS.mail2].filter(Boolean);
-    const mails=Object.entries(groups).map(([lieferant,items])=>{
-      const ueberfL=items.filter(w=>w.status==='überfällig').length;
-      const zeilen=items.map(it=>`• Projekt ${it.projekt} · Pos ${it.pos} · ${it.bez} · ${it.menge} ${it.einheit} · ${it.status} (Abruf bis ${it.abrufBis})`).join('\n');
-      return {
-        to:empfaenger,
-        betreff:ueberfL>0
-          ? `Abruf bei ${lieferant}: ${ueberfL} überfällig, ${items.length} gesamt`
-          : `Abruf bei ${lieferant}: ${items.length} Position${items.length===1?'':'en'} fällig`,
-        lieferant,
-        anzahl:items.length,
-        body:`Bei ${lieferant} stehen ${items.length} Abruf${items.length===1?'':'e'} an${ueberfL>0?` (davon ${ueberfL} überfällig)`:''}:\n\n${zeilen}\n\nBitte zeitnah abrufen.`,
-        positionen:items
-      };
-    });
-    const ueberf=abrufFaellig.filter(w=>w.status==='überfällig').length;
-    const betreff=ueberf>0?`KPC: ${ueberf} Abruf(e) überfällig, ${abrufFaellig.length} gesamt fällig`:`KPC: ${abrufFaellig.length} Abruf(e) fällig`;
-    await fireWebhook('abruf_sammelbericht',{
-      betreff, anzahlMails:mails.length, oneMailPerLieferant:true,
-      mails       // ← der Flow soll AUSSCHLIESSLICH ueber 'mails' iterieren
-    });
-    await dbPut('settings',{k:'lastWarnSent',v:today()});
-  }
-}
+// AB-Banner + Power-Automate-Versand entfernt (Premium-Lizenz nicht verfuegbar).
+// Ueberfaellige AB werden direkt in der Position-Karte rot markiert; Erinnerung per
+// 📧-Mail-Button (mailto) an der Position bzw. Sammel-Button im AB-offen-Filter.
+function updateABBanner(){/* Banner entfernt – no-op */}
+function dismissABBanner(){/* no-op */}
+async function checkWarnings(){/* Power-Automate-Versand entfernt – no-op */}
 
 // ── SETTINGS ────────────────────────────────────────────────────────────
 async function saveSettings(silent){
-  // Aktuelle Eingabewerte einsammeln
+  // Aktuelle Eingabewerte einsammeln (Power Automate / Mail-Felder wurden entfernt)
   const next={
-    webhook:(document.getElementById('setWebhook')?.value||'').trim(),
-    mail1:(document.getElementById('setMail1')?.value||'').trim(),
-    mail2:(document.getElementById('setMail2')?.value||'').trim(),
     warnDays:parseInt(document.getElementById('setWarnDays').value)||14,
     abFrist:parseInt(document.getElementById('setAbFrist').value)||7
   };
@@ -3781,7 +3531,7 @@ async function clearAllData(){
   if(!confirm('Wirklich? Nicht rückgängig machbar.'))return;
   const tx=db.transaction(['projects','settings'],'readwrite');
   tx.objectStore('projects').clear();tx.objectStore('settings').clear();
-  PROJECTS=[];CUR=null;SETTINGS={webhook:'',mail1:'',mail2:'',warnDays:14,abFrist:7};
+  PROJECTS=[];CUR=null;SETTINGS={warnDays:14,abFrist:7};
   goHome();toast('Alles gelöscht','ok');
 }
 
