@@ -517,6 +517,21 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   z-index:8000;align-items:center;justify-content:center;padding:20px;}
+/* In-App Dokument-Viewer (PDF/Bild) */
+.docviewer{display:none;position:fixed;inset:0;z-index:9500;background:#2d2926;flex-direction:column;}
+.docviewer.on{display:flex;}
+.docviewer-bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 14px;
+  padding-top:max(10px,env(safe-area-inset-top));background:#1c1a18;border-bottom:1px solid rgba(255,255,255,.1);}
+.docviewer-name{flex:1;color:#fff;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.docviewer-ext{flex:0 0 auto;color:#c8a882;font-size:12px;font-weight:600;text-decoration:none;padding:7px 10px;border-radius:8px;background:rgba(200,168,130,.15);}
+.docviewer-close{flex:0 0 auto;background:linear-gradient(135deg,#8b2222,#a83232);color:#fff;border:none;
+  padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.docviewer-close:active{transform:scale(.95);}
+.docviewer-body{flex:1;min-height:0;background:#3c342e;overflow:auto;display:flex;align-items:flex-start;justify-content:center;}
+.docviewer-body iframe{width:100%;height:100%;border:none;background:#fff;}
+.docviewer-body img{max-width:100%;height:auto;display:block;}
+.docviewer-fallback{color:#fff;text-align:center;padding:40px 20px;font-size:14px;line-height:1.6;}
+.docviewer-fallback a{color:#c8a882;font-weight:700;}
 .modal.on{display:flex;}
 .modal-box{background:rgba(255,255,255,.96);
   -webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);
@@ -998,6 +1013,16 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button class="mcancel" onclick="closePreisLuecken()">Schließen</button>
     </div>
   </div>
+</div>
+
+<!-- In-App PDF/Bild-Viewer (statt neuem Tab – mit Schließen-Button zurück zur App) -->
+<div id="docViewer" class="docviewer">
+  <div class="docviewer-bar">
+    <span class="docviewer-name" id="docViewerName"></span>
+    <a id="docViewerExt" class="docviewer-ext" target="_blank" rel="noopener" title="In neuem Tab öffnen">↗ Tab</a>
+    <button class="docviewer-close" onclick="closeDocViewer()">✕ Schließen</button>
+  </div>
+  <div class="docviewer-body" id="docViewerBody"></div>
 </div>
 
 <!-- Zubehör aus bestehender Position übernehmen -->
@@ -1710,7 +1735,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v33';
+const APP_VERSION='2026-06-21 · v34';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2227,6 +2252,8 @@ function closeBestelltList(){document.getElementById('bestelltListModal').classL
 // ESC schliesst offene Modals (Verlauf, Bestellt-Liste, Fortschritt, Setup, Login)
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
+  const dv=document.getElementById('docViewer');
+  if(dv&&dv.classList.contains('on')){closeDocViewer();e.preventDefault();return;}
   const am=document.getElementById('auditModal');
   if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
   const plm=document.getElementById('preisLueckenModal');
@@ -3773,9 +3800,32 @@ async function openLs(idx){
   const rec=await dbGet('lieferscheine',p.lieferschein.id);
   if(!rec){toast('Lieferschein nicht gefunden','err');return;}
   const blob=new Blob([rec.blob],{type:rec.type||'application/pdf'});
+  showDocViewer(blob,p.lieferschein.name||'Lieferschein',rec.type||p.lieferschein.type);
+}
+// ── In-App Dokument-Viewer ───────────────────────────────────────────────
+let _docViewerUrl=null;
+function showDocViewer(blob,name,type){
+  if(_docViewerUrl){try{URL.revokeObjectURL(_docViewerUrl);}catch(e){}}
   const url=URL.createObjectURL(blob);
-  window.open(url,'_blank');
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  _docViewerUrl=url;
+  const body=document.getElementById('docViewerBody');
+  document.getElementById('docViewerName').textContent=name||'Dokument';
+  document.getElementById('docViewerExt').href=url;
+  const isImg=/^image\//i.test(type||'');
+  if(isImg){
+    body.innerHTML=`<img src="${url}" alt="${escA(name||'')}">`;
+  } else {
+    // PDF: iframe versucht inline. Falls iOS das nicht rendert, hilft der Tab-Button oben.
+    body.innerHTML=`<iframe src="${url}" title="${escA(name||'')}"></iframe>
+      <div class="docviewer-fallback" style="display:none" id="docViewerFb">Vorschau nicht möglich.<br><a href="${url}" target="_blank" rel="noopener">📄 PDF in neuem Tab öffnen</a></div>`;
+  }
+  document.getElementById('docViewer').classList.add('on');
+}
+function closeDocViewer(){
+  const v=document.getElementById('docViewer');
+  v.classList.remove('on');
+  document.getElementById('docViewerBody').innerHTML='';
+  if(_docViewerUrl){setTimeout(()=>{try{URL.revokeObjectURL(_docViewerUrl);}catch(e){}_docViewerUrl=null;},500);}
 }
 async function delLs(idx){
   if(!requireLogin())return;
@@ -3875,9 +3925,7 @@ async function openAb(idx){
   const rec=await dbGet('auftragsbestaetigungen',p.abDoc.id);
   if(!rec){toast('Auftragsbestätigung nicht gefunden','err');return;}
   const blob=new Blob([rec.blob],{type:rec.type||'application/pdf'});
-  const url=URL.createObjectURL(blob);
-  window.open(url,'_blank');
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  showDocViewer(blob,p.abDoc.name||'Auftragsbestätigung',rec.type||p.abDoc.type);
 }
 async function delAb(idx){
   if(!requireLogin())return;
