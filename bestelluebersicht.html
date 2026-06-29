@@ -1370,6 +1370,7 @@ function istBestellt(p){return p.quelle==='bestellt';}
 // Liste wird spaeter verfeinert. Lieferant wird aus dem Typ-Praefix abgeleitet.
 const ZUB_KATALOG={
   mischbatterie:[
+    'KWC Sensor Netz #125260 (Ø 35mm)','KWC Sensor Netz #125259 (Ø 35mm)',
     'KWC Isla 10.371.023.000FL (35mm)','KWC 130.1B.000FL (35mm)','KWC 130.1N.000FL (35mm)',
     'KWC Luna-E 10.441.013.000FL (35mm)','KWC Luna (35mm)','KWC Gastro A300',
     'KWC Wandmischbatterie 3/4"','KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
@@ -1735,7 +1736,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v34';
+const APP_VERSION='2026-06-21 · v35';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
