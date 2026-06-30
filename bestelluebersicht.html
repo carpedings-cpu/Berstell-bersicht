@@ -1048,8 +1048,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <div id="zubListBody" class="modal-scroll"></div>
     <div class="modal-act">
       <button class="mcancel" onclick="closeZubehoerListe()">Schließen</button>
+      <button class="mok" onclick="exportKatalogExcel()" style="background:linear-gradient(135deg,#1e8a4a,#34c759)">📊 Katalog als Excel</button>
       <button class="mok" onclick="copyZubListe()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Liste kopieren</button>
-      <button class="mok" onclick="printZubListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🖨 Drucken / PDF</button>
+      <button class="mok" onclick="printZubListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🖨 PDF</button>
     </div>
   </div>
 </div>
@@ -1736,7 +1737,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v35';
+const APP_VERSION='2026-06-21 · v36';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4211,6 +4212,38 @@ async function markZubBestellt(projId,posIdx,zi){
 // Welche Zubehoer-Kategorien sind im Sammellisten-Modal aktiv (sichtbar)?
 // Wird beim ersten Oeffnen mit allen vorhandenen Kategorien initialisiert.
 let ZUB_LISTE_KATS=null;
+// ── Zubehör-Katalog als Excel exportieren ───────────────────────────────
+// Zerlegt jeden Katalog-Eintrag in Hersteller / Typ / Artikelnummer / Maß.
+function parseKatalogEintrag(kat,entry){
+  const HERST=['KWC','Echtermann','Armag','Knauss','Kohlhoff','Wagner Ewar','Hupfer'];
+  let rest=String(entry).trim(), mass='', hersteller='', artnr='';
+  const mm=rest.match(/\(([^)]*)\)\s*$/);
+  if(mm){mass=mm[1].trim();rest=rest.replace(/\(([^)]*)\)\s*$/,'').trim();}
+  for(const h of HERST){if(rest.toLowerCase().startsWith(h.toLowerCase())){hersteller=h;rest=rest.slice(h.length).trim();break;}}
+  const hash=rest.match(/#\s*([A-Za-z0-9.\/-]+)/);
+  if(hash){artnr=hash[1];rest=rest.replace(/#\s*[A-Za-z0-9.\/-]+/,'').trim();}
+  else{
+    const codes=rest.match(/\b([A-Za-z]*\d[\w.\/-]*\d[\w.\/-]*)\b/g)||[];
+    const real=codes.filter(c=>/[.]/.test(c)||/^[A-Z]{1,3}-?\w*\d{2,}/.test(c)||/\d{3,}/.test(c)).filter(c=>!/^\d\/\d/.test(c));
+    if(real.length){artnr=real.join(' ');real.forEach(c=>{rest=rest.replace(c,'').trim();});}
+  }
+  let typ=rest.replace(/\s{2,}/g,' ').trim();
+  if(kat==='gn'){hersteller='';typ=String(entry);artnr=String(entry).replace(/^GN\s*/,'');mass='';}
+  return {artikel:ZUB_LABEL[kat]||kat,hersteller,typ,artnr,mass};
+}
+function exportKatalogExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel-Bibliothek nicht geladen','err');return;}
+  const aoa=[['Artikel','Hersteller','Typ','Artikelnummer','Maß / Anschluss']];
+  Object.keys(ZUB_KATALOG).forEach(kat=>{
+    ZUB_KATALOG[kat].forEach(e=>{const r=parseKatalogEintrag(kat,e);aoa.push([r.artikel,r.hersteller,r.typ,r.artnr,r.mass]);});
+  });
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:20},{wch:16},{wch:40},{wch:24},{wch:16}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Zubehör-Katalog');
+  XLSX.writeFile(wb,'KPC_Zubehoer_Katalog.xlsx');
+  toast('Zubehör-Katalog als Excel exportiert','ok');
+}
 function buildZubListe(proj,excludeKats){
   const items=[];
   (proj.positionen||[]).forEach((p,idx)=>{
