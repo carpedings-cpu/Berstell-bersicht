@@ -356,6 +356,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .zub-kat{min-width:130px;padding:6px 8px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;color:#2d2926;}
 .zub-typ{flex:1;min-width:200px;padding:6px 8px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;color:#2d2926;}
 .zub-menge{width:55px;padding:6px 6px;border-radius:7px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;text-align:center;color:#2d2926;}
+.zub-perm{flex:0 0 auto;padding:6px 10px;border:.5px solid rgba(184,134,11,.4);border-radius:8px;background:rgba(184,134,11,.1);color:#8a6a10;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.zub-perm:hover{background:rgba(184,134,11,.2);}
 .zub-del{flex:0 0 auto;width:26px;height:26px;border:none;border-radius:50%;background:rgba(139,34,34,.1);color:#8b2222;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;}
 .zub-del:hover{background:rgba(139,34,34,.2);}
 .zub-tg{flex:0 0 auto;padding:6px 11px;border-radius:14px;border:.5px solid rgba(107,80,64,.25);background:rgba(255,255,255,.6);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;color:#6b5040;display:inline-flex;align-items:center;gap:4px;}
@@ -1386,7 +1388,7 @@ const ZUB_KATALOG={
   seifenspender:['Kohlhoff Seifen-/Desinfektionsspender SDS 1 Liter','Seifenspender Aufputz','Seifenspender Einbau Z.538.409.000 (26mm)','Seifenspender Wand'],
   desinfektionsspender:['Kohlhoff Seifen-/Desinfektionsspender SDS 1 Liter','Kohlhoff Hygienecenter HC-Primus II','Desinfektionsspender Aufputz','Desinfektionsspender 1 Liter'],
   handtuchspender:['Kohlhoff Handtuchspender HS-AB abschließbar','Wagner Ewar WP 165 (Einbau)','Handtuchspender Aufputz','Handtuchspender Wand'],
-  gn:['GN 1/1-65','GN 1/1-100','GN 1/1-150','GN 1/1-200','GN 1/2-65','GN 1/2-100','GN 1/2-150','GN 1/3-100','GN 1/3-150','GN 2/3-150']
+  gn:['Contacto GN 1/1-65 (7011/065)','Contacto GN 1/1-100 (7011/100)','Contacto GN 1/1-150 (7011/150)','Contacto GN 1/1-200 (7011/200)','Contacto GN 1/2-65 (7012/065)','Contacto GN 1/2-100 (7012/100)','Contacto GN 1/2-150 (7012/150)','Contacto GN 1/3-100 (7013/100)','Contacto GN 1/3-150 (7013/150)','Contacto GN 2/3-150 (7023/150)']
 };
 const ZUB_LABEL={becken:'Becken',mischbatterie:'Mischbatterie',seifenspender:'Seifenspender',desinfektionsspender:'Desinfektionsspender',handtuchspender:'Handtuchspender',gn:'GN-Behälter'};
 // Becken → standardmaessig Mischbatterie-Vorschlag
@@ -1410,8 +1412,27 @@ function lieferantFromZubTyp(typ){
   if(/^knauss\b/i.test(t))return 'Knauss';
   if(/^wagner ewar\b/i.test(t))return 'Wagner Ewar';
   if(/^hupfer\b/i.test(t))return 'Hupfer';
-  if(/^gn\b/i.test(t))return '(GN-Behälter)';
+  if(/^contacto\b/i.test(t))return 'Contacto';
+  if(/^gn\b/i.test(t))return 'Contacto';
   return '';
+}
+// Katalog inkl. dauerhaft ergaenzter Eigen-Eintraege (SETTINGS.zubKatalogCustom, cloud-synchron).
+function zubKatalogFor(kat){
+  const base=ZUB_KATALOG[kat]||[];
+  const custom=(SETTINGS.zubKatalogCustom&&SETTINGS.zubKatalogCustom[kat])||[];
+  const seen=new Set(); const out=[];
+  base.concat(custom).forEach(t=>{const k=String(t).trim();if(k&&!seen.has(k.toLowerCase())){seen.add(k.toLowerCase());out.push(k);}});
+  return out;
+}
+// Einen Typ DAUERHAFT in den Katalog aufnehmen (bleibt fuer alle kuenftigen Positionen + alle Geraete).
+async function addToKatalogPermanent(kat,typ){
+  const t=String(typ||'').trim(); if(!kat||!t)return false;
+  if(zubKatalogFor(kat).some(x=>x.toLowerCase()===t.toLowerCase()))return false; // schon drin
+  if(!SETTINGS.zubKatalogCustom)SETTINGS.zubKatalogCustom={};
+  if(!Array.isArray(SETTINGS.zubKatalogCustom[kat]))SETTINGS.zubKatalogCustom[kat]=[];
+  SETTINGS.zubKatalogCustom[kat].push(t);
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  return true;
 }
 // Ist die Zubehoer-Zeile noch zu bestellen?
 function istZubZuBestellen(z){
@@ -1737,7 +1758,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v36';
+const APP_VERSION='2026-06-21 · v37';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3102,11 +3123,14 @@ function renderZubRow(p,idx,zi,z){
   const katOpts=`<option value="">— Kategorie —</option>`+
     Object.keys(ZUB_LABEL).filter(k=>k!=='becken').map(k=>`<option value="${k}"${z.kat===k?' selected':''}>${ZUB_LABEL[k]}</option>`).join('');
   let typEl='';
-  if(z.kat && ZUB_KATALOG[z.kat]){
-    const list=ZUB_KATALOG[z.kat];
-    const isCustom=z.typ && !list.includes(z.typ);
+  let permBtn='';
+  if(z.kat && ZUB_LABEL[z.kat]){
+    const list=zubKatalogFor(z.kat);
+    const isCustom=z.typ && !list.some(x=>x.toLowerCase()===String(z.typ).toLowerCase());
     if(isCustom){
       typEl=`<input class="zub-typ" value="${escA(z.typ)}" placeholder="eigener Typ" onchange="setZubTyp(${idx},${zi},this.value)">`;
+      // Eigenen Typ dauerhaft in den Katalog aufnehmen
+      if(String(z.typ).trim())permBtn=`<button class="zub-perm" onclick="permZub(${idx},${zi})" title="Diesen Typ dauerhaft in den Katalog aufnehmen (erscheint künftig im Dropdown, auf allen Geräten)">★ dauerhaft</button>`;
     } else {
       typEl=`<select class="zub-typ" onchange="onZubTypSel(${idx},${zi},this.value)">
         <option value="">— Typ wählen —</option>
@@ -3130,6 +3154,7 @@ function renderZubRow(p,idx,zi,z){
     <div class="zub-r1">
       <select class="zub-kat" onchange="setZubKat(${idx},${zi},this.value)">${katOpts}</select>
       ${typEl}
+      ${permBtn}
       <input class="zub-menge" type="number" min="1" value="${z.menge||1}" onchange="setZubMenge(${idx},${zi},this.value)" title="Menge">
       <button class="zub-del" onclick="delZubehoer(${idx},${zi})" title="Zubehör entfernen">✕</button>
     </div>
@@ -3262,6 +3287,19 @@ async function setZubTyp(idx,zi,val){
   if(prev!==z.typ)logAction(p,`Zubehör Typ: ${prev||'-'} → ${z.typ||'-'}`);
   touchProject(CUR);
   await saveCur();renderDetail();updateGlobalCounters();
+}
+// Eigenen Typ dauerhaft in den Katalog aufnehmen
+async function permZub(idx,zi){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx]; const z=p.zubehoer[zi]; if(!z||!z.kat||!String(z.typ).trim())return;
+  const added=await addToKatalogPermanent(z.kat,z.typ);
+  if(added){
+    logAction(p,`Katalog ergänzt: ${ZUB_LABEL[z.kat]||z.kat} · ${z.typ}`);
+    toast('„'+z.typ+'" dauerhaft im Katalog gespeichert','ok');
+    renderDetail();
+  } else {
+    toast('Ist bereits im Katalog','ok');
+  }
 }
 async function setZubMenge(idx,zi,val){
   if(!requireLogin())return;
@@ -4215,27 +4253,34 @@ let ZUB_LISTE_KATS=null;
 // ── Zubehör-Katalog als Excel exportieren ───────────────────────────────
 // Zerlegt jeden Katalog-Eintrag in Hersteller / Typ / Artikelnummer / Maß.
 function parseKatalogEintrag(kat,entry){
-  const HERST=['KWC','Echtermann','Armag','Knauss','Kohlhoff','Wagner Ewar','Hupfer'];
+  const HERST=['KWC','Echtermann','Armag','Knauss','Kohlhoff','Wagner Ewar','Hupfer','Contacto'];
   let rest=String(entry).trim(), mass='', hersteller='', artnr='';
+  // Klammer am Ende: Artikelnummer (z.B. 7011/065) ODER Maß (z.B. 35mm)
   const mm=rest.match(/\(([^)]*)\)\s*$/);
-  if(mm){mass=mm[1].trim();rest=rest.replace(/\(([^)]*)\)\s*$/,'').trim();}
+  if(mm){
+    const inner=mm[1].trim();
+    if(/^\d{3,}[\/.-]?\d*$/.test(inner) || /^\d{3,}\/\d{2,}$/.test(inner)){artnr=inner;}  // Contacto-Artikelnummer
+    else{mass=inner;}
+    rest=rest.replace(/\(([^)]*)\)\s*$/,'').trim();
+  }
   for(const h of HERST){if(rest.toLowerCase().startsWith(h.toLowerCase())){hersteller=h;rest=rest.slice(h.length).trim();break;}}
-  const hash=rest.match(/#\s*([A-Za-z0-9.\/-]+)/);
-  if(hash){artnr=hash[1];rest=rest.replace(/#\s*[A-Za-z0-9.\/-]+/,'').trim();}
-  else{
-    const codes=rest.match(/\b([A-Za-z]*\d[\w.\/-]*\d[\w.\/-]*)\b/g)||[];
-    const real=codes.filter(c=>/[.]/.test(c)||/^[A-Z]{1,3}-?\w*\d{2,}/.test(c)||/\d{3,}/.test(c)).filter(c=>!/^\d\/\d/.test(c));
-    if(real.length){artnr=real.join(' ');real.forEach(c=>{rest=rest.replace(c,'').trim();});}
+  if(!artnr){
+    const hash=rest.match(/#\s*([A-Za-z0-9.\/-]+)/);
+    if(hash){artnr=hash[1];rest=rest.replace(/#\s*[A-Za-z0-9.\/-]+/,'').trim();}
+    else if(kat!=='gn'){
+      const codes=rest.match(/\b([A-Za-z]*\d[\w.\/-]*\d[\w.\/-]*)\b/g)||[];
+      const real=codes.filter(c=>/[.]/.test(c)||/^[A-Z]{1,3}-?\w*\d{2,}/.test(c)||/\d{3,}/.test(c)).filter(c=>!/^\d\/\d/.test(c));
+      if(real.length){artnr=real.join(' ');real.forEach(c=>{rest=rest.replace(c,'').trim();});}
+    }
   }
   let typ=rest.replace(/\s{2,}/g,' ').trim();
-  if(kat==='gn'){hersteller='';typ=String(entry);artnr=String(entry).replace(/^GN\s*/,'');mass='';}
   return {artikel:ZUB_LABEL[kat]||kat,hersteller,typ,artnr,mass};
 }
 function exportKatalogExcel(){
   if(typeof XLSX==='undefined'){toast('Excel-Bibliothek nicht geladen','err');return;}
   const aoa=[['Artikel','Hersteller','Typ','Artikelnummer','Maß / Anschluss']];
-  Object.keys(ZUB_KATALOG).forEach(kat=>{
-    ZUB_KATALOG[kat].forEach(e=>{const r=parseKatalogEintrag(kat,e);aoa.push([r.artikel,r.hersteller,r.typ,r.artnr,r.mass]);});
+  Object.keys(ZUB_LABEL).filter(k=>k!=='becken').forEach(kat=>{
+    zubKatalogFor(kat).forEach(e=>{const r=parseKatalogEintrag(kat,e);aoa.push([r.artikel,r.hersteller,r.typ,r.artnr,r.mass]);});
   });
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:20},{wch:16},{wch:40},{wch:24},{wch:16}];
