@@ -1374,20 +1374,19 @@ function istBestellt(p){return p.quelle==='bestellt';}
 const ZUB_KATALOG={
   mischbatterie:[
     'KWC Sensor Netz #125260 (Ø 35mm)','KWC Sensor Netz #125259 (Ø 35mm)',
-    'KWC Isla 10.371.023.000FL (35mm)','KWC 130.1B.000FL (35mm)','KWC 130.1N.000FL (35mm)',
-    'KWC Luna-E 10.441.013.000FL (35mm)','KWC Luna (35mm)','KWC Gastro A300',
-    'KWC Wandmischbatterie 3/4"','KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
-    'Echtermann Sensorarmatur B 2314.21 (33mm)','Echtermann Sensorarmatur N 2314.20 (33mm)',
-    'Echtermann Zweigriff-Wandarmatur 1/2"','Echtermann Wand-Geschirrspülbrause 1/2"',
-    'Echtermann Wandmischbatterie 3/4" 2460.24/000','Echtermann Standventil 3/4" 6470.50/300.265 (43mm)',
-    'Echtermann Standventil 1/2" 6460.90/300.300 (30mm)','Echtermann Brause #6639',
-    'Armag Wandmischbatterie 306.R01.1M5.0PGT (42mm)',
-    'Knauss Standventil 3/4" VZ.130.262.HT2 (43mm)','Knauss Standventil 3/4" VZ.130.462.HT2 (42mm)',
-    'Knauss Standventil 1/2" VQ.130.261.HS1 (35mm)'
+    'KWC Isla 10.371.023.000FL (35mm)','KWC Luna-E 10.441.013.000FL (35mm)',
+    'KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
+    'Armag Wandmischbatterie 1/2"'
   ],
-  seifenspender:['Kohlhoff Seifen-/Desinfektionsspender SDS 1 Liter','Seifenspender Aufputz','Seifenspender Einbau Z.538.409.000 (26mm)','Seifenspender Wand'],
-  desinfektionsspender:['Kohlhoff Seifen-/Desinfektionsspender SDS 1 Liter','Kohlhoff Hygienecenter HC-Primus II','Desinfektionsspender Aufputz','Desinfektionsspender 1 Liter'],
-  handtuchspender:['Kohlhoff Handtuchspender HS-AB abschließbar','Wagner Ewar WP 165 (Einbau)','Handtuchspender Aufputz','Handtuchspender Wand'],
+  seifenspender:[
+    'Gastronobel Seifenspender Aufputz',
+    'KWC Seifenspender Einbau Z.538.409.000 (26mm)'
+  ],
+  desinfektionsspender:[],
+  handtuchspender:[
+    'Wagner Ewar Einbauhandtuchspender WP 165',
+    'Gastronobel Handtuchspender Aufputz'
+  ],
   gn:['Contacto GN 1/1-65 (7011/065)','Contacto GN 1/1-100 (7011/100)','Contacto GN 1/1-150 (7011/150)','Contacto GN 1/1-200 (7011/200)','Contacto GN 1/2-65 (7012/065)','Contacto GN 1/2-100 (7012/100)','Contacto GN 1/2-150 (7012/150)','Contacto GN 1/3-100 (7013/100)','Contacto GN 1/3-150 (7013/150)','Contacto GN 2/3-150 (7023/150)']
 };
 const ZUB_LABEL={becken:'Becken',mischbatterie:'Mischbatterie',seifenspender:'Seifenspender',desinfektionsspender:'Desinfektionsspender',handtuchspender:'Handtuchspender',gn:'GN-Behälter'};
@@ -1411,6 +1410,7 @@ function lieferantFromZubTyp(typ){
   if(/^kohlhoff\b/i.test(t))return 'Kohlhoff';
   if(/^knauss\b/i.test(t))return 'Knauss';
   if(/^wagner ewar\b/i.test(t))return 'Wagner Ewar';
+  if(/^gastronobel\b/i.test(t))return 'Gastronobel';
   if(/^hupfer\b/i.test(t))return 'Hupfer';
   if(/^contacto\b/i.test(t))return 'Contacto';
   if(/^gn\b/i.test(t))return 'Contacto';
@@ -1758,7 +1758,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v37';
+const APP_VERSION='2026-06-21 · v38';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4253,7 +4253,7 @@ let ZUB_LISTE_KATS=null;
 // ── Zubehör-Katalog als Excel exportieren ───────────────────────────────
 // Zerlegt jeden Katalog-Eintrag in Hersteller / Typ / Artikelnummer / Maß.
 function parseKatalogEintrag(kat,entry){
-  const HERST=['KWC','Echtermann','Armag','Knauss','Kohlhoff','Wagner Ewar','Hupfer','Contacto'];
+  const HERST=['KWC','Echtermann','Armag','Knauss','Kohlhoff','Wagner Ewar','Gastronobel','Hupfer','Contacto'];
   let rest=String(entry).trim(), mass='', hersteller='', artnr='';
   // Klammer am Ende: Artikelnummer (z.B. 7011/065) ODER Maß (z.B. 35mm)
   const mm=rest.match(/\(([^)]*)\)\s*$/);
