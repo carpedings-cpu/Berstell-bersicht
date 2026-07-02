@@ -417,6 +417,12 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-body.open{display:block;}
 .pr-note{padding:10px 16px;background:rgba(184,134,11,.08);border-bottom:.5px solid rgba(0,0,0,.05);
   font-size:11.5px;color:#7a5800;font-weight:500;display:flex;align-items:flex-start;gap:6px;}
+.pr-liefbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:rgba(26,95,122,.06);border-bottom:.5px solid rgba(0,0,0,.06);}
+.pr-liefbar label{font-size:11.5px;font-weight:700;color:#0f4655;}
+.pr-liefbar input{padding:7px 10px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:12.5px;font-family:inherit;outline:none;min-width:160px;}
+.pr-liefbar button{padding:7px 12px;border-radius:8px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.8);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#2d2926;}
+.pr-liefbar button:hover{background:#fff;}
+.pr-zusatz{background:rgba(184,134,11,.05);}
 .pr-table{width:100%;border-collapse:collapse;font-size:12px;}
 .pr-table th{text-align:left;padding:7px 10px;background:rgba(45,41,38,.04);font-weight:700;color:rgba(28,28,30,.6);
   font-size:10px;letter-spacing:.3px;text-transform:uppercase;border-bottom:.5px solid rgba(0,0,0,.08);}
@@ -678,6 +684,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <button class="actbtn" onclick="syncAllProjectPrices()" style="background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;border-color:transparent;padding:8px 13px;border-radius:11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:none">🔄 Aus Projekten übernehmen</button>
     <button class="actbtn" onclick="trigPreiseExcel()" style="background:rgba(107,80,64,.92);color:#fff;border-color:transparent">📥 EK/VK Excel hochladen</button>
+    <select id="prProjFilter" onchange="renderPreise()" title="Projekt wählen, um Angebotsnummer, Zusatzpositionen und Lieferanten-PDF zu nutzen" style="padding:8px 11px;border-radius:11px;border:.5px solid rgba(0,0,0,.08);background:rgba(255,255,255,.7);font-size:12px;font-family:inherit;font-weight:600">
+      <option value="">Alle Projekte</option>
+    </select>
     <div class="sw" style="flex:1;min-width:160px">
       <span class="si">⌕</span>
       <input type="text" id="prSrch" placeholder="Filter: Lieferant, Bezeichnung, Projekt…" oninput="renderPreise()">
@@ -1538,6 +1547,11 @@ async function init(){
         migrated=true;
       }
     }));
+    // Preis-Felder pro Projekt: Angebotsnummer je Lieferant + Zusatzpositionen (nur Preisliste)
+    PROJECTS.forEach(proj=>{
+      if(!proj.angebotsnr||typeof proj.angebotsnr!=='object'){proj.angebotsnr={};migrated=true;}
+      if(!Array.isArray(proj.preisZusatz)){proj.preisZusatz=[];migrated=true;}
+    });
     if(migrated)for(const proj of PROJECTS)await dbPutLocal('projects',proj);
     // Cloud-Sync: vor dem Seed eines Demo-Projekts erst Cloud abfragen, sonst spammt jeder neue Client ein Demo in die Cloud
     sbInit();
@@ -1758,7 +1772,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v39';
+const APP_VERSION='2026-06-21 · v40';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4824,9 +4838,10 @@ function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 // Wenn der Bearbeiter spaeter den Lieferanten nachtraegt oder den Preis aendert,
 // blieb PREISE_DATA stehen und die Position fehlte in der Preisansicht (z.B. Narr
 // bei Mainz). Jetzt: bei jedem renderPreise neu aus PROJECTS aufbauen.
-function buildPreiseLive(showAll){
+function buildPreiseLive(showAll,projFilter){
   const out=[];
   PROJECTS.forEach(proj=>{
+    if(projFilter && proj.name!==projFilter)return;
     (proj.positionen||[]).forEach(p=>{
       const ek=p.ek||0, vk=p.vk||0;
       // Status fuer Diagnose-Anzeige
@@ -4853,18 +4868,37 @@ function buildPreiseLive(showAll){
         _status:status   // nur fuer Diagnose-Anzeige
       });
     });
+    // Zusatzpositionen (nur Preisliste, KEIN Einfluss auf die Projekt-Positionen)
+    (proj.preisZusatz||[]).forEach((z,zIdx)=>{
+      out.push({
+        proj:proj.name, pos:z.pos||'—', bez:z.bez||'', typ:'',
+        lief:z.lief||'(ohne Lieferant)', _liefRaw:z.lief||'', _fabRaw:'',
+        menge:toI(z.menge)||1, ek:z.ek||0, vk:0,
+        termin:proj.liefertermin||'', anm:z.anm||'', bindung:'',
+        _status:'', _zusatz:true, _zIdx:zIdx, _projName:proj.name
+      });
+    });
   });
   // Externe Preisdaten (manuelle EK/VK-Excel ohne echtes Projekt im System) bleiben erhalten
   const projNames=new Set(PROJECTS.map(p=>p.name));
-  PREISE_DATA.forEach(e=>{ if(!projNames.has(e.proj))out.push(e); });
+  if(!projFilter)PREISE_DATA.forEach(e=>{ if(!projNames.has(e.proj))out.push(e); });
   return out;
 }
 function renderPreise(){
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
   const showAll=!!document.getElementById('prShowAll')?.checked;
+  // Projekt-Filter-Dropdown befuellen (Auswahl beibehalten)
+  const pf=document.getElementById('prProjFilter');
+  const projFilter=pf?pf.value:'';
+  if(pf){
+    const cur=pf.value;
+    const names=[...new Set(PROJECTS.map(p=>p.name))].sort((a,b)=>a.localeCompare(b));
+    pf.innerHTML='<option value="">Alle Projekte</option>'+names.map(n=>`<option value="${escA(n)}"${cur===n?' selected':''}>${esc(n)}</option>`).join('');
+    pf.value=cur; // falls noch vorhanden
+  }
   // LIVE aus PROJECTS: immer aktuell, keine veralteten Daten
-  let items=buildPreiseLive(showAll);
+  let items=buildPreiseLive(showAll,projFilter);
   const hasData=items.length>0;
   if(q){
     // Sucht primaer ueber den Lieferanten (mit Normalisierung – "cool" findet Cool Compact / CoolCompact,
@@ -4941,12 +4975,22 @@ function renderPreise(){
     const rows=g.items.map(it=>{
       const marge=it.vk>0?((it.vk-it.ek)/it.vk*100):0;
       const lDat=it.termin?new Date(it.termin).toLocaleDateString('de-DE'):'';
-      // Klick auf Zeile → springt zur Position im Projekt
+      // Zusatzposition: nicht klickbar (keine Projekt-Position), dafuer loeschbar
+      if(it._zusatz){
+        return `<tr class="pr-zusatz">
+          <td><span class="pr-pos" style="background:rgba(184,134,11,.15);color:#8a6a10">${esc(it.pos)}</span></td>
+          <td><div class="pr-bez">${esc(it.bez)} <span style="font-size:9.5px;font-weight:700;color:#8a6a10;background:rgba(184,134,11,.12);padding:1px 6px;border-radius:6px">ZUSATZ</span></div></td>
+          <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
+          <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
+          <td class="pr-ek">${it.ek?fmtEur(it.ek):'–'}</td>
+          <td class="pr-vk">–</td>
+          <td style="text-align:center"><button onclick="delPreisZusatz('${escA(it._projName)}',${it._zIdx})" title="Zusatzposition entfernen" style="background:rgba(139,34,34,.12);color:#8b2222;border:none;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px">✕</button></td>
+          <td class="pr-anm">${esc(it.anm||'')}</td>
+        </tr>`;
+      }
       const onclick=`jumpToProjPos('${escA(it.proj)}','${escA(it.pos)}')`;
       const tip=escA('Springe zu Position '+it.pos+' in '+it.proj);
-      // Diagnose-Status-Badge: zeigt warum eine Position normalerweise nicht in der Preisliste waere
       const statusBadge=it._status?` <span style="display:inline-block;background:rgba(217,32,32,.15);color:#a01515;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;text-transform:uppercase;letter-spacing:.3px">${esc(it._status)}</span>`:'';
-      // Diagnose-Detail: was steht WIRKLICH in den Lieferant/Fabrikat-Feldern + Preis-Status
       const diag=showAll?`<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">Lief='${esc(it._liefRaw||'(leer)')}' · Fab='${esc(it._fabRaw||'(leer)')}' · EK=${it.ek} · VK=${it.vk}</div>`:'';
       return `<tr class="pr-clickable" onclick="${onclick}" title="${tip}">
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
@@ -4977,6 +5021,17 @@ function renderPreise(){
       </div>
       <div class="pr-body">
         ${b?'<div class="pr-note">📋 '+esc(b.text)+'</div>':''}
+        ${projFilter?(()=>{
+          const liefKey=normLief(g.lief)||'_';
+          const proj=PROJECTS.find(pp=>pp.name===projFilter);
+          const angNr=(proj&&proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
+          return `<div class="pr-liefbar">
+            <label>Angebots-Nr.</label>
+            <input type="text" value="${escA(angNr)}" placeholder="z.B. AN-2026-0815" onchange="setAngebotsnr('${escA(projFilter)}','${escA(liefKey)}',this.value)" onclick="event.stopPropagation()">
+            <button onclick="event.stopPropagation();addPreisZusatz('${escA(projFilter)}','${escA(g.lief)}')" title="Zusatzposition nur für diese Preisliste (kein Einfluss aufs Projekt)">＋ Position</button>
+            <button onclick="event.stopPropagation();printLieferantenPDF('${escA(projFilter)}','${escA(g.lief)}')" style="margin-left:auto;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff">📄 Lieferanten-PDF</button>
+          </div>`;
+        })():''}
         <div style="overflow-x:auto"><table class="pr-table">
           <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th>Projekt / Termin</th><th style="text-align:right">EK</th><th style="text-align:right">VK</th><th style="text-align:right">Marge</th><th>Anmerkung</th></tr></thead>
           <tbody>${rows}${sumRow}</tbody>
@@ -4989,6 +5044,102 @@ function renderPreise(){
 function togglePr(el){
   el.classList.toggle('open');
   el.nextElementSibling.classList.toggle('open');
+}
+// ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
+async function setAngebotsnr(projName,liefKey,val){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.name===projName); if(!proj)return;
+  if(!proj.angebotsnr||typeof proj.angebotsnr!=='object')proj.angebotsnr={};
+  const v=String(val||'').trim();
+  if((proj.angebotsnr[liefKey]||'')===v)return;
+  proj.angebotsnr[liefKey]=v;
+  touchProject(proj);
+  await dbPut('projects',proj);markChanged();
+  toast('Angebotsnummer gespeichert','ok');
+}
+async function addPreisZusatz(projName,liefName){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.name===projName); if(!proj)return;
+  const bez=prompt('Bezeichnung der Zusatzposition (nur Preisliste, kein Einfluss aufs Projekt):');
+  if(bez===null)return;
+  const b=bez.trim(); if(!b)return;
+  const pos=prompt('Positions-Nr. (nach eurer Vorgabe, optional):','')||'';
+  const mengeS=prompt('Menge:','1')||'1';
+  const ekS=prompt('EK € (optional, leer = kein Preis):','')||'';
+  if(!Array.isArray(proj.preisZusatz))proj.preisZusatz=[];
+  proj.preisZusatz.push({lief:liefName,pos:pos.trim(),bez:b,menge:parseInt(mengeS)||1,ek:parseFloat(String(ekS).replace(/\./g,'').replace(',','.'))||0,anm:''});
+  touchProject(proj);
+  await dbPut('projects',proj);markChanged();
+  renderPreise();
+  toast('Zusatzposition hinzugefügt','ok');
+}
+async function delPreisZusatz(projName,zIdx){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.name===projName); if(!proj||!Array.isArray(proj.preisZusatz))return;
+  const z=proj.preisZusatz[zIdx]; if(!z)return;
+  if(!confirm('Zusatzposition entfernen?\n'+(z.bez||'')))return;
+  proj.preisZusatz.splice(zIdx,1);
+  touchProject(proj);
+  await dbPut('projects',proj);markChanged();
+  renderPreise();
+  toast('Zusatzposition entfernt','ok');
+}
+// Lieferanten-PDF: EK sichtbar, KEIN VK, KEINE Marge. Mit Angebotsnr + Liefertermin.
+function printLieferantenPDF(projName,liefName){
+  const proj=PROJECTS.find(p=>p.name===projName); if(!proj){toast('Projekt nicht gefunden','err');return;}
+  const liefKey=normLief(liefName)||'_';
+  const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
+  const angNr=(proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
+  // Positionen dieses Lieferanten (offene, bestellbare, mit/ohne Preis) + Zusatzpositionen
+  const items=[];
+  (proj.positionen||[]).forEach(p=>{
+    if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
+    const lk=normLief(p.lieferant||p.fabrikat);
+    if(lk!==liefKey)return;
+    items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',menge:toI(p.menge)||1,ek:p.ek||0});
+  });
+  (proj.preisZusatz||[]).forEach(z=>{
+    if(normLief(z.lief)!==liefKey)return;
+    items.push({pos:z.pos||'—',bez:z.bez,typ:'',menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
+  });
+  if(items.length===0){toast('Keine Positionen für diesen Lieferanten','err');return;}
+  const ekSum=items.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
+  const rows=items.map(it=>`<tr>
+    <td>${e(it.pos)}</td>
+    <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}${it.zusatz?' <span style="font-size:9px;background:#eee;padding:1px 5px;border-radius:4px">Zusatz</span>':''}</td>
+    <td style="text-align:center">${e(it.menge)}</td>
+    <td style="text-align:right">${it.ek?fmtEur(it.ek):'–'}</td>
+    <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
+  </tr>`).join('');
+  const stand=new Date().toLocaleString('de-DE');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${e(liefName)} · ${e(proj.name)}</title>
+    <style>
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:900px;margin:0 auto}
+      h1{font-size:20px;color:#6b5040;margin:0 0 2px} .sub{font-size:12px;color:#666;margin-bottom:16px}
+      .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12.5px}
+      .meta b{color:#6b5040}
+      table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
+      td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
+      @media print{body{padding:10mm}}
+    </style></head><body>
+    <h1>🏭 ${e(liefName)}</h1>
+    <div class="sub">Projekt: ${e(proj.name)} · Stand: ${e(stand)}</div>
+    <div class="meta">
+      <div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div>
+      <div><b>Liefertermin:</b> ${proj.liefertermin?e(fd(proj.liefertermin)):'—'}</div>
+      <div><b>Positionen:</b> ${items.length}</div>
+    </div>
+    <table>
+      <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th style="text-align:right">EK / Stk</th><th style="text-align:right">EK gesamt</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="4" style="text-align:right">Summe EK</td><td style="text-align:right">${fmtEur(ekSum)}</td></tr></tfoot>
+    </table>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
+    </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){toast('Bitte Pop-Ups erlauben','err');return;}
+  w.document.write(html);w.document.close();
 }
 
 
