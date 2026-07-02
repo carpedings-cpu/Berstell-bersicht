@@ -421,9 +421,16 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-liefbar label{font-size:11.5px;font-weight:700;color:#0f4655;}
 .pr-liefbar input{padding:7px 10px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:12.5px;font-family:inherit;outline:none;min-width:160px;}
 .pr-liefbar button{padding:7px 12px;border-radius:8px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.8);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#2d2926;}
+.pr-liefbar{display:flex;flex-direction:column;align-items:stretch;gap:8px;}
 .pr-liefbar button:hover{background:#fff;}
-.pr-lief-proj{font-size:11.5px;font-weight:700;color:#6b5040;background:rgba(107,80,64,.1);padding:5px 9px;border-radius:7px;}
-.pr-lief-projsel{padding:6px 9px;border-radius:7px;border:.5px solid rgba(107,80,64,.3);background:#fff;font-size:11.5px;font-weight:700;color:#6b5040;font-family:inherit;}
+.pr-projpick{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;}
+.pr-projpick-lbl{font-size:11.5px;font-weight:700;color:#0f4655;margin-right:2px;}
+.pr-projchk{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#2d2926;cursor:pointer;background:rgba(255,255,255,.7);border:.5px solid rgba(0,0,0,.1);border-radius:8px;padding:4px 9px;}
+.pr-projchk input{margin:0;}
+.pr-angrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.pr-angproj{font-size:11.5px;font-weight:700;color:#6b5040;background:rgba(107,80,64,.1);padding:4px 9px;border-radius:7px;min-width:120px;}
+.pr-liefactions{display:flex;gap:8px;flex-wrap:wrap;}
+.pr-liefactions{margin-top:2px;}
 .pr-zusatz{background:rgba(184,134,11,.05);}
 .pr-table{width:100%;border-collapse:collapse;font-size:12px;}
 .pr-table th{text-align:left;padding:7px 10px;background:rgba(45,41,38,.04);font-weight:700;color:rgba(28,28,30,.6);
@@ -1045,8 +1052,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <h3 style="margin-bottom:4px">＋ Position hinzufügen</h3>
     <div style="font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:12px">Lieferant: <strong id="pzLief"></strong> · nur für die Preisliste (kein Einfluss auf die Bestellübersicht)</div>
     <div class="frm-row"><div class="frm-fld" style="flex:1 1 100%">
-      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Projekt</label>
-      <select id="pzProj" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit"></select>
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Projekt (frei eingeben – auch app-fremde)</label>
+      <input id="pzProj" type="text" placeholder="Projektname eintippen" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
     </div></div>
     <div class="frm-row" style="margin-top:10px">
       <div class="frm-fld" style="flex:1 1 100px"><label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Pos.-Nr.</label>
@@ -1803,7 +1810,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v42';
+const APP_VERSION='2026-06-21 · v43';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4901,15 +4908,19 @@ function buildPreiseLive(showAll,projFilter){
         _status:status   // nur fuer Diagnose-Anzeige
       });
     });
-    // Zusatzpositionen (nur Preisliste, KEIN Einfluss auf die Projekt-Positionen)
-    (proj.preisZusatz||[]).forEach((z,zIdx)=>{
-      out.push({
-        proj:proj.name, pos:z.pos||'—', bez:z.bez||'', typ:'',
-        lief:z.lief||'(ohne Lieferant)', _liefRaw:z.lief||'', _fabRaw:'',
-        menge:toI(z.menge)||1, ek:z.ek||0, vk:0,
-        termin:proj.liefertermin||'', anm:z.anm||'', bindung:'',
-        _status:'', _zusatz:true, _zIdx:zIdx, _projName:proj.name
-      });
+  });
+  // Zusatzpositionen (global gespeichert, Projektname frei – auch app-fremde Projekte).
+  // Nur Preisliste, KEIN Einfluss auf die echten Projekt-Positionen.
+  const pm=SETTINGS.preisMeta||{};
+  (pm.zusatz||[]).forEach((z,zIdx)=>{
+    if(projFilter && z.proj!==projFilter)return;
+    const appProj=PROJECTS.find(p=>p.name===z.proj);
+    out.push({
+      proj:z.proj||'(ohne Projekt)', pos:z.pos||'—', bez:z.bez||'', typ:'',
+      lief:z.lief||'(ohne Lieferant)', _liefRaw:z.lief||'', _fabRaw:'',
+      menge:toI(z.menge)||1, ek:z.ek||0, vk:0,
+      termin:appProj?appProj.liefertermin||'':'', anm:'', bindung:'',
+      _status:'', _zusatz:true, _zIdx:zIdx, _projName:z.proj, _extern:!appProj
     });
   });
   // Externe Preisdaten (manuelle EK/VK-Excel ohne echtes Projekt im System) bleiben erhalten
@@ -4917,8 +4928,51 @@ function buildPreiseLive(showAll,projFilter){
   if(!projFilter)PREISE_DATA.forEach(e=>{ if(!projNames.has(e.proj))out.push(e); });
   return out;
 }
-let PR_LIEF_PROJ={}; // pro Lieferant gewaehltes Projekt (nur wenn Lieferant in mehreren Projekten vorkommt)
+let PR_LIEF_PROJ={}; // (Alt, ungenutzt)
+// ── Preis-Meta: Angebotsnummern + Zusatzpositionen + Projekt-Auswahl je Lieferant ──
+// Global in SETTINGS gespeichert (cloud-synchron), damit auch app-fremde Projektnamen gehen.
+function ensurePreisMeta(){
+  if(!SETTINGS.preisMeta||typeof SETTINGS.preisMeta!=='object')SETTINGS.preisMeta={};
+  const pm=SETTINGS.preisMeta;
+  if(!pm.ang||typeof pm.ang!=='object')pm.ang={};
+  if(!Array.isArray(pm.zusatz))pm.zusatz=[];
+  if(!pm.show||typeof pm.show!=='object')pm.show={};
+  // Einmal-Migration: alte proj.angebotsnr + proj.preisZusatz in den globalen Speicher ziehen
+  if(!pm._migv1){
+    PROJECTS.forEach(proj=>{
+      if(proj.angebotsnr&&typeof proj.angebotsnr==='object')Object.entries(proj.angebotsnr).forEach(([lk,nr])=>{if(nr)pm.ang[proj.name+'§'+lk]=nr;});
+      if(Array.isArray(proj.preisZusatz))proj.preisZusatz.forEach(z=>pm.zusatz.push({lief:z.lief,proj:proj.name,pos:z.pos||'',bez:z.bez||'',menge:z.menge||1,ek:z.ek||0}));
+    });
+    pm._migv1=true;
+    try{dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  }
+}
+function getAng(projName,liefKey){return (SETTINGS.preisMeta&&SETTINGS.preisMeta.ang&&SETTINGS.preisMeta.ang[projName+'§'+liefKey])||'';}
+async function setAng(projName,liefKey,val){
+  if(!requireLogin())return;
+  ensurePreisMeta();
+  const key=projName+'§'+liefKey; const v=String(val||'').trim();
+  if((SETTINGS.preisMeta.ang[key]||'')===v)return;
+  if(v)SETTINGS.preisMeta.ang[key]=v; else delete SETTINGS.preisMeta.ang[key];
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  toast('Angebotsnummer gespeichert','ok');
+}
+// Welche Projekte sind bei diesem Lieferanten sichtbar? undefined = alle
+function showSel(liefKey){return SETTINGS.preisMeta&&SETTINGS.preisMeta.show?SETTINGS.preisMeta.show[liefKey]:undefined;}
+async function toggleShow(liefKey,projName,allProjs){
+  ensurePreisMeta();
+  let sel=SETTINGS.preisMeta.show[liefKey];
+  if(!Array.isArray(sel))sel=allProjs.slice(); // war 'alle' → jetzt explizite Liste
+  const i=sel.indexOf(projName);
+  if(i>=0)sel.splice(i,1); else sel.push(projName);
+  // Wenn wieder alle drin sind → als 'alle' (undefined) speichern
+  if(allProjs.every(p=>sel.includes(p)))delete SETTINGS.preisMeta.show[liefKey];
+  else SETTINGS.preisMeta.show[liefKey]=sel;
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderPreise();
+}
 function renderPreise(){
+  ensurePreisMeta();
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
   const showAll=!!document.getElementById('prShowAll')?.checked;
@@ -5005,8 +5059,17 @@ function renderPreise(){
   }
   wrap.innerHTML=groupList.map((g,gi)=>{
     const b=(g.items.find(it=>it.bindung)?{status:'warn',text:g.items.find(it=>it.bindung).bindung}:null);
-    const margeAvg=g.vkSum>0?((g.vkSum-g.ekSum)/g.vkSum*100):0;
-    const rows=g.items.map(it=>{
+    const liefKey=normLief(g.lief)||'_';
+    // Alle Projekte dieses Lieferanten (App + app-fremde aus Zusatzpositionen)
+    const allProjs=[...new Set(g.items.map(it=>it.proj))].sort((a,b)=>String(a).localeCompare(String(b)));
+    const sel=showSel(liefKey);
+    const visible=Array.isArray(sel)?allProjs.filter(p=>sel.includes(p)):allProjs;
+    // Anzeige nur der sichtbaren Projekte
+    const shownItems=g.items.filter(it=>visible.includes(it.proj));
+    const ekSumV=shownItems.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
+    const vkSumV=shownItems.reduce((s,it)=>s+(it.vk||0)*(it.menge||1),0);
+    const margeAvg=vkSumV>0?((vkSumV-ekSumV)/vkSumV*100):0;
+    const rows=shownItems.map(it=>{
       const marge=it.vk>0?((it.vk-it.ek)/it.vk*100):0;
       const lDat=it.termin?new Date(it.termin).toLocaleDateString('de-DE'):'';
       // Zusatzposition: nicht klickbar (keine Projekt-Position), dafuer loeschbar
@@ -5018,7 +5081,7 @@ function renderPreise(){
           <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
           <td class="pr-ek">${it.ek?fmtEur(it.ek):'–'}</td>
           <td class="pr-vk">–</td>
-          <td style="text-align:center"><button onclick="delPreisZusatz('${escA(it._projName)}',${it._zIdx})" title="Zusatzposition entfernen" style="background:rgba(139,34,34,.12);color:#8b2222;border:none;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px">✕</button></td>
+          <td style="text-align:center"><button onclick="delZusatzGlobal(${it._zIdx})" title="Zusatzposition entfernen" style="background:rgba(139,34,34,.12);color:#8b2222;border:none;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px">✕</button></td>
           <td class="pr-anm">${esc(it.anm||'')}</td>
         </tr>`;
       }
@@ -5038,49 +5101,38 @@ function renderPreise(){
       </tr>`;
     }).join('');
     const sumRow=`<tr class="pr-sum">
-      <td colspan="3" style="text-align:right;font-weight:800;color:#6b5040">Σ Gesamt (${g.items.length} Pos.)</td>
+      <td colspan="3" style="text-align:right;font-weight:800;color:#6b5040">Σ Gesamt (${shownItems.length} Pos.)</td>
       <td></td>
-      <td class="pr-ek" style="font-weight:800">${fmtEur(g.ekSum)}</td>
-      <td class="pr-vk" style="font-weight:800">${fmtEur(g.vkSum)}</td>
+      <td class="pr-ek" style="font-weight:800">${fmtEur(ekSumV)}</td>
+      <td class="pr-vk" style="font-weight:800">${fmtEur(vkSumV)}</td>
       <td><span class="pr-marge ${margeClass(margeAvg)}" style="font-weight:800">${Math.round(margeAvg)}%</span></td>
       <td></td>
     </tr>`;
+    // Projekt-Auswahl (Häkchen) + Angebotsnr je Projekt
+    const toolbar=(()=>{
+      if(allProjs.length===0)return '';
+      const checks=allProjs.map(p=>`<label class="pr-projchk"><input type="checkbox" ${visible.includes(p)?'checked':''} onchange="event.stopPropagation();toggleShow('${escA(liefKey)}','${escA(p)}',${JSON.stringify(allProjs).replace(/"/g,'&quot;')})"> ${esc(p)}</label>`).join('');
+      const angRows=visible.map(p=>`<div class="pr-angrow"><span class="pr-angproj">📁 ${esc(p)}</span><label>Angebots-Nr.</label><input type="text" value="${escA(getAng(p,liefKey))}" placeholder="z.B. AN-2026-0815" onchange="setAng('${escA(p)}','${escA(liefKey)}',this.value)" onclick="event.stopPropagation()"></div>`).join('');
+      return `<div class="pr-liefbar" onclick="event.stopPropagation()">
+        <div class="pr-projpick"><span class="pr-projpick-lbl">Projekte:</span>${checks}</div>
+        ${angRows}
+        <div class="pr-liefactions">
+          <button onclick="openPreisZusatz('${escA(g.lief)}')">＋ Position</button>
+          <button onclick="printLieferantenPDF('${escA(liefKey)}','${escA(g.lief)}')" style="background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff">📄 Lieferanten-PDF</button>
+        </div>
+      </div>`;
+    })();
     return `<div class="pr-group">
       <div class="pr-hd" onclick="togglePr(this)">
         <span class="pr-tog">▶</span>
         <span class="pr-name">🏭 ${esc(g.lief)}</span>
         ${b?'<span class="pr-bind '+b.status+'">'+(b.status==='ok'?'✓ aktuell':b.status==='warn'?'⚠ Preisbindung':'⚠ abgelaufen')+'</span>':''}
-        <span class="pr-cnt">${g.items.length}</span>
-        <span class="pr-vol">EK ${fmtEur(g.ekSum)} · VK ${fmtEur(g.vkSum)} · ${Math.round(margeAvg)}%</span>
+        <span class="pr-cnt">${shownItems.length}</span>
+        <span class="pr-vol">EK ${fmtEur(ekSumV)} · VK ${fmtEur(vkSumV)} · ${Math.round(margeAvg)}%</span>
       </div>
       <div class="pr-body">
         ${b?'<div class="pr-note">📋 '+esc(b.text)+'</div>':''}
-        ${(()=>{
-          const liefKey=normLief(g.lief)||'_';
-          // Projekte, in denen dieser Lieferant vorkommt (fuer die Vorauswahl)
-          const projsInGroup=[...new Set(g.items.map(it=>it.proj).filter(nm=>PROJECTS.some(p=>p.name===nm)))];
-          if(projsInGroup.length===0)return ''; // reine Externdaten → keine Leiste
-          // Dropdown listet ALLE Projekte + 'Alle Projekte', damit man frei zuordnen kann
-          const allProjNames=[...new Set(PROJECTS.map(p=>p.name))].sort((a,b)=>a.localeCompare(b));
-          let sel=projFilter||PR_LIEF_PROJ[liefKey]||projsInGroup[0];
-          if(sel!=='__all__'&&!allProjNames.includes(sel))sel=projsInGroup[0];
-          const isAll=sel==='__all__';
-          const proj=isAll?null:PROJECTS.find(pp=>pp.name===sel);
-          const angNr=(proj&&proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
-          const projSel=`<select class="pr-lief-projsel" onchange="PR_LIEF_PROJ['${escA(liefKey)}']=this.value;renderPreise()" onclick="event.stopPropagation()">
-            <option value="__all__"${isAll?' selected':''}>📁 Alle Projekte</option>
-            ${allProjNames.map(n=>`<option value="${escA(n)}"${n===sel?' selected':''}>${esc(n)}</option>`).join('')}
-          </select>`;
-          const angField=isAll
-            ? `<span style="font-size:11px;color:rgba(28,28,30,.55);font-style:italic">Angebotsnr. je Projekt (im PDF)</span>`
-            : `<label>Angebots-Nr.</label><input type="text" value="${escA(angNr)}" placeholder="z.B. AN-2026-0815" onchange="setAngebotsnr('${escA(sel)}','${escA(liefKey)}',this.value)" onclick="event.stopPropagation()">`;
-          return `<div class="pr-liefbar">
-            ${projSel}
-            ${angField}
-            <button onclick="event.stopPropagation();openPreisZusatz('${escA(g.lief)}','${escA(isAll?'':sel)}')" title="Position hinzufügen – Projekt wählbar (nur Preisliste)">＋ Position</button>
-            <button onclick="event.stopPropagation();printLieferantenPDF('${escA(sel)}','${escA(g.lief)}')" style="margin-left:auto;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff">📄 Lieferanten-PDF</button>
-          </div>`;
-        })()}
+        ${toolbar}
         <div style="overflow-x:auto"><table class="pr-table">
           <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th>Projekt / Termin</th><th style="text-align:right">EK</th><th style="text-align:right">VK</th><th style="text-align:right">Marge</th><th>Anmerkung</th></tr></thead>
           <tbody>${rows}${sumRow}</tbody>
@@ -5095,87 +5147,73 @@ function togglePr(el){
   el.nextElementSibling.classList.toggle('open');
 }
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
-async function setAngebotsnr(projName,liefKey,val){
-  if(!requireLogin())return;
-  const proj=PROJECTS.find(p=>p.name===projName); if(!proj)return;
-  if(!proj.angebotsnr||typeof proj.angebotsnr!=='object')proj.angebotsnr={};
-  const v=String(val||'').trim();
-  if((proj.angebotsnr[liefKey]||'')===v)return;
-  proj.angebotsnr[liefKey]=v;
-  touchProject(proj);
-  await dbPut('projects',proj);markChanged();
-  toast('Angebotsnummer gespeichert','ok');
-}
-// ＋ Position: Modal mit Projekt-Auswahl öffnen
+// ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
 let _pzLief=null;
 function openPreisZusatz(liefName,defaultProj){
   if(!requireLogin())return;
   _pzLief=liefName;
   document.getElementById('pzLief').textContent=liefName;
-  const sel=document.getElementById('pzProj');
-  const names=[...new Set(PROJECTS.map(p=>p.name))].sort((a,b)=>a.localeCompare(b));
-  sel.innerHTML=names.map(n=>`<option value="${escA(n)}"${n===defaultProj?' selected':''}>${esc(n)}</option>`).join('');
-  if(defaultProj)sel.value=defaultProj;
+  document.getElementById('pzProj').value=defaultProj||'';
   document.getElementById('pzPos').value='';
   document.getElementById('pzMenge').value='1';
   document.getElementById('pzBez').value='';
   document.getElementById('pzEk').value='';
   document.getElementById('preisZusatzModal').classList.add('on');
-  setTimeout(()=>document.getElementById('pzBez').focus(),120);
+  setTimeout(()=>document.getElementById('pzProj').focus(),120);
 }
 function closePreisZusatz(){document.getElementById('preisZusatzModal').classList.remove('on');_pzLief=null;}
 async function savePreisZusatz(){
   if(!requireLogin())return;
-  const projName=document.getElementById('pzProj').value;
-  const proj=PROJECTS.find(p=>p.name===projName);
-  if(!proj){toast('Bitte Projekt wählen','err');return;}
+  const projName=document.getElementById('pzProj').value.trim();
+  if(!projName){toast('Bitte Projektnamen eingeben','err');return;}
   const bez=document.getElementById('pzBez').value.trim();
   if(!bez){toast('Bezeichnung fehlt','err');return;}
   const pos=document.getElementById('pzPos').value.trim();
   const menge=parseInt(document.getElementById('pzMenge').value)||1;
   const ek=parseFloat(String(document.getElementById('pzEk').value||'').replace(/\./g,'').replace(',','.'))||0;
-  if(!Array.isArray(proj.preisZusatz))proj.preisZusatz=[];
-  proj.preisZusatz.push({lief:_pzLief,pos,bez,menge,ek,anm:''});
-  touchProject(proj);
-  await dbPut('projects',proj);markChanged();
+  ensurePreisMeta();
+  SETTINGS.preisMeta.zusatz.push({lief:_pzLief,proj:projName,pos,bez,menge,ek});
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   closePreisZusatz();
   renderPreise();
   toast('Position hinzugefügt ('+projName+')','ok');
 }
-async function delPreisZusatz(projName,zIdx){
+async function delZusatzGlobal(zIdx){
   if(!requireLogin())return;
-  const proj=PROJECTS.find(p=>p.name===projName); if(!proj||!Array.isArray(proj.preisZusatz))return;
-  const z=proj.preisZusatz[zIdx]; if(!z)return;
+  ensurePreisMeta();
+  const z=SETTINGS.preisMeta.zusatz[zIdx]; if(!z)return;
   if(!confirm('Zusatzposition entfernen?\n'+(z.bez||'')))return;
-  proj.preisZusatz.splice(zIdx,1);
-  touchProject(proj);
-  await dbPut('projects',proj);markChanged();
+  SETTINGS.preisMeta.zusatz.splice(zIdx,1);
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   renderPreise();
   toast('Zusatzposition entfernt','ok');
 }
 // Lieferanten-PDF: EK sichtbar, KEIN VK, KEINE Marge. Mit Angebotsnr + Liefertermin.
-// projSel = Projektname ODER '__all__' (dann Sektion pro Projekt, je eigene Angebotsnummer).
-function printLieferantenPDF(projSel,liefName){
-  const liefKey=normLief(liefName)||'_';
+// Erster Parameter ist der Lieferant-Key; gedruckt werden die aktuell SICHTBAREN Projekte
+// (Häkchen-Auswahl), jedes mit eigener Angebotsnummer.
+function printLieferantenPDF(liefKey,liefName){
+  ensurePreisMeta();
   const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
-  // Positionen eines Projekts fuer diesen Lieferanten sammeln
-  const collect=proj=>{
+  // Positionen eines Projekts (App-Projekt-Objekt ODER nur Name) fuer diesen Lieferanten
+  const collect=projName=>{
     const items=[];
-    (proj.positionen||[]).forEach(p=>{
+    const proj=PROJECTS.find(p=>p.name===projName);
+    if(proj)(proj.positionen||[]).forEach(p=>{
       if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
       if(normLief(p.lieferant||p.fabrikat)!==liefKey)return;
       items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',menge:toI(p.menge)||1,ek:p.ek||0});
     });
-    (proj.preisZusatz||[]).forEach(z=>{
-      if(normLief(z.lief)!==liefKey)return;
+    (SETTINGS.preisMeta.zusatz||[]).forEach(z=>{
+      if(z.proj!==projName||normLief(z.lief)!==liefKey)return;
       items.push({pos:z.pos||'—',bez:z.bez,typ:'',menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
     });
     return items;
   };
-  const sectionHTML=proj=>{
-    const items=collect(proj); if(items.length===0)return '';
-    const angNr=(proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
+  const sectionHTML=projName=>{
+    const items=collect(projName); if(items.length===0)return '';
+    const proj=PROJECTS.find(p=>p.name===projName);
+    const angNr=getAng(projName,liefKey);
     const ekSum=items.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
     const rows=items.map(it=>`<tr>
       <td>${e(it.pos)}</td>
@@ -5185,10 +5223,10 @@ function printLieferantenPDF(projSel,liefName){
       <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
     </tr>`).join('');
     return `<div class="sec">
-      <h2>📁 ${e(proj.name)}</h2>
+      <h2>📁 ${e(projName)}${proj?'':' <small style="font-weight:400;color:#888">(app-fremd)</small>'}</h2>
       <div class="meta">
         <div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div>
-        <div><b>Liefertermin:</b> ${proj.liefertermin?e(fd(proj.liefertermin)):'—'}</div>
+        <div><b>Liefertermin:</b> ${proj&&proj.liefertermin?e(fd(proj.liefertermin)):'—'}</div>
         <div><b>Positionen:</b> ${items.length}</div>
       </div>
       <table>
@@ -5198,14 +5236,14 @@ function printLieferantenPDF(projSel,liefName){
       </table>
     </div>`;
   };
-  let projList;
-  if(projSel==='__all__'){
-    projList=PROJECTS.filter(p=>collect(p).length>0);
-  } else {
-    const p=PROJECTS.find(pp=>pp.name===projSel);
-    projList=p?[p]:[];
-  }
-  const sections=projList.map(sectionHTML).filter(Boolean).join('');
+  // Sichtbare Projekte dieses Lieferanten (Häkchen-Auswahl) bestimmen
+  const allProjs=[...new Set([
+    ...PROJECTS.filter(p=>(p.positionen||[]).some(x=>!istNichtBestellbar(x)&&!istBestellt(x)&&x.quelle!=='lager'&&normLief(x.lieferant||x.fabrikat)===liefKey)).map(p=>p.name),
+    ...(SETTINGS.preisMeta.zusatz||[]).filter(z=>normLief(z.lief)===liefKey).map(z=>z.proj)
+  ])];
+  const sel=showSel(liefKey);
+  const visible=Array.isArray(sel)?allProjs.filter(p=>sel.includes(p)):allProjs;
+  const sections=visible.map(sectionHTML).filter(Boolean).join('');
   if(!sections){toast('Keine Positionen für diesen Lieferanten','err');return;}
   const stand=new Date().toLocaleString('de-DE');
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${e(liefName)}</title>
@@ -5220,7 +5258,7 @@ function printLieferantenPDF(projSel,liefName){
       @media print{body{padding:10mm} .sec{page-break-inside:avoid}}
     </style></head><body>
     <h1>🏭 ${e(liefName)}</h1>
-    <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}${projSel==='__all__'?' · alle Projekte':''}</div>
+    <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}${visible.length>1?' · '+visible.length+' Projekte':''}</div>
     ${sections}
     <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
     </body></html>`;
