@@ -1038,6 +1038,35 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="docviewer-body" id="docViewerBody"></div>
 </div>
 
+<!-- Preise: Zusatzposition hinzufügen (nur Preisliste, Projekt wählbar) -->
+<div class="modal" id="preisZusatzModal" onclick="if(event.target===this)closePreisZusatz()">
+  <div class="modal-box" style="max-width:440px;position:relative">
+    <button class="modal-x" onclick="closePreisZusatz()" title="Schließen">✕</button>
+    <h3 style="margin-bottom:4px">＋ Position hinzufügen</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:12px">Lieferant: <strong id="pzLief"></strong> · nur für die Preisliste (kein Einfluss auf die Bestellübersicht)</div>
+    <div class="frm-row"><div class="frm-fld" style="flex:1 1 100%">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Projekt</label>
+      <select id="pzProj" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit"></select>
+    </div></div>
+    <div class="frm-row" style="margin-top:10px">
+      <div class="frm-fld" style="flex:1 1 100px"><label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Pos.-Nr.</label>
+        <input id="pzPos" type="text" placeholder="eure Vorgabe" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit"></div>
+      <div class="frm-fld" style="flex:0 0 90px"><label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Menge</label>
+        <input id="pzMenge" type="number" min="1" value="1" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:center"></div>
+    </div>
+    <div class="frm-row" style="margin-top:10px"><div class="frm-fld" style="flex:1 1 100%">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Bezeichnung</label>
+      <input id="pzBez" type="text" placeholder="z.B. Sonderarmatur XY" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit"></div></div>
+    <div class="frm-row" style="margin-top:10px"><div class="frm-fld" style="flex:0 0 120px">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">EK € (optional)</label>
+      <input id="pzEk" type="number" step="0.01" placeholder="0" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right"></div></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closePreisZusatz()">Abbrechen</button>
+      <button class="mok" onclick="savePreisZusatz()">Hinzufügen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Zubehör aus bestehender Position übernehmen -->
 <div class="modal" id="zubPickModal" onclick="if(event.target===this)closeZubPick()">
   <div class="modal-box flex-scroll" style="max-width:560px;max-height:85vh">
@@ -1774,7 +1803,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v41';
+const APP_VERSION='2026-06-21 · v42';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2301,6 +2330,8 @@ document.addEventListener('keydown',e=>{
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
   const zpm=document.getElementById('zubPickModal');
   if(zpm&&zpm.classList.contains('on')){closeZubPick();e.preventDefault();return;}
+  const pzm=document.getElementById('preisZusatzModal');
+  if(pzm&&pzm.classList.contains('on')){closePreisZusatz();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
   if(blm&&blm.classList.contains('on')){closeBestelltList();e.preventDefault();return;}
   const psm=document.getElementById('projStatusModal');
@@ -5026,23 +5057,28 @@ function renderPreise(){
         ${b?'<div class="pr-note">📋 '+esc(b.text)+'</div>':''}
         ${(()=>{
           const liefKey=normLief(g.lief)||'_';
-          // Echte Projekte in dieser Lieferanten-Gruppe (externe Preisdaten ohne Projekt ausgenommen)
-          const projs=[...new Set(g.items.map(it=>it.proj).filter(nm=>PROJECTS.some(p=>p.name===nm)))];
-          if(projs.length===0)return ''; // reine Externdaten → keine Leiste
-          let activeProj=projFilter||PR_LIEF_PROJ[liefKey]||projs[0];
-          if(!projs.includes(activeProj))activeProj=projs[0];
-          const proj=PROJECTS.find(pp=>pp.name===activeProj);
+          // Projekte, in denen dieser Lieferant vorkommt (fuer die Vorauswahl)
+          const projsInGroup=[...new Set(g.items.map(it=>it.proj).filter(nm=>PROJECTS.some(p=>p.name===nm)))];
+          if(projsInGroup.length===0)return ''; // reine Externdaten → keine Leiste
+          // Dropdown listet ALLE Projekte + 'Alle Projekte', damit man frei zuordnen kann
+          const allProjNames=[...new Set(PROJECTS.map(p=>p.name))].sort((a,b)=>a.localeCompare(b));
+          let sel=projFilter||PR_LIEF_PROJ[liefKey]||projsInGroup[0];
+          if(sel!=='__all__'&&!allProjNames.includes(sel))sel=projsInGroup[0];
+          const isAll=sel==='__all__';
+          const proj=isAll?null:PROJECTS.find(pp=>pp.name===sel);
           const angNr=(proj&&proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
-          // Bei mehreren Projekten: kleines Auswahl-Dropdown, sonst nur Anzeige
-          const projSel=(projs.length>1&&!projFilter)
-            ? `<select class="pr-lief-projsel" onchange="PR_LIEF_PROJ['${escA(liefKey)}']=this.value;renderPreise()" onclick="event.stopPropagation()">${projs.map(n=>`<option value="${escA(n)}"${n===activeProj?' selected':''}>${esc(n)}</option>`).join('')}</select>`
-            : `<span class="pr-lief-proj">📁 ${esc(activeProj)}</span>`;
+          const projSel=`<select class="pr-lief-projsel" onchange="PR_LIEF_PROJ['${escA(liefKey)}']=this.value;renderPreise()" onclick="event.stopPropagation()">
+            <option value="__all__"${isAll?' selected':''}>📁 Alle Projekte</option>
+            ${allProjNames.map(n=>`<option value="${escA(n)}"${n===sel?' selected':''}>${esc(n)}</option>`).join('')}
+          </select>`;
+          const angField=isAll
+            ? `<span style="font-size:11px;color:rgba(28,28,30,.55);font-style:italic">Angebotsnr. je Projekt (im PDF)</span>`
+            : `<label>Angebots-Nr.</label><input type="text" value="${escA(angNr)}" placeholder="z.B. AN-2026-0815" onchange="setAngebotsnr('${escA(sel)}','${escA(liefKey)}',this.value)" onclick="event.stopPropagation()">`;
           return `<div class="pr-liefbar">
             ${projSel}
-            <label>Angebots-Nr.</label>
-            <input type="text" value="${escA(angNr)}" placeholder="z.B. AN-2026-0815" onchange="setAngebotsnr('${escA(activeProj)}','${escA(liefKey)}',this.value)" onclick="event.stopPropagation()">
-            <button onclick="event.stopPropagation();addPreisZusatz('${escA(activeProj)}','${escA(g.lief)}')" title="Zusatzposition nur für diese Preisliste (kein Einfluss aufs Projekt)">＋ Position</button>
-            <button onclick="event.stopPropagation();printLieferantenPDF('${escA(activeProj)}','${escA(g.lief)}')" style="margin-left:auto;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff">📄 Lieferanten-PDF</button>
+            ${angField}
+            <button onclick="event.stopPropagation();openPreisZusatz('${escA(g.lief)}','${escA(isAll?'':sel)}')" title="Position hinzufügen – Projekt wählbar (nur Preisliste)">＋ Position</button>
+            <button onclick="event.stopPropagation();printLieferantenPDF('${escA(sel)}','${escA(g.lief)}')" style="margin-left:auto;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff">📄 Lieferanten-PDF</button>
           </div>`;
         })()}
         <div style="overflow-x:auto"><table class="pr-table">
@@ -5070,21 +5106,41 @@ async function setAngebotsnr(projName,liefKey,val){
   await dbPut('projects',proj);markChanged();
   toast('Angebotsnummer gespeichert','ok');
 }
-async function addPreisZusatz(projName,liefName){
+// ＋ Position: Modal mit Projekt-Auswahl öffnen
+let _pzLief=null;
+function openPreisZusatz(liefName,defaultProj){
   if(!requireLogin())return;
-  const proj=PROJECTS.find(p=>p.name===projName); if(!proj)return;
-  const bez=prompt('Bezeichnung der Zusatzposition (nur Preisliste, kein Einfluss aufs Projekt):');
-  if(bez===null)return;
-  const b=bez.trim(); if(!b)return;
-  const pos=prompt('Positions-Nr. (nach eurer Vorgabe, optional):','')||'';
-  const mengeS=prompt('Menge:','1')||'1';
-  const ekS=prompt('EK € (optional, leer = kein Preis):','')||'';
+  _pzLief=liefName;
+  document.getElementById('pzLief').textContent=liefName;
+  const sel=document.getElementById('pzProj');
+  const names=[...new Set(PROJECTS.map(p=>p.name))].sort((a,b)=>a.localeCompare(b));
+  sel.innerHTML=names.map(n=>`<option value="${escA(n)}"${n===defaultProj?' selected':''}>${esc(n)}</option>`).join('');
+  if(defaultProj)sel.value=defaultProj;
+  document.getElementById('pzPos').value='';
+  document.getElementById('pzMenge').value='1';
+  document.getElementById('pzBez').value='';
+  document.getElementById('pzEk').value='';
+  document.getElementById('preisZusatzModal').classList.add('on');
+  setTimeout(()=>document.getElementById('pzBez').focus(),120);
+}
+function closePreisZusatz(){document.getElementById('preisZusatzModal').classList.remove('on');_pzLief=null;}
+async function savePreisZusatz(){
+  if(!requireLogin())return;
+  const projName=document.getElementById('pzProj').value;
+  const proj=PROJECTS.find(p=>p.name===projName);
+  if(!proj){toast('Bitte Projekt wählen','err');return;}
+  const bez=document.getElementById('pzBez').value.trim();
+  if(!bez){toast('Bezeichnung fehlt','err');return;}
+  const pos=document.getElementById('pzPos').value.trim();
+  const menge=parseInt(document.getElementById('pzMenge').value)||1;
+  const ek=parseFloat(String(document.getElementById('pzEk').value||'').replace(/\./g,'').replace(',','.'))||0;
   if(!Array.isArray(proj.preisZusatz))proj.preisZusatz=[];
-  proj.preisZusatz.push({lief:liefName,pos:pos.trim(),bez:b,menge:parseInt(mengeS)||1,ek:parseFloat(String(ekS).replace(/\./g,'').replace(',','.'))||0,anm:''});
+  proj.preisZusatz.push({lief:_pzLief,pos,bez,menge,ek,anm:''});
   touchProject(proj);
   await dbPut('projects',proj);markChanged();
+  closePreisZusatz();
   renderPreise();
-  toast('Zusatzposition hinzugefügt','ok');
+  toast('Position hinzugefügt ('+projName+')','ok');
 }
 async function delPreisZusatz(projName,zIdx){
   if(!requireLogin())return;
@@ -5098,56 +5154,74 @@ async function delPreisZusatz(projName,zIdx){
   toast('Zusatzposition entfernt','ok');
 }
 // Lieferanten-PDF: EK sichtbar, KEIN VK, KEINE Marge. Mit Angebotsnr + Liefertermin.
-function printLieferantenPDF(projName,liefName){
-  const proj=PROJECTS.find(p=>p.name===projName); if(!proj){toast('Projekt nicht gefunden','err');return;}
+// projSel = Projektname ODER '__all__' (dann Sektion pro Projekt, je eigene Angebotsnummer).
+function printLieferantenPDF(projSel,liefName){
   const liefKey=normLief(liefName)||'_';
   const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
-  const angNr=(proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
-  // Positionen dieses Lieferanten (offene, bestellbare, mit/ohne Preis) + Zusatzpositionen
-  const items=[];
-  (proj.positionen||[]).forEach(p=>{
-    if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
-    const lk=normLief(p.lieferant||p.fabrikat);
-    if(lk!==liefKey)return;
-    items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',menge:toI(p.menge)||1,ek:p.ek||0});
-  });
-  (proj.preisZusatz||[]).forEach(z=>{
-    if(normLief(z.lief)!==liefKey)return;
-    items.push({pos:z.pos||'—',bez:z.bez,typ:'',menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
-  });
-  if(items.length===0){toast('Keine Positionen für diesen Lieferanten','err');return;}
-  const ekSum=items.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
-  const rows=items.map(it=>`<tr>
-    <td>${e(it.pos)}</td>
-    <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}${it.zusatz?' <span style="font-size:9px;background:#eee;padding:1px 5px;border-radius:4px">Zusatz</span>':''}</td>
-    <td style="text-align:center">${e(it.menge)}</td>
-    <td style="text-align:right">${it.ek?fmtEur(it.ek):'–'}</td>
-    <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
-  </tr>`).join('');
+  // Positionen eines Projekts fuer diesen Lieferanten sammeln
+  const collect=proj=>{
+    const items=[];
+    (proj.positionen||[]).forEach(p=>{
+      if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
+      if(normLief(p.lieferant||p.fabrikat)!==liefKey)return;
+      items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',menge:toI(p.menge)||1,ek:p.ek||0});
+    });
+    (proj.preisZusatz||[]).forEach(z=>{
+      if(normLief(z.lief)!==liefKey)return;
+      items.push({pos:z.pos||'—',bez:z.bez,typ:'',menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
+    });
+    return items;
+  };
+  const sectionHTML=proj=>{
+    const items=collect(proj); if(items.length===0)return '';
+    const angNr=(proj.angebotsnr&&proj.angebotsnr[liefKey])||'';
+    const ekSum=items.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
+    const rows=items.map(it=>`<tr>
+      <td>${e(it.pos)}</td>
+      <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}${it.zusatz?' <span style="font-size:9px;background:#eee;padding:1px 5px;border-radius:4px">Zusatz</span>':''}</td>
+      <td style="text-align:center">${e(it.menge)}</td>
+      <td style="text-align:right">${it.ek?fmtEur(it.ek):'–'}</td>
+      <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
+    </tr>`).join('');
+    return `<div class="sec">
+      <h2>📁 ${e(proj.name)}</h2>
+      <div class="meta">
+        <div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div>
+        <div><b>Liefertermin:</b> ${proj.liefertermin?e(fd(proj.liefertermin)):'—'}</div>
+        <div><b>Positionen:</b> ${items.length}</div>
+      </div>
+      <table>
+        <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th style="text-align:right">EK / Stk</th><th style="text-align:right">EK gesamt</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4" style="text-align:right">Summe EK</td><td style="text-align:right">${fmtEur(ekSum)}</td></tr></tfoot>
+      </table>
+    </div>`;
+  };
+  let projList;
+  if(projSel==='__all__'){
+    projList=PROJECTS.filter(p=>collect(p).length>0);
+  } else {
+    const p=PROJECTS.find(pp=>pp.name===projSel);
+    projList=p?[p]:[];
+  }
+  const sections=projList.map(sectionHTML).filter(Boolean).join('');
+  if(!sections){toast('Keine Positionen für diesen Lieferanten','err');return;}
   const stand=new Date().toLocaleString('de-DE');
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${e(liefName)} · ${e(proj.name)}</title>
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${e(liefName)}</title>
     <style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:900px;margin:0 auto}
-      h1{font-size:20px;color:#6b5040;margin:0 0 2px} .sub{font-size:12px;color:#666;margin-bottom:16px}
-      .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12.5px}
+      h1{font-size:22px;color:#6b5040;margin:0 0 2px} .head-sub{font-size:12px;color:#666;margin-bottom:20px}
+      .sec{margin-bottom:26px} .sec h2{font-size:15px;color:#3d2d22;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #c8a882}
+      .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px}
       .meta b{color:#6b5040}
       table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
       td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
-      @media print{body{padding:10mm}}
+      @media print{body{padding:10mm} .sec{page-break-inside:avoid}}
     </style></head><body>
     <h1>🏭 ${e(liefName)}</h1>
-    <div class="sub">Projekt: ${e(proj.name)} · Stand: ${e(stand)}</div>
-    <div class="meta">
-      <div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div>
-      <div><b>Liefertermin:</b> ${proj.liefertermin?e(fd(proj.liefertermin)):'—'}</div>
-      <div><b>Positionen:</b> ${items.length}</div>
-    </div>
-    <table>
-      <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th style="text-align:right">EK / Stk</th><th style="text-align:right">EK gesamt</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="4" style="text-align:right">Summe EK</td><td style="text-align:right">${fmtEur(ekSum)}</td></tr></tfoot>
-    </table>
+    <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}${projSel==='__all__'?' · alle Projekte':''}</div>
+    ${sections}
     <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
     </body></html>`;
   const w=window.open('','_blank');
