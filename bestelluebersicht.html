@@ -1810,7 +1810,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v43';
+const APP_VERSION='2026-06-21 · v44';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5122,15 +5122,16 @@ function renderPreise(){
         </div>
       </div>`;
     })();
+    const isOpen=PR_OPEN.has(liefKey);
     return `<div class="pr-group">
-      <div class="pr-hd" onclick="togglePr(this)">
+      <div class="pr-hd${isOpen?' open':''}" onclick="togglePr(this)" data-lk="${escA(liefKey)}">
         <span class="pr-tog">▶</span>
         <span class="pr-name">🏭 ${esc(g.lief)}</span>
         ${b?'<span class="pr-bind '+b.status+'">'+(b.status==='ok'?'✓ aktuell':b.status==='warn'?'⚠ Preisbindung':'⚠ abgelaufen')+'</span>':''}
         <span class="pr-cnt">${shownItems.length}</span>
         <span class="pr-vol">EK ${fmtEur(ekSumV)} · VK ${fmtEur(vkSumV)} · ${Math.round(margeAvg)}%</span>
       </div>
-      <div class="pr-body">
+      <div class="pr-body${isOpen?' open':''}">
         ${b?'<div class="pr-note">📋 '+esc(b.text)+'</div>':''}
         ${toolbar}
         <div style="overflow-x:auto"><table class="pr-table">
@@ -5142,9 +5143,12 @@ function renderPreise(){
   }).join('');
 }
 
+let PR_OPEN=new Set(); // welche Lieferanten-Gruppen aufgeklappt sind (bleibt über renderPreise erhalten)
 function togglePr(el){
   el.classList.toggle('open');
   el.nextElementSibling.classList.toggle('open');
+  const lk=el.dataset.lk;
+  if(lk){ if(el.classList.contains('open'))PR_OPEN.add(lk); else PR_OPEN.delete(lk); }
 }
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
 // ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
