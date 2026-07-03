@@ -1807,7 +1807,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-03 · v47';
+const APP_VERSION='2026-07-03 · v48';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5223,7 +5223,8 @@ function printLieferantenPDF(liefKey,liefName){
     </tr>`).join('');
     return `<div class="sec">
       <h2>📁 ${e(pn)}${isExtern?' <small style="font-weight:400;color:#888">(app-fremd)</small>':''}</h2>
-      <div class="meta"><div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div><div><b>Liefertermin:</b> ${termin?e(termin):'—'}</div><div><b>Positionen:</b> ${its.length}</div></div>
+      <div class="termin"><span class="termin-lbl">📅 Liefertermin</span><span class="termin-val">${termin?e(termin):'noch offen'}</span></div>
+      <div class="meta"><div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div><div><b>Positionen:</b> ${its.length}</div></div>
       <table>
         <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th style="text-align:right">EK / Stk</th><th style="text-align:right">EK gesamt</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -5239,9 +5240,13 @@ function printLieferantenPDF(liefKey,liefName){
       .sec{margin-bottom:24px} .sec h2{font-size:15px;color:#3d2d22;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #c8a882}
       .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px}
       .meta b{color:#6b5040}
+      .termin{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+      .termin-lbl{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#8a5a1a}
+      .termin-val{font-size:15px;font-weight:800;color:#7a3f0a;background:#fbe9c8;border:1.5px solid #e0a94a;border-radius:8px;padding:3px 12px}
+      @media print{.termin-val{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
       table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
       td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
-      @media print{body{padding:10mm} .sec{page-break-inside:avoid}}
+      @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid}}
     </style></head><body>
     <h1>🏭 ${e(liefName)}</h1>
     <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}</div>
