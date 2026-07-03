@@ -423,6 +423,12 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-liefbar button{padding:7px 12px;border-radius:8px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.8);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#2d2926;}
 .pr-liefbar button:hover{background:#fff;}
 .pr-zusatz{background:rgba(184,134,11,.05);}
+/* Projekt-Zwischenzeile in der Preistabelle mit eigener Angebots-Nr. */
+.pr-projrow td{background:rgba(107,80,64,.09);border-top:1px solid rgba(107,80,64,.2);padding:8px 12px !important;}
+.pr-projrow-name{font-size:12.5px;font-weight:800;color:#3d2d22;margin-right:14px;}
+.pr-projrow-ang{display:inline-flex;align-items:center;gap:6px;}
+.pr-projrow-ang label{font-size:11px;font-weight:700;color:#6b5040;}
+.pr-projrow-ang input{padding:5px 9px;border-radius:7px;border:.5px solid rgba(0,0,0,.15);background:#fff;font-size:12px;font-family:inherit;outline:none;min-width:150px;}
 .pr-table{width:100%;border-collapse:collapse;font-size:12px;}
 .pr-table th{text-align:left;padding:7px 10px;background:rgba(45,41,38,.04);font-weight:700;color:rgba(28,28,30,.6);
   font-size:10px;letter-spacing:.3px;text-transform:uppercase;border-bottom:.5px solid rgba(0,0,0,.08);}
@@ -1798,7 +1804,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-06-21 · v45';
+const APP_VERSION='2026-06-21 · v46';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4935,20 +4941,14 @@ function ensurePreisMeta(){
     try{dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   }
 }
-// Angebotsnummer pro Lieferant (schlank). Legacy 'projName§liefKey'-Werte werden als Fallback gelesen.
-function getAng(liefKey){
-  const a=SETTINGS.preisMeta&&SETTINGS.preisMeta.ang;
-  if(!a)return '';
-  if(a[liefKey])return a[liefKey];
-  const legacy=Object.keys(a).find(k=>k.endsWith('§'+liefKey)&&a[k]);
-  return legacy?a[legacy]:'';
-}
-async function setAng(liefKey,val){
+// Angebotsnummer PRO PROJEKT + Lieferant (Key: 'projName§liefKey')
+function getAng(projName,liefKey){return (SETTINGS.preisMeta&&SETTINGS.preisMeta.ang&&SETTINGS.preisMeta.ang[projName+'§'+liefKey])||'';}
+async function setAng(projName,liefKey,val){
   if(!requireLogin())return;
   ensurePreisMeta();
-  const v=String(val||'').trim();
-  if((SETTINGS.preisMeta.ang[liefKey]||'')===v)return;
-  if(v)SETTINGS.preisMeta.ang[liefKey]=v; else delete SETTINGS.preisMeta.ang[liefKey];
+  const key=projName+'§'+liefKey; const v=String(val||'').trim();
+  if((SETTINGS.preisMeta.ang[key]||'')===v)return;
+  if(v)SETTINGS.preisMeta.ang[key]=v; else delete SETTINGS.preisMeta.ang[key];
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   toast('Angebotsnummer gespeichert','ok');
 }
@@ -5033,7 +5033,7 @@ function renderPreise(){
     const b=(g.items.find(it=>it.bindung)?{status:'warn',text:g.items.find(it=>it.bindung).bindung}:null);
     const liefKey=normLief(g.lief)||'_';
     const margeAvg=g.vkSum>0?((g.vkSum-g.ekSum)/g.vkSum*100):0;
-    const rows=g.items.map(it=>{
+    const rowFor=it=>{
       const marge=it.vk>0?((it.vk-it.ek)/it.vk*100):0;
       const lDat=it.termin?new Date(it.termin).toLocaleDateString('de-DE'):'';
       // Zusatzposition: nicht klickbar (keine Projekt-Position), dafuer loeschbar
@@ -5063,6 +5063,17 @@ function renderPreise(){
         <td><span class="pr-marge ${margeClass(marge)}">${Math.round(marge)}%</span></td>
         <td class="pr-anm">${esc(it.anm||'')}</td>
       </tr>`;
+    };
+    // Positionen nach Projekt gruppieren; je Projekt eine Zwischenzeile mit eigener Angebots-Nr.
+    const byProj={}; g.items.forEach(it=>{(byProj[it.proj]=byProj[it.proj]||[]).push(it);});
+    const projNames=Object.keys(byProj).sort((a,b)=>String(a).localeCompare(String(b)));
+    const rows=projNames.map(pn=>{
+      const isExtern=!PROJECTS.some(p=>p.name===pn);
+      const hdr=`<tr class="pr-projrow"><td colspan="8">
+        <span class="pr-projrow-name">📁 ${esc(pn)}${isExtern?' <span style="font-weight:400;color:#888;font-size:10px">(app-fremd)</span>':''}</span>
+        <span class="pr-projrow-ang"><label>Angebots-Nr.</label><input type="text" value="${escA(getAng(pn,liefKey))}" placeholder="z.B. AN-2026-0815" onclick="event.stopPropagation()" onchange="setAng('${escA(pn)}','${escA(liefKey)}',this.value)"></span>
+      </td></tr>`;
+      return hdr+byProj[pn].map(rowFor).join('');
     }).join('');
     const sumRow=`<tr class="pr-sum">
       <td colspan="3" style="text-align:right;font-weight:800;color:#6b5040">Σ Gesamt (${g.items.length} Pos.)</td>
@@ -5072,10 +5083,8 @@ function renderPreise(){
       <td><span class="pr-marge ${margeClass(margeAvg)}" style="font-weight:800">${Math.round(margeAvg)}%</span></td>
       <td></td>
     </tr>`;
-    // Schlanke Leiste: Angebots-Nr. (pro Lieferant) + Position hinzufügen + PDF
+    // Schlanke Leiste: nur Position hinzufügen + PDF (Angebots-Nr. steht je Projekt in der Tabelle)
     const toolbar=`<div class="pr-liefbar" onclick="event.stopPropagation()">
-        <label>Angebots-Nr.</label>
-        <input type="text" value="${escA(getAng(liefKey))}" placeholder="z.B. AN-2026-0815" onchange="setAng('${escA(liefKey)}',this.value)">
         <button onclick="openPreisZusatz('${escA(g.lief)}')" title="Position hinzufügen – auch aus app-fremden Projekten">＋ Position</button>
         <button onclick="printLieferantenPDF('${escA(liefKey)}','${escA(g.lief)}')" style="margin-left:auto;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff">📄 PDF</button>
       </div>`;
@@ -5168,38 +5177,46 @@ function printLieferantenPDF(liefKey,liefName){
     items.push({pos:z.pos||'—',bez:z.bez,typ:'',proj:z.proj,menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
   });
   if(items.length===0){toast('Keine Positionen für diesen Lieferanten','err');return;}
-  const angNr=getAng(liefKey);
-  const ekSum=items.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
-  const rows=items.map(it=>`<tr>
-    <td>${e(it.pos)}</td>
-    <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}${it.zusatz?' <span style="font-size:9px;background:#eee;padding:1px 5px;border-radius:4px">Zusatz</span>':''}</td>
-    <td>${e(it.proj)}</td>
-    <td style="text-align:center">${e(it.menge)}</td>
-    <td style="text-align:right">${it.ek?fmtEur(it.ek):'–'}</td>
-    <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
-  </tr>`).join('');
+  // Nach Projekt gruppieren – jede Sektion mit EIGENER Angebots-Nummer
+  const byProj={}; items.forEach(it=>{(byProj[it.proj]=byProj[it.proj]||[]).push(it);});
+  const projNames=Object.keys(byProj).sort((a,b)=>String(a).localeCompare(String(b)));
+  const sections=projNames.map(pn=>{
+    const its=byProj[pn];
+    const angNr=getAng(pn,liefKey);
+    const isExtern=!PROJECTS.some(p=>p.name===pn);
+    const ekSum=its.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
+    const rows=its.map(it=>`<tr>
+      <td>${e(it.pos)}</td>
+      <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}${it.zusatz?' <span style="font-size:9px;background:#eee;padding:1px 5px;border-radius:4px">Zusatz</span>':''}</td>
+      <td style="text-align:center">${e(it.menge)}</td>
+      <td style="text-align:right">${it.ek?fmtEur(it.ek):'–'}</td>
+      <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
+    </tr>`).join('');
+    return `<div class="sec">
+      <h2>📁 ${e(pn)}${isExtern?' <small style="font-weight:400;color:#888">(app-fremd)</small>':''}</h2>
+      <div class="meta"><div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div><div><b>Positionen:</b> ${its.length}</div></div>
+      <table>
+        <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th style="text-align:center">Menge</th><th style="text-align:right">EK / Stk</th><th style="text-align:right">EK gesamt</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4" style="text-align:right">Summe EK</td><td style="text-align:right">${fmtEur(ekSum)}</td></tr></tfoot>
+      </table>
+    </div>`;
+  }).join('');
   const stand=new Date().toLocaleString('de-DE');
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${e(liefName)}</title>
     <style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:920px;margin:0 auto}
-      h1{font-size:22px;color:#6b5040;margin:0 0 2px}
-      .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:9px 13px;margin:12px 0 16px;font-size:12.5px}
+      h1{font-size:22px;color:#6b5040;margin:0 0 2px} .head-sub{font-size:12px;color:#666;margin-bottom:18px}
+      .sec{margin-bottom:24px} .sec h2{font-size:15px;color:#3d2d22;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #c8a882}
+      .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px}
       .meta b{color:#6b5040}
       table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
       td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
-      @media print{body{padding:10mm}}
+      @media print{body{padding:10mm} .sec{page-break-inside:avoid}}
     </style></head><body>
     <h1>🏭 ${e(liefName)}</h1>
-    <div class="meta">
-      <div><b>Angebots-Nr.:</b> ${angNr?e(angNr):'—'}</div>
-      <div><b>Positionen:</b> ${items.length}</div>
-      <div><b>Stand:</b> ${e(stand)}</div>
-    </div>
-    <table>
-      <thead><tr><th>Pos.</th><th>Bezeichnung / Typ</th><th>Projekt</th><th style="text-align:center">Menge</th><th style="text-align:right">EK / Stk</th><th style="text-align:right">EK gesamt</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="5" style="text-align:right">Summe EK</td><td style="text-align:right">${fmtEur(ekSum)}</td></tr></tfoot>
-    </table>
+    <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}</div>
+    ${sections}
     <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
     </body></html>`;
   const w=window.open('','_blank');
