@@ -1420,7 +1420,7 @@ const ZUB_KATALOG={
     'KWC Sensor Netz #125260 (Ø 35mm)','KWC Sensor Netz #125259 (Ø 35mm)',
     'KWC Isla 10.371.023.000FL (35mm)','KWC Luna-E 10.441.013.000FL (35mm)',
     'KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
-    'Armag Wandmischbatterie 1/2" 306.R01.1M5.0PGT'
+    'Armag Wandmischbatterie 1/2" WP165'
   ],
   seifenspender:[
     'Gastronobel Seifenspender Aufputz',
@@ -1431,9 +1431,15 @@ const ZUB_KATALOG={
     'Wagner Ewar Einbauhandtuchspender WP 165',
     'Gastronobel Handtuchspender Aufputz'
   ],
-  gn:['Contacto GN 1/1-65 (7011/065)','Contacto GN 1/1-100 (7011/100)','Contacto GN 1/1-150 (7011/150)','Contacto GN 1/1-200 (7011/200)','Contacto GN 1/2-65 (7012/065)','Contacto GN 1/2-100 (7012/100)','Contacto GN 1/2-150 (7012/150)','Contacto GN 1/3-100 (7013/100)','Contacto GN 1/3-150 (7013/150)','Contacto GN 2/3-150 (7023/150)']
+  gn:['Contacto GN 1/1-65 (7011/065)','Contacto GN 1/1-100 (7011/100)','Contacto GN 1/1-150 (7011/150)','Contacto GN 1/1-200 (7011/200)','Contacto GN 1/2-65 (7012/065)','Contacto GN 1/2-100 (7012/100)','Contacto GN 1/2-150 (7012/150)','Contacto GN 1/3-100 (7013/100)','Contacto GN 1/3-150 (7013/150)','Contacto GN 2/3-150 (7023/150)'],
+  spuelkorb:[
+    'Tassenkorb','Tellerkorb','Kleinteilekorb feinmaschig','Besteckköcher','Kleinteilekorb grobmaschig'
+  ],
+  sonstiges:[
+    'Abfall-Drahtkorb','Ceranschaber'
+  ]
 };
-const ZUB_LABEL={becken:'Becken',mischbatterie:'Mischbatterie',seifenspender:'Seifenspender',desinfektionsspender:'Desinfektionsspender',handtuchspender:'Handtuchspender',gn:'GN-Behälter'};
+const ZUB_LABEL={becken:'Becken',mischbatterie:'Mischbatterie',seifenspender:'Seifenspender',desinfektionsspender:'Desinfektionsspender',handtuchspender:'Handtuchspender',gn:'GN-Behälter',spuelkorb:'Spülkörbe',sonstiges:'Sonstiges'};
 // Becken → standardmaessig Mischbatterie-Vorschlag
 const ZUB_KAT_TO_KATALOG={becken:'mischbatterie',mischbatterie:'mischbatterie',seifenspender:'seifenspender',desinfektionsspender:'desinfektionsspender',handtuchspender:'handtuchspender',gn:'gn'};
 // Auto-Erkennung: welche Zubehoer-Kategorie passt zur Position?
@@ -1807,7 +1813,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-03 · v48';
+const APP_VERSION='2026-07-08 · v49';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
