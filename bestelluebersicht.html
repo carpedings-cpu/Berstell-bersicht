@@ -1401,7 +1401,8 @@ function istBestellt(p){return p.quelle==='bestellt';}
 // Liste wird spaeter verfeinert. Lieferant wird aus dem Typ-Praefix abgeleitet.
 const ZUB_KATALOG={
   mischbatterie:[
-    'KWC Sensor Netz #125260 (Ø 35mm)','KWC Sensor Netz #125259 (Ø 35mm)',
+    'KWC Sensor Netz Einbau Seifenspender 12.696.071.000','KWC Sensor Batterie 12.696.061.000',
+    'KWC Geschirrbrause K24.42.64.000C71',
     'KWC Isla 10.371.023.000FL (35mm)','KWC Luna-E 10.441.013.000FL (35mm)',
     'KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
     'Armag Wandmischbatterie 1/2" WP165'
@@ -1797,7 +1798,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-10 · v53';
+const APP_VERSION='2026-07-10 · v54';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
