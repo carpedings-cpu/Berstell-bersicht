@@ -1071,22 +1071,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
-<!-- Zubehör aus bestehender Position übernehmen -->
-<div class="modal" id="zubPickModal" onclick="if(event.target===this)closeZubPick()">
-  <div class="modal-box flex-scroll" style="max-width:560px;max-height:85vh">
-    <button class="modal-x" onclick="closeZubPick()" title="Schließen (Esc)">✕</button>
-    <h3 style="margin-bottom:4px">↗ Zubehör aus Position übernehmen</h3>
-    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:6px">Tippe die Position an, die als Zubehör übernommen werden soll – Typ, Lieferant und Menge werden automatisch eingetragen.</div>
-    <div class="sw" style="margin-bottom:10px"><span class="si">⌕</span>
-      <input type="text" id="zubPickSrch" placeholder="Position oder Bezeichnung suchen …" oninput="renderZubPick()" autocomplete="off">
-    </div>
-    <div id="zubPickBody" class="modal-scroll"></div>
-    <div class="modal-act">
-      <button class="mcancel" onclick="closeZubPick()">Abbrechen</button>
-    </div>
-  </div>
-</div>
-
 <!-- Zubehör-Sammelliste pro Projekt (fuer die Planer zum Zeichnen) -->
 <div class="modal" id="zubListModal" onclick="if(event.target===this)closeZubehoerListe()">
   <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
@@ -1813,7 +1797,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-10 · v51';
+const APP_VERSION='2026-07-10 · v52';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2338,8 +2322,6 @@ document.addEventListener('keydown',e=>{
   if(plm&&plm.classList.contains('on')){closePreisLuecken();e.preventDefault();return;}
   const zlm=document.getElementById('zubListModal');
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
-  const zpm=document.getElementById('zubPickModal');
-  if(zpm&&zpm.classList.contains('on')){closeZubPick();e.preventDefault();return;}
   const pzm=document.getElementById('preisZusatzModal');
   if(pzm&&pzm.classList.contains('on')){closePreisZusatz();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
@@ -3171,7 +3153,6 @@ function renderZubBlock(p,idx){
     p.zubehoer.forEach((z,zi)=>{html+=renderZubRow(p,idx,zi,z);});
     html+=`<div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="zub-add" onclick="addZubehoer(${idx})">+ Zubehör hinzufügen</button>
-      <button class="zub-add" onclick="openZubPick(${idx})" title="Eine bereits erfasste Position als Zubehör übernehmen">↗ Aus Position übernehmen</button>
     </div>`;
     html+=`</div>`;
   }
@@ -3236,74 +3217,6 @@ async function addZubehoer(idx){
   let ids=(localStorage.getItem('kpc_zubOpen')||'').split('|').filter(Boolean);
   if(!ids.includes(key)){ids.push(key);localStorage.setItem('kpc_zubOpen',ids.join('|'));}
   await saveCur();renderDetail();
-}
-// ── Zubehör aus bestehender Position übernehmen ─────────────────────────
-let _zubPickTarget=null;
-function guessZubKat(p){
-  const k=erkenneZubehoerKat(p.bez); if(k)return ZUB_KAT_TO_KATALOG[k]||k;
-  const hay=[p.fabrikat,p.lieferant,p.typ,p.bez].filter(Boolean).join(' ').toLowerCase();
-  if(/kwc|echtermann|armag|knauss|armatur|batterie|brause|standventil|spülbrause|spuelbrause|sensorarmatur/.test(hay))return 'mischbatterie';
-  if(/desinfektion/.test(hay))return 'desinfektionsspender';
-  if(/seifenspender|seifen/.test(hay))return 'seifenspender';
-  if(/handtuchspender|handtuch/.test(hay))return 'handtuchspender';
-  if(/\bgn[\s-]|gastronorm/.test(hay))return 'gn';
-  return '';
-}
-function openZubPick(idx){
-  if(!requireLogin())return;
-  _zubPickTarget=idx;
-  const s=document.getElementById('zubPickSrch'); if(s)s.value='';
-  renderZubPick();
-  document.getElementById('zubPickModal').classList.add('on');
-}
-function closeZubPick(){document.getElementById('zubPickModal').classList.remove('on');_zubPickTarget=null;}
-function renderZubPick(){
-  if(_zubPickTarget==null||!CUR)return;
-  const q=(document.getElementById('zubPickSrch')?.value||'').toLowerCase().trim();
-  const body=document.getElementById('zubPickBody');
-  // Alle Positionen ausser der Zielposition selbst und Titel-/nicht-bestellbaren
-  const list=CUR.positionen.map((p,idx)=>({p,idx}))
-    .filter(o=>o.idx!==_zubPickTarget)
-    .filter(o=>{
-      if(q){const hay=[o.p.pos,o.p.bez,o.p.fabrikat,o.p.typ,o.p.lieferant].join(' ').toLowerCase();if(!hay.includes(q))return false;}
-      return true;
-    });
-  if(list.length===0){body.innerHTML='<div style="padding:24px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">Keine Position gefunden.</div>';return;}
-  body.innerHTML=list.map(o=>{
-    const p=o.p;
-    const katG=guessZubKat(p);
-    const katHint=katG?`<span style="font-size:10px;background:rgba(107,80,64,.12);color:#6b5040;padding:1px 6px;border-radius:6px;margin-left:6px">→ ${esc(ZUB_LABEL[katG]||katG)}</span>`:'';
-    const lief=p.lieferant||p.fabrikat||'';
-    return `<div onclick="adoptZubFromPos(${o.idx})" style="padding:9px 11px;border-bottom:.5px solid rgba(0,0,0,.06);cursor:pointer" onmouseover="this.style.background='rgba(200,168,130,.12)'" onmouseout="this.style.background=''">
-      <div style="font-weight:700;font-size:12.5px;color:#2d2926">${esc(p.pos)} · ${esc(p.bez)}${katHint}</div>
-      <div style="font-size:10.5px;color:rgba(28,28,30,.6);margin-top:2px">${lief?'🏭 '+esc(lief):''}${p.typ?' · '+esc(p.typ):''} · ${esc(p.menge)} ${esc(p.einh)}</div>
-    </div>`;
-  }).join('');
-}
-async function adoptZubFromPos(srcIdx){
-  if(_zubPickTarget==null||!CUR)return;
-  const target=CUR.positionen[_zubPickTarget];
-  const src=CUR.positionen[srcIdx];
-  if(!target||!src)return;
-  if(!Array.isArray(target.zubehoer))target.zubehoer=[];
-  const kat=guessZubKat(src);
-  // Typ aus Fabrikat + Typ/Bezeichnung zusammensetzen (lesbar fuer die Bestell-/Planerliste)
-  const typ=[src.fabrikat,src.typ||src.bez].filter(Boolean).join(' ').trim()||src.bez;
-  const lieferant=src.lieferant||src.fabrikat||lieferantFromZubTyp(typ)||'';
-  target.zubehoer.push({
-    kat:kat||'', typ, menge:parseInt(src.menge)||1, lieferant,
-    quelle:'', kommNr:'', ausPos:src.pos
-  });
-  logAction(target,`Zubehör aus Position ${src.pos} übernommen: ${typ}`);
-  touchProject(CUR);
-  // Block offen halten
-  const key=CUR.id+':'+_zubPickTarget;
-  let ids=(localStorage.getItem('kpc_zubOpen')||'').split('|').filter(Boolean);
-  if(!ids.includes(key)){ids.push(key);localStorage.setItem('kpc_zubOpen',ids.join('|'));}
-  await saveCur();
-  closeZubPick();
-  renderDetail();updateGlobalCounters();
-  toast('Zubehör aus '+src.pos+' übernommen','ok');
 }
 async function delZubehoer(idx,zi){
   if(!requireLogin())return;
