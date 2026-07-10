@@ -738,7 +738,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <datalist id="liefList"></datalist>
   <div class="fabrow" id="dFabs">
     <button class="fab fab-i" onclick="openAddPos()">➕ Position</button>
-    <button class="fab fab-c" onclick="csvExp()">📊 CSV</button>
+    <button class="fab fab-c" onclick="csvExp()" title="Wartungsliste als Excel (.xlsx)">📊 Excel</button>
   </div>
 
   <!-- Lager-Abruf Modal – nur in Projekt-Detail -->
@@ -1797,7 +1797,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-10 · v52';
+const APP_VERSION='2026-07-10 · v53';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3582,16 +3582,45 @@ function trigExcel(){
   fi.click();
 }
 
-// ── CSV ─────────────────────────────────────────────────────────────────
+// ── EXCEL-WARTUNGSLISTE ──────────────────────────────────────────────────
+// Projekt-Positionen als echte .xlsx: Pos · Menge · Einheit · Bezeichnung · Fabrikat · Typ.
+// Mengen >=2 werden EINZELN untereinander aufgelistet (fuer die Wartung), und je
+// Position steht die Mischbatterie als Unterzeile darunter (sonst kein Zubehoer).
 function csvExp(){
   if(!CUR)return;
-  const cols=['Pos','Bezeichnung','Fabrikat','Typ','Menge','Einheit','Quelle','Lieferant','Komm-Nr','Lieferort','Abruf-bis','Liefertermin','Status','Bestellt-am','Auftragsbestätigung','AB-am','Notiz'];
-  const rows=CUR.positionen.map(p=>[p.pos,p.bez,p.fabrikat,p.typ,p.menge,p.einh,p.quelle,p.lieferant,(p.kommNrs||[]).join(', '),p.lieferort,abrufTermin(p,CUR),CUR.liefertermin||'',p.status,p.bestelltAm||'',p.abBestaetigt?'ja':'nein',p.abAm||'',p.notiz]);
-  const ce=v=>{const s=String(v||'');return /["\n;,]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  const csv='\ufeff'+cols.join(';')+'\n'+rows.map(r=>r.map(ce).join(';')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download=`Bestellung_${CUR.name.replace(/\s+/g,'_')}_${today()}.csv`;a.click();
-  toast('CSV heruntergeladen','ok');
+  if(typeof XLSX==='undefined'){toast('Excel-Bibliothek nicht geladen','err');return;}
+  // Menge in stueckweise Einzelzeilen aufloesen? (nur bei ganzzahliger, stueckartiger Menge >=2)
+  const stueckzahl=(menge,einh)=>{
+    const n=parseInt(String(menge==null?'':menge).replace(',','.'),10);
+    if(!Number.isFinite(n)||n<2)return null;
+    const e=String(einh||'').toLowerCase().trim();
+    if(e===''||/^(st|stk|stück|stueck|x|pcs)/.test(e))return n; // Stk/Stück/leer → aufteilen
+    return null; // m, kg, Satz, Paar … nicht aufteilen
+  };
+  const aoa=[];
+  aoa.push(['KPC – Wartungsliste']);
+  aoa.push(['Projekt:',CUR.name,'','Liefertermin:',CUR.liefertermin?fmtD(CUR.liefertermin):'—','']);
+  aoa.push(['','','','','','']);
+  aoa.push(['Pos','Menge','Einheit','Bezeichnung','Fabrikat','Typ']);
+  CUR.positionen.forEach(p=>{
+    const cnt=stueckzahl(p.menge,p.einh);
+    if(cnt){for(let i=0;i<cnt;i++)aoa.push([p.pos,1,p.einh||'Stk',p.bez,p.fabrikat||'',p.typ||'']);}
+    else aoa.push([p.pos,p.menge,p.einh||'',p.bez,p.fabrikat||'',p.typ||'']);
+    // Nur die Mischbatterie als Unterzeile unter die jeweilige Position
+    (p.zubehoer||[]).filter(z=>z.kat==='mischbatterie').forEach(z=>{
+      const zFab=z.lieferant||lieferantFromZubTyp(z.typ)||'';
+      const zcnt=stueckzahl(z.menge,'Stk');
+      if(zcnt){for(let i=0;i<zcnt;i++)aoa.push(['',1,'Stk','↳ Mischbatterie',zFab,z.typ||'']);}
+      else aoa.push(['',z.menge||1,'Stk','↳ Mischbatterie',zFab,z.typ||'']);
+    });
+  });
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:8},{wch:7},{wch:9},{wch:36},{wch:16},{wch:30}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:5}}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Wartungsliste');
+  XLSX.writeFile(wb,`Wartungsliste_${CUR.name.replace(/\s+/g,'_')}_${today()}.xlsx`);
+  toast('Excel-Wartungsliste heruntergeladen','ok');
 }
 
 // ── BACKUP ──────────────────────────────────────────────────────────────
