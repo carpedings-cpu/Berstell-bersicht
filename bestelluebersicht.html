@@ -765,11 +765,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <h3>📄 Lieferung erfassen</h3>
       <div id="lsFileName" style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:14px;padding:8px 10px;background:rgba(200,168,130,.12);border-radius:8px"></div>
       <div class="frm-row" style="margin-bottom:8px">
-        <div class="frm-fld">
-          <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block">Lieferdatum</label>
-          <input type="date" id="lsDatum" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none">
-        </div>
-        <div class="frm-fld">
+        <div class="frm-fld" style="flex:1 1 100%">
           <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block">Lieferschein-Nr</label>
           <input type="text" id="lsNr" placeholder="aus PDF" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:13px;font-family:inherit;outline:none">
         </div>
@@ -780,7 +776,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
           <input type="text" id="lsKommNr" inputmode="numeric" maxlength="6" placeholder="z.B. 789" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.85);font-size:15px;font-family:inherit;outline:none;font-weight:600;letter-spacing:.5px">
         </div>
       </div>
-      <div style="font-size:11px;color:rgba(28,28,30,.5);margin-bottom:10px">Datum aus PDF gelesen, Komm-Nr handschriftlich vom Lagerarbeiter eintragen.</div>
+      <div style="font-size:11px;color:rgba(28,28,30,.5);margin-bottom:10px">Komm-Nr handschriftlich vom Lagerarbeiter eintragen.</div>
       <div class="modal-act">
         <button class="mcancel" onclick="closeLsModal()">Abbrechen</button>
         <button class="mok" onclick="confirmLs()">✓ Als geliefert erfassen</button>
@@ -1813,7 +1809,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-08 · v49';
+const APP_VERSION='2026-07-10 · v50';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3051,7 +3047,6 @@ async function setF(idx,field,val){
       p.status=p.bestelltAm?'bestellt':'offen';
     } else {
       p.status=val;
-      if(val==='geliefert'&&!p.geliefertDatum)p.geliefertDatum=today();
     }
     if(p.status==='bestellt'&&!p.bestelltAm)p.bestelltAm=today();
     // Sicherheits-Sync: status bestellt/abgerufen/geliefert impliziert immer quelle='bestellt'
@@ -3850,7 +3845,6 @@ function extractMetadata(text){
 let _lsModalState={idx:null,file:null,buffer:null};
 async function openLsModal(idx,file,datum,lsNr){
   _lsModalState={idx,file,buffer:await file.arrayBuffer(),datum,lsNr};
-  document.getElementById('lsDatum').value=datum||today();
   document.getElementById('lsKommNr').value='';
   document.getElementById('lsNr').value=lsNr||'';
   document.getElementById('lsFileName').textContent='📎 '+file.name+(lsNr?' · LS-Nr aus PDF: '+lsNr:'');
@@ -3865,21 +3859,18 @@ async function confirmLs(){
   if(!requireLogin())return;
   const{idx,file,buffer}=_lsModalState;
   if(idx==null||!file){closeLsModal();return;}
-  const datum=document.getElementById('lsDatum').value;
   const kommNr=document.getElementById('lsKommNr').value.trim();
   const lsNr=document.getElementById('lsNr').value.trim();
   const p=CUR.positionen[idx];
   const prevStatus=p.status;
   const lsId='ls_'+CUR.id+'_'+idx+'_'+Date.now();
   await dbPut('lieferscheine',{id:lsId,blob:buffer,type:file.type,name:file.name});
-  p.lieferschein={id:lsId,name:file.name,type:file.type,datum,lieferscheinNr:lsNr};
+  p.lieferschein={id:lsId,name:file.name,type:file.type,datum:'',lieferscheinNr:lsNr};
   // Lieferschein da = geliefert; impliziert bestellt → quelle setzen, damit Karte konsistent ist
   if(!istNichtBestellbar(p))p.quelle='bestellt';
   p.status='geliefert';
-  p.geliefertDatum=datum;
   if(kommNr){p.kommNrs=p.kommNrs||[];if(!p.kommNrs.includes(kommNr))p.kommNrs.push(kommNr);}
   const det=[`LS angehängt: ${file.name}`];
-  if(datum)det.push('Lieferdatum '+datum);
   if(lsNr)det.push('LS-Nr '+lsNr);
   if(kommNr)det.push('Komm-Nr '+kommNr);
   logAction(p,det.join(' · '));
