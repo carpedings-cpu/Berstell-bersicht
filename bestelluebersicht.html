@@ -1798,7 +1798,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-14 · v56';
+const APP_VERSION='2026-07-14 · v57';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2888,8 +2888,7 @@ function renderDetail(){
     // Inline-Felder
     if(p.quelle==='bestellt'){
       html+=`<div class="irow">`;
-      html+=`<div style="flex:1;min-width:120px"><label>Lieferant</label><input value="${escA(p.lieferant)}" onchange="updF(${idx},'lieferant',this.value)" placeholder="${escA(p.fabrikat||'z.B. Rational')}" list="liefList"></div>`;
-      html+=`<div style="flex:1;min-width:110px"><label>Fabrikat</label><input value="${escA(p.fabrikat||'')}" onchange="updF(${idx},'fabrikat',this.value)" placeholder="z.B. Rational"></div>`;
+      html+=`<div style="flex:1;min-width:110px"><label>Hersteller</label><input value="${escA(p.fabrikat||'')}" onchange="updF(${idx},'fabrikat',this.value)" placeholder="z.B. Rational" list="liefList"></div>`;
       html+=`<div style="flex:1;min-width:120px"><label>Typ</label><input value="${escA(p.typ||'')}" onchange="updF(${idx},'typ',this.value)" placeholder="z.B. iCombi Pro"></div>`;
       html+=`<div style="flex:1;min-width:140px"><label>Komm.-Nr</label>
         <div class="tagbox">${(p.kommNrs||[]).map((k,j)=>`<span class="tag">${esc(k)}<button class="tx" onclick="rmTag(${idx},${j})">✕</button></span>`).join('')}<input class="taginput" placeholder="${(p.kommNrs||[]).length?'':'K-...'}" onkeydown="tagKey(event,${idx})" onblur="tagCommit(${idx})"></div></div>`;
@@ -2913,11 +2912,10 @@ function renderDetail(){
       html+=`<div style="display:flex;align-items:flex-end;padding-bottom:2px"><span style="font-size:11px;color:rgba(28,28,30,.5);font-style:italic">→ Lager-Abruf über Button oben</span></div>`;
       html+=`</div>`;
     } else if(!istNichtBestellbar(p)){
-      // Noch nicht bestellt: Lieferant + Fabrikat + Typ aus der Stückliste schon jetzt korrigierbar
-      // (geänderter Lieferant wandert automatisch in die richtige Gruppe bei Preisen)
+      // Noch nicht bestellt: Hersteller + Typ aus der Stückliste schon jetzt korrigierbar
+      // (geänderter Hersteller wandert automatisch in die richtige Gruppe bei Preisen)
       html+=`<div class="irow">`;
-      html+=`<div style="flex:1;min-width:120px"><label>Lieferant</label><input value="${escA(p.lieferant)}" onchange="updF(${idx},'lieferant',this.value)" placeholder="${escA(p.fabrikat||'z.B. Rational')}" list="liefList"></div>`;
-      html+=`<div style="flex:1;min-width:110px"><label>Fabrikat</label><input value="${escA(p.fabrikat||'')}" onchange="updF(${idx},'fabrikat',this.value)" placeholder="z.B. Rational"></div>`;
+      html+=`<div style="flex:1;min-width:110px"><label>Hersteller</label><input value="${escA(p.fabrikat||'')}" onchange="updF(${idx},'fabrikat',this.value)" placeholder="z.B. Rational" list="liefList"></div>`;
       html+=`<div style="flex:1;min-width:120px"><label>Typ</label><input value="${escA(p.typ||'')}" onchange="updF(${idx},'typ',this.value)" placeholder="z.B. iCombi Pro"></div>`;
       html+=`</div>`;
     }
@@ -3111,6 +3109,9 @@ async function updF(idx,k,v){
   const p=CUR.positionen[idx];
   const prev=p[k];
   p[k]=v;
+  // Ohne eigenes Lieferant-Feld folgt der Lieferant dem Hersteller – nur wenn er
+  // nicht bewusst abweichend gesetzt war. Haelt Preise/Abrufplan-Gruppierung aktuell.
+  if(k==='fabrikat' && (!p.lieferant || p.lieferant===prev)) p.lieferant=v;
   if(prev!==v&&EDITOR)logAction(p,`${k}: ${prev||'-'} → ${v||'-'}`);
   touchProject(CUR);
   await saveCur();if(k==='lieferant'||k==='typ'||k==='fabrikat'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
