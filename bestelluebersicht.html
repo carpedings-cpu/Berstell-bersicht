@@ -1798,7 +1798,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-14 · v55';
+const APP_VERSION='2026-07-14 · v56';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2883,22 +2883,13 @@ function renderDetail(){
           html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
         }
       }
-      // Kompakte Datei-Buttons (AB + Lieferschein) in einer Zeile – Drag&Drop auf jedem Button (auch wenn schon Datei dran)
-      const abDrag=`id="AB${idx}" ondragenter="_enterDrop(event)" ondragover="abDragOver(event,${idx})" ondragleave="abDragLeave(event,${idx})" ondrop="abDrop(event,${idx})"`;
-      const lsDrag=`id="LS${idx}" ondragenter="_enterDrop(event)" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})"`;
-      const abBtn=p.abDoc
-        ? `<button class="fbtn hasFile" ${abDrag} onclick="openAb(${idx})" title="${escA(p.abDoc.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📄</span> AB${p.abDoc.datum?' '+fmtD(p.abDoc.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delAb(${idx})" title="AB entfernen">✕</span></button>`
-        : `<button class="fbtn" ${abDrag} onclick="pickAb(${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📄</span> AB anhängen</button>`;
-      const lsBtn=p.lieferschein
-        ? `<button class="fbtn hasFile" ${lsDrag} onclick="openLs(${idx})" title="${escA(p.lieferschein.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📦</span> LS${p.lieferschein.datum?' '+fmtD(p.lieferschein.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delLs(${idx})" title="Lieferschein entfernen">✕</span></button>`
-        : `<button class="fbtn" ${lsDrag} onclick="pickLs(${idx})" title="Datei waehlen oder per Drag&Drop"><span class="fbtn-ic">📦</span> LS anhängen</button>`;
-      html+=`<div class="fbtn-row">${abBtn}${lsBtn}</div>`;
     }
 
     // Inline-Felder
     if(p.quelle==='bestellt'){
       html+=`<div class="irow">`;
       html+=`<div style="flex:1;min-width:120px"><label>Lieferant</label><input value="${escA(p.lieferant)}" onchange="updF(${idx},'lieferant',this.value)" placeholder="${escA(p.fabrikat||'z.B. Rational')}" list="liefList"></div>`;
+      html+=`<div style="flex:1;min-width:110px"><label>Fabrikat</label><input value="${escA(p.fabrikat||'')}" onchange="updF(${idx},'fabrikat',this.value)" placeholder="z.B. Rational"></div>`;
       html+=`<div style="flex:1;min-width:120px"><label>Typ</label><input value="${escA(p.typ||'')}" onchange="updF(${idx},'typ',this.value)" placeholder="z.B. iCombi Pro"></div>`;
       html+=`<div style="flex:1;min-width:140px"><label>Komm.-Nr</label>
         <div class="tagbox">${(p.kommNrs||[]).map((k,j)=>`<span class="tag">${esc(k)}<button class="tx" onclick="rmTag(${idx},${j})">✕</button></span>`).join('')}<input class="taginput" placeholder="${(p.kommNrs||[]).length?'':'K-...'}" onkeydown="tagKey(event,${idx})" onblur="tagCommit(${idx})"></div></div>`;
@@ -2922,10 +2913,11 @@ function renderDetail(){
       html+=`<div style="display:flex;align-items:flex-end;padding-bottom:2px"><span style="font-size:11px;color:rgba(28,28,30,.5);font-style:italic">→ Lager-Abruf über Button oben</span></div>`;
       html+=`</div>`;
     } else if(!istNichtBestellbar(p)){
-      // Noch nicht bestellt: Lieferant + Typ aus der Stückliste schon jetzt korrigierbar
+      // Noch nicht bestellt: Lieferant + Fabrikat + Typ aus der Stückliste schon jetzt korrigierbar
       // (geänderter Lieferant wandert automatisch in die richtige Gruppe bei Preisen)
       html+=`<div class="irow">`;
       html+=`<div style="flex:1;min-width:120px"><label>Lieferant</label><input value="${escA(p.lieferant)}" onchange="updF(${idx},'lieferant',this.value)" placeholder="${escA(p.fabrikat||'z.B. Rational')}" list="liefList"></div>`;
+      html+=`<div style="flex:1;min-width:110px"><label>Fabrikat</label><input value="${escA(p.fabrikat||'')}" onchange="updF(${idx},'fabrikat',this.value)" placeholder="z.B. Rational"></div>`;
       html+=`<div style="flex:1;min-width:120px"><label>Typ</label><input value="${escA(p.typ||'')}" onchange="updF(${idx},'typ',this.value)" placeholder="z.B. iCombi Pro"></div>`;
       html+=`</div>`;
     }
@@ -3121,7 +3113,7 @@ async function updF(idx,k,v){
   p[k]=v;
   if(prev!==v&&EDITOR)logAction(p,`${k}: ${prev||'-'} → ${v||'-'}`);
   touchProject(CUR);
-  await saveCur();if(k==='lieferant'||k==='typ'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
+  await saveCur();if(k==='lieferant'||k==='typ'||k==='fabrikat'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
 }
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
 
