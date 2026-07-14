@@ -1798,7 +1798,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-10 · v54';
+const APP_VERSION='2026-07-14 · v55';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2899,6 +2899,7 @@ function renderDetail(){
     if(p.quelle==='bestellt'){
       html+=`<div class="irow">`;
       html+=`<div style="flex:1;min-width:120px"><label>Lieferant</label><input value="${escA(p.lieferant)}" onchange="updF(${idx},'lieferant',this.value)" placeholder="${escA(p.fabrikat||'z.B. Rational')}" list="liefList"></div>`;
+      html+=`<div style="flex:1;min-width:120px"><label>Typ</label><input value="${escA(p.typ||'')}" onchange="updF(${idx},'typ',this.value)" placeholder="z.B. iCombi Pro"></div>`;
       html+=`<div style="flex:1;min-width:140px"><label>Komm.-Nr</label>
         <div class="tagbox">${(p.kommNrs||[]).map((k,j)=>`<span class="tag">${esc(k)}<button class="tx" onclick="rmTag(${idx},${j})">✕</button></span>`).join('')}<input class="taginput" placeholder="${(p.kommNrs||[]).length?'':'K-...'}" onkeydown="tagKey(event,${idx})" onblur="tagCommit(${idx})"></div></div>`;
       // Abruftermin-Feld (berechnet oder explizit)
@@ -2919,6 +2920,13 @@ function renderDetail(){
       html+=`<div style="flex:1;min-width:140px"><label>Komm.-Nr (Lager)</label>
         <div class="tagbox">${(p.kommNrs||[]).map((k,j)=>`<span class="tag">${esc(k)}<button class="tx" onclick="rmTag(${idx},${j})">✕</button></span>`).join('')}<input class="taginput" placeholder="${(p.kommNrs||[]).length?'':'z.B. 789'}" onkeydown="tagKey(event,${idx})" onblur="tagCommit(${idx})"></div></div>`;
       html+=`<div style="display:flex;align-items:flex-end;padding-bottom:2px"><span style="font-size:11px;color:rgba(28,28,30,.5);font-style:italic">→ Lager-Abruf über Button oben</span></div>`;
+      html+=`</div>`;
+    } else if(!istNichtBestellbar(p)){
+      // Noch nicht bestellt: Lieferant + Typ aus der Stückliste schon jetzt korrigierbar
+      // (geänderter Lieferant wandert automatisch in die richtige Gruppe bei Preisen)
+      html+=`<div class="irow">`;
+      html+=`<div style="flex:1;min-width:120px"><label>Lieferant</label><input value="${escA(p.lieferant)}" onchange="updF(${idx},'lieferant',this.value)" placeholder="${escA(p.fabrikat||'z.B. Rational')}" list="liefList"></div>`;
+      html+=`<div style="flex:1;min-width:120px"><label>Typ</label><input value="${escA(p.typ||'')}" onchange="updF(${idx},'typ',this.value)" placeholder="z.B. iCombi Pro"></div>`;
       html+=`</div>`;
     }
     // Zubehoer-Block
@@ -3113,7 +3121,7 @@ async function updF(idx,k,v){
   p[k]=v;
   if(prev!==v&&EDITOR)logAction(p,`${k}: ${prev||'-'} → ${v||'-'}`);
   touchProject(CUR);
-  await saveCur();if(k==='lieferant'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
+  await saveCur();if(k==='lieferant'||k==='typ'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
 }
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
 
