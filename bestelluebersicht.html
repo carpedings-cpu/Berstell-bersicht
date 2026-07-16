@@ -1829,7 +1829,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-16 · v59';
+const APP_VERSION='2026-07-16 · v60';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4563,10 +4563,11 @@ function renderWartungBody(){
     const col=WART_COL[amp];
     const gebDays=w.gueltigBis?daysBtw(today(),w.gueltigBis):null;
     const gebStyle=(w.status==='liegt_vor'&&gebDays!==null)?(gebDays<0?'border-color:#d92020;background:rgba(217,32,32,.06)':gebDays<=30?'border-color:#c47700;background:rgba(196,119,0,.06)':''):'';
-    // Bei großen Gewerken (z.B. komplettes Kälte-LV) nur die ersten Positionen zeigen
-    const MAXDEV=8;
-    const devs=g.items.slice(0,MAXDEV).map(it=>`<div style="font-size:11px;color:rgba(28,28,30,.6);padding:1px 0">${esc(it.p.pos)} · ${esc(it.p.bez)}${it.p.typ?' <span style="color:rgba(28,28,30,.4)">('+esc(it.p.typ)+')</span>':''} <button onclick="setWartOverride(${it.idx},'nein')" title="Diese Position braucht keine Wartung" style="background:none;border:none;color:rgba(139,34,34,.55);font-size:10px;cursor:pointer;padding:0 3px">✕</button></div>`).join('')
-      +(g.items.length>MAXDEV?`<div style="font-size:10.5px;color:rgba(28,28,30,.45);padding:2px 0">… und ${g.items.length-MAXDEV} weitere Positionen</div>`:'');
+    // ALLE Positionen zeigen (scrollbar bei großen Gewerken) – jede einzeln entfernbar
+    const devs=g.items.length?`<div style="max-height:170px;overflow-y:auto">`+g.items.map(it=>`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(28,28,30,.6);padding:2px 0">
+      <span style="flex:1;min-width:0">${esc(it.p.pos)} · ${esc(it.p.bez)}${it.p.typ?' <span style="color:rgba(28,28,30,.4)">('+esc(it.p.typ)+')</span>':''}</span>
+      <button onclick="setWartOverride(${it.idx},'nein')" title="Braucht keine Wartung – aus der Liste entfernen" style="flex:0 0 auto;background:rgba(139,34,34,.12);color:#8b2222;border:none;width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:11px">✕</button>
+    </div>`).join('')+`</div>`:'';
     return `<div style="border:.5px solid rgba(0,0,0,.08);border-left:4px solid ${col};border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,.55)">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
         <strong style="font-size:13px">🏭 ${esc(g.name)}</strong>
