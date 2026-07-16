@@ -182,6 +182,10 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .nb-badge .nb-fix{opacity:.65;margin-left:3px;font-size:9px;}
 .nb-badge.nb-ok{background:rgba(30,138,74,.14);color:#0f6332;}
 .nb-badge.nb-ok:hover{background:rgba(30,138,74,.24);}
+/* Wartungs-Chip: teal-Variante des nb-badge */
+.nb-badge.wart-badge{background:rgba(26,95,122,.13);color:#1a5f7a;}
+.nb-badge.wart-badge:hover{background:rgba(26,95,122,.24);}
+.nb-badge.wart-off{background:rgba(120,120,128,.10);color:rgba(28,28,30,.45);text-decoration:line-through;}
 
 .fbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
 .sw{position:relative;flex:1;min-width:180px;}
@@ -728,6 +732,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <button class="ptbtn" id="selBtn" onclick="openLagerAbruf()">🖨 Lager-Abruf</button>
     <button class="ptbtn" onclick="openTermininfo()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;border-color:transparent">📧 Lieferanten zu Termin</button>
     <button class="ptbtn" onclick="openZubehoerListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border-color:transparent">🔧 Zubehör-Liste</button>
+    <button class="ptbtn" id="wartungBtn" onclick="openWartungModal()">🛠 Wartung</button>
   </div>
   <div class="fbar">
     <div class="sw"><span class="si">⌕</span>
@@ -1085,6 +1090,17 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Wartungsangebote je Lieferant (pro Projekt) -->
+<div class="modal" id="wartungModal" onclick="if(event.target===this)closeWartungModal()">
+  <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
+    <button class="modal-x" onclick="closeWartungModal()" title="Schließen (Esc)">✕</button>
+    <div id="wartungBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeWartungModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="projStatusModal" onclick="if(event.target===this)closeProjStatus()">
   <div class="modal-box flex-scroll" style="max-width:560px;max-height:88vh">
     <button class="modal-x" onclick="closeProjStatus()" title="Schließen (Esc)">✕</button>
@@ -1374,6 +1390,21 @@ function nichtBestellbarLabel(p){
   if(istBauseits(p))return 'Bauseits';
   if(istDienstleistung(p))return 'Dienstleistung';
   return '';
+}
+// ── WARTUNGSRELEVANZ ─────────────────────────────────────────────────────
+// Gewerke mit Wartungsvertrag: Spültechnik, Lüftung, Kälte(zentral), Wasserspender, Kaffee.
+// Bewusst ENG gehalten: kein nacktes 'spuel' (Spültische/-becken sind Möbel), kein
+// 'kuehlschrank'/'kuehltisch' (steckerfertig, kein Wartungsvertrag), kein nacktes 'abluft'
+// (Kanäle/bauseits). Ausnahmen regelt der manuelle Schalter (p.wartOverride).
+const deUml=s=>s.replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss');
+const WARTUNG_RX=/spuelmasch|spueltechnik|spuelautomat|geschirrspuel|haubenspuel|bandspuel|topfspuel|glaeserspuel|utensilienspuel|korbtransport|lueftung|wrasen|dunstabzug|ablufthaube|kaeltetechnik|kaelteanlage|kaelteaggregat|kuehlaggregat|kuehlzelle|tiefkuehlzelle|kuehlraum|tiefkuehlraum|verbundanlage|wasserspender|tafelwasser|kaffeemasch|kaffeevollautomat|kaffeeautomat|espressomasch|siebtraeger/;
+function istWartungsrelevant(p){
+  if(!p)return false;
+  if(istNichtBestellbar(p))return false;   // bauseits/Dienstleistung/entfallen: nie Wartung (gewinnt auch über Override)
+  if(p.wartOverride==='nein')return false; // manuell: keine Wartung nötig
+  if(p.wartOverride==='ja')return true;    // manuell: Wartung nötig
+  const hay=deUml([p.bez,p.typ,p.fabrikat,p.lieferant,p.notiz].filter(Boolean).join(' ').toLowerCase());
+  return WARTUNG_RX.test(hay);
 }
 const escA=s=>String(s||'').replace(/"/g,'&quot;');
 const today=()=>new Date().toISOString().slice(0,10);
@@ -1798,7 +1829,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-14 · v57';
+const APP_VERSION='2026-07-16 · v58';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -1827,6 +1858,8 @@ function renderHome(){
     // Warnungen fuer die Startseite: fehlende AB + notwendige Abrufe (zentrale Helper)
     const abFehlt=proj.positionen.filter(istABUeberfaellig).length;
     const abrufNoetig=proj.positionen.filter(p=>istAbrufFaellig(p,proj)).length;
+    const wartOffen=wartungGruppen(proj).filter(g=>wartungAmpel(proj,g.lk)!=='ok');
+    const wartRed=wartOffen.some(g=>wartungAmpel(proj,g.lk)==='red');
     const cls=(red>0||abrufUeberf>0)?'s-red':amb>0?'s-amber':gel===tot&&tot>0?'s-green':'';
     const d=document.createElement('div');d.className='pcard '+cls;
     d.onclick=()=>openProject(proj.id);
@@ -1841,9 +1874,10 @@ function renderHome(){
         ${amb?`<span class="pst st-a"><span class="dot"></span>${amb} bald fällig</span>`:''}
         <span class="pst st-g pst-click" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?"><span class="dot"></span>${best}/${tot} bestellt</span>
       </div>
-      ${(abFehlt||abrufNoetig)?`<div class="pwarn">
+      ${(abFehlt||abrufNoetig||wartOffen.length)?`<div class="pwarn">
         ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
         ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
+        ${wartOffen.length?`<button class="pwarn-b ${wartRed?'pwarn-r':'pwarn-a'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht">⚙ ${wartOffen.length} Wartung</button>`:''}
       </div>`:''}
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
@@ -2323,6 +2357,8 @@ document.addEventListener('keydown',e=>{
   if(plm&&plm.classList.contains('on')){closePreisLuecken();e.preventDefault();return;}
   const zlm=document.getElementById('zubListModal');
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
+  const wm=document.getElementById('wartungModal');
+  if(wm&&wm.classList.contains('on')){closeWartungModal();e.preventDefault();return;}
   const pzm=document.getElementById('preisZusatzModal');
   if(pzm&&pzm.classList.contains('on')){closePreisZusatz();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
@@ -2757,6 +2793,7 @@ function renderDetail(){
     (cntBauseits?`<button class="chip${DFILTER==='bauseits'?' on':''}" onclick="setDFilter('bauseits')" title="Bauseits, Dienstleistungen (Stundenlohn, Anschluesse, Reinigung, Montage, Anfahrt, Entsorgung) und entfallene Positionen">Nicht bestellbar <span class="cn">${cntBauseits}</span></button>`:'')+
     `<button class="chip" onclick="toggleAllBereiche(true)" title="Alle Bereiche zuklappen">▶ Alle zu</button>`+
     `<button class="chip" onclick="toggleAllBereiche(false)" title="Alle Bereiche aufklappen">▼ Alle auf</button>`;
+  updateWartungBtn();
   // Cards: gruppiert nach Bereich, mit Akkordeon
   const q=(document.getElementById('dSrch').value||'').toLowerCase().trim();
   const wrap=document.getElementById('dCards');wrap.innerHTML='';
@@ -2827,9 +2864,20 @@ function renderDetail(){
       // Bearbeiter hat eine automatische Erkennung uebersteuert – kleiner Hinweis + Reset-Moeglichkeit
       nbBadge=` <span class="nb-badge nb-ok" title="Automatik haette '${esc(nichtBestellbarLabel(p))}' gesagt – manuell als bestellbar markiert. Klick zum Zuruecksetzen." onclick="setNbOverride(${idx},'')">✓ Bestellbar (manuell)</span>`;
     }
+    // Wartungs-Chip: nur zeigen wenn relevant (auto/manuell) oder ein Auto-Treffer abgewählt wurde
+    let wartBadge='';
+    if(istWartungsrelevant(p)){
+      wartBadge=p.wartOverride==='ja'
+        ? ` <span class="nb-badge wart-badge" title="Manuell als wartungsrelevant markiert – Klick zum Zurücksetzen" onclick="setWartOverride(${idx},'')">⚙ Wartung (manuell)</span>`
+        : ` <span class="nb-badge wart-badge" title="Automatisch als wartungsrelevant erkannt – Klick: keine Wartung nötig" onclick="setWartOverride(${idx},'nein')">⚙ Wartung</span>`;
+    } else if(p.wartOverride==='nein' && !istNichtBestellbar(p)){
+      const hayW=deUml([p.bez,p.typ,p.fabrikat,p.lieferant,p.notiz].filter(Boolean).join(' ').toLowerCase());
+      if(WARTUNG_RX.test(hayW))
+        wartBadge=` <span class="nb-badge wart-off" title="Automatik hätte 'Wartung' gesagt – manuell abgewählt. Klick zum Zurücksetzen." onclick="setWartOverride(${idx},'')">⚙ keine Wartung</span>`;
+    }
     let html=`<div class="ih">
       <span class="pb">${esc(p.pos)}</span>
-      <div class="ii"><div class="ibez">${esc(p.bez)}${nbBadge}</div>
+      <div class="ii"><div class="ibez">${esc(p.bez)}${nbBadge}${wartBadge}</div>
         <div class="imet">${p.fabrikat?'🏭 '+esc(p.fabrikat):''}${p.typ?' · '+esc(p.typ):''}</div></div>
       <div class="img">${esc(p.menge)} ${esc(p.einh)}</div>
       <button class="poshist" onclick="openAuditModal(${idx})" title="Verlauf anzeigen">🕓${(p.audit&&p.audit.length)?'<span class="histcnt">'+p.audit.length+'</span>':''}</button>
@@ -3104,6 +3152,19 @@ async function setNbOverride(idx,val){
   touchProject(CUR);
   await saveCur();renderDetail();updateGlobalCounters();
   toast('Bestellbarkeit angepasst','ok');
+}
+async function setWartOverride(idx,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx];
+  const prev=p.wartOverride||'';
+  p.wartOverride=val||'';
+  const lbl=v=>v==='ja'?'wartungsrelevant (manuell)':v==='nein'?'keine Wartung (manuell)':'automatisch';
+  logAction(p,`Wartung: ${lbl(prev)} → ${lbl(val||'')}`);
+  touchProject(CUR);
+  await saveCur();renderDetail();
+  const wm=document.getElementById('wartungModal');
+  if(wm&&wm.classList.contains('on'))renderWartungBody();
+  toast('Wartungsrelevanz angepasst','ok');
 }
 async function updF(idx,k,v){
   const p=CUR.positionen[idx];
@@ -4419,6 +4480,140 @@ function openZubehoerListe(){
   document.getElementById('zubListModal').classList.add('on');
 }
 function closeZubehoerListe(){document.getElementById('zubListModal').classList.remove('on');}
+
+// ── WARTUNG: Wartungsangebote je Lieferant pro Projekt ───────────────────
+// Ziel: Beim Bestellen von Spültechnik/Lüftung/Kälte/Wasserspender/Kaffee immer ein
+// Wartungsangebot des Lieferanten anfragen + Preis fixieren, damit bei späterer
+// Beauftragung der kalkulierte Preis noch hält. Gespeichert cloud-synchron in
+// SETTINGS.wartung (Muster preisMeta). Key: projName§liefKey.
+// Hinweis: Projekt-Umbenennung würde Keys verwaisen lassen – es gibt aber keine
+// Rename-Funktion (gleiche Einschränkung wie preisMeta.ang).
+function ensureWartungMeta(){
+  if(!SETTINGS.wartung||typeof SETTINGS.wartung!=='object')SETTINGS.wartung={};
+}
+function wartKey(projName,lk){return projName+'§'+lk;}
+function getWart(projName,lk){return (SETTINGS.wartung||{})[wartKey(projName,lk)]||null;}
+// Wartungsrelevante Positionen eines Projekts nach Lieferant gruppieren
+function wartungGruppen(proj){
+  const map={};
+  (proj.positionen||[]).forEach((p,idx)=>{
+    if(!istWartungsrelevant(p))return;
+    const name=p.lieferant||p.fabrikat||'(ohne Lieferant)';
+    const lk=normLief(p.lieferant||p.fabrikat)||'(ohne)';
+    if(!map[lk])map[lk]={lk,name,items:[]};
+    map[lk].items.push({p,idx});
+  });
+  return Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
+}
+// Ampel je Lieferanten-Gruppe: red = handeln, amber = im Blick behalten, ok = erledigt
+function wartungAmpel(proj,lk){
+  const w=getWart(proj.name,lk);
+  if(!w||!w.status||w.status==='anfragen')return 'red';  // noch nichts unternommen
+  if(w.status==='angefragt')return 'amber';              // Anfrage läuft
+  if(w.status==='beauftragt')return 'ok';                // final – auch wenn Datum abgelaufen
+  // status 'liegt_vor':
+  if(!w.gueltigBis)return 'amber';                       // Angebot ohne Bindungsdatum → unvollständig
+  const d=daysBtw(today(),w.gueltigBis);
+  if(d<0)return 'red';                                   // Preisbindung ABGELAUFEN
+  if(d<=30)return 'amber';                               // läuft in ≤30 Tagen ab
+  return 'ok';
+}
+function wartungAmpelText(proj,lk){
+  const w=getWart(proj.name,lk);
+  if(!w||!w.status||w.status==='anfragen')return 'Angebot anfragen!';
+  if(w.status==='angefragt')return 'Anfrage läuft';
+  if(w.status==='beauftragt')return 'beauftragt ✓';
+  if(!w.gueltigBis)return 'Gültig-bis fehlt';
+  const d=daysBtw(today(),w.gueltigBis);
+  if(d<0)return 'Preisbindung abgelaufen!';
+  if(d<=30)return 'läuft in '+d+' Tagen ab';
+  return 'gültig bis '+fmtD(w.gueltigBis);
+}
+function openWartungModal(){
+  if(!CUR)return;
+  renderWartungBody();
+  document.getElementById('wartungModal').classList.add('on');
+}
+function closeWartungModal(){document.getElementById('wartungModal').classList.remove('on');}
+// Von der Projektkarte (Startseite) direkt ins Wartungs-Modal
+function openWartungVonHome(id){openProject(id,null,'');openWartungModal();}
+const WART_COL={red:'#d92020',amber:'#c47700',ok:'#1e8a4a'};
+function renderWartungBody(){
+  if(!CUR)return;
+  ensureWartungMeta();
+  const groups=wartungGruppen(CUR);
+  const body=document.getElementById('wartungBody');
+  let html=`<h3 style="margin-bottom:4px">🛠 Wartungsangebote · ${esc(CUR.name)}</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">Je Lieferant ein Wartungsangebot anfragen und den Preis fixieren – damit bei späterer Beauftragung der kalkulierte Preis noch hält.</div>`;
+  if(groups.length===0){
+    html+=`<div style="padding:20px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">Keine wartungsrelevanten Positionen erkannt<br><span style="font-size:11px">(Spültechnik, Lüftung, Kälte, Wasserspender, Kaffeemaschinen)</span></div>`;
+  }
+  html+=groups.map(g=>{
+    const amp=wartungAmpel(CUR,g.lk);
+    const w=getWart(CUR.name,g.lk)||{status:'anfragen',ek:0,gueltigBis:'',hauptauftrag:false,notiz:''};
+    const col=WART_COL[amp];
+    const gebDays=w.gueltigBis?daysBtw(today(),w.gueltigBis):null;
+    const gebStyle=(w.status==='liegt_vor'&&gebDays!==null)?(gebDays<0?'border-color:#d92020;background:rgba(217,32,32,.06)':gebDays<=30?'border-color:#c47700;background:rgba(196,119,0,.06)':''):'';
+    // Bei großen Gewerken (z.B. komplettes Kälte-LV) nur die ersten Positionen zeigen
+    const MAXDEV=8;
+    const devs=g.items.slice(0,MAXDEV).map(it=>`<div style="font-size:11px;color:rgba(28,28,30,.6);padding:1px 0">${esc(it.p.pos)} · ${esc(it.p.bez)}${it.p.typ?' <span style="color:rgba(28,28,30,.4)">('+esc(it.p.typ)+')</span>':''} <button onclick="setWartOverride(${it.idx},'nein')" title="Diese Position braucht keine Wartung" style="background:none;border:none;color:rgba(139,34,34,.55);font-size:10px;cursor:pointer;padding:0 3px">✕</button></div>`).join('')
+      +(g.items.length>MAXDEV?`<div style="font-size:10.5px;color:rgba(28,28,30,.45);padding:2px 0">… und ${g.items.length-MAXDEV} weitere Positionen</div>`:'');
+    return `<div style="border:.5px solid rgba(0,0,0,.08);border-left:4px solid ${col};border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,.55)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <strong style="font-size:13px">🏭 ${esc(g.name)}</strong>
+        <span style="font-size:11px;font-weight:700;color:${col}">${esc(wartungAmpelText(CUR,g.lk))}</span>
+        <span style="font-size:10.5px;color:rgba(28,28,30,.45);margin-left:auto">${g.items.length} Gerät${g.items.length===1?'':'e'}</span>
+      </div>
+      <div style="margin-bottom:8px">${devs}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div style="min-width:130px"><label style="font-size:10px;font-weight:700;color:rgba(45,41,38,.6);text-transform:uppercase;display:block;margin-bottom:3px">Status</label>
+          <select onchange="wartSet('${escA(g.lk)}','status',this.value)" style="padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:12px;font-family:inherit">
+            <option value="anfragen"${w.status==='anfragen'?' selected':''}>⚪ anfragen</option>
+            <option value="angefragt"${w.status==='angefragt'?' selected':''}>📨 angefragt</option>
+            <option value="liegt_vor"${w.status==='liegt_vor'?' selected':''}>✅ liegt vor</option>
+            <option value="beauftragt"${w.status==='beauftragt'?' selected':''}>📦 beauftragt</option>
+          </select></div>
+        <div style="min-width:100px"><label style="font-size:10px;font-weight:700;color:rgba(45,41,38,.6);text-transform:uppercase;display:block;margin-bottom:3px">EK € / Jahr</label>
+          <input type="text" inputmode="decimal" value="${w.ek?String(w.ek).replace('.',','):''}" placeholder="z.B. 850" onchange="wartSet('${escA(g.lk)}','ek',this.value)" style="width:100px;padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:12px;font-family:inherit"></div>
+        <div style="min-width:140px"><label style="font-size:10px;font-weight:700;color:rgba(45,41,38,.6);text-transform:uppercase;display:block;margin-bottom:3px">Preis fixiert bis</label>
+          <input type="date" value="${escA(w.gueltigBis||'')}" onchange="wartSet('${escA(g.lk)}','gueltigBis',this.value)" style="padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:12px;font-family:inherit;${gebStyle}"></div>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding-bottom:8px;cursor:pointer"><input type="checkbox" ${w.hauptauftrag?'checked':''} onchange="wartSet('${escA(g.lk)}','hauptauftrag',this.checked)">im Hauptauftrag</label>
+        <div style="flex:1;min-width:140px"><label style="font-size:10px;font-weight:700;color:rgba(45,41,38,.6);text-transform:uppercase;display:block;margin-bottom:3px">Notiz</label>
+          <input type="text" value="${escA(w.notiz||'')}" placeholder="z.B. Angebots-Nr" onchange="wartSet('${escA(g.lk)}','notiz',this.value)" style="width:100%;padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:12px;font-family:inherit"></div>
+      </div>
+      ${w.user?`<div style="font-size:10px;color:rgba(28,28,30,.4);margin-top:6px">zuletzt: ${esc(w.user)}${w.at?' · '+fmtD(w.at):''}</div>`:''}
+    </div>`;
+  }).join('');
+  // Nicht erkannte Positionen manuell aufnehmen (haelt die Positionskarten sauber)
+  const kandidaten=(CUR.positionen||[]).map((p,idx)=>({p,idx})).filter(o=>!istWartungsrelevant(o.p)&&!istNichtBestellbar(o.p));
+  if(kandidaten.length){
+    html+=`<div style="margin-top:6px"><select onchange="if(this.value!=='')setWartOverride(parseInt(this.value),'ja');this.value=''" style="padding:8px 10px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:rgba(255,255,255,.8);font-size:12px;font-family:inherit;max-width:100%">
+      <option value="">＋ Position manuell als wartungsrelevant aufnehmen …</option>
+      ${kandidaten.map(o=>`<option value="${o.idx}">${escA(o.p.pos)} · ${escA(o.p.bez)}</option>`).join('')}
+    </select></div>`;
+  }
+  body.innerHTML=html;
+}
+async function wartSet(lk,field,val){
+  if(!requireLogin())return;
+  ensureWartungMeta();
+  const key=wartKey(CUR.name,lk);
+  const w=SETTINGS.wartung[key]||{status:'anfragen',ek:0,gueltigBis:'',hauptauftrag:false,notiz:''};
+  if(field==='ek')val=parseFloat(String(val||'').replace(/\./g,'').replace(',','.'))||0;
+  w[field]=val;
+  w.user=EDITOR||'';w.at=today();
+  SETTINGS.wartung[key]=w;
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderWartungBody();
+  updateWartungBtn();
+}
+// Toolbar-Button im Projekt: zeigt Zahl offener Wartungs-Gruppen
+function updateWartungBtn(){
+  const b=document.getElementById('wartungBtn');
+  if(!b||!CUR)return;
+  const off=wartungGruppen(CUR).filter(g=>wartungAmpel(CUR,g.lk)!=='ok').length;
+  b.innerHTML=off?`🛠 Wartung <span style="background:rgba(217,32,32,.15);color:#a01515;font-weight:800;font-size:10.5px;padding:1px 6px;border-radius:8px">${off}</span>`:'🛠 Wartung';
+}
 function zubListeAsText(proj){
   // Respektiert die Kategorie-Auswahl (Chips im Modal) – Kopieren gibt nur die aktiven Kategorien aus.
   const {items,groups}=buildZubListe(proj,zubExcludeSet());
