@@ -1829,7 +1829,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-16 · v58';
+const APP_VERSION='2026-07-16 · v59';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4503,6 +4503,15 @@ function wartungGruppen(proj){
     if(!map[lk])map[lk]={lk,name,items:[]};
     map[lk].items.push({p,idx});
   });
+  // Manuell angelegte Wartungen (ohne Positionsbezug, z.B. externe Lüftungsfirma)
+  const pref=proj.name+'§';
+  Object.keys(SETTINGS.wartung||{}).forEach(k=>{
+    if(!k.startsWith(pref))return;
+    const w=SETTINGS.wartung[k];
+    if(!w||!w.manuell)return;
+    const lk=k.slice(pref.length);
+    if(!map[lk])map[lk]={lk,name:w.name||lk,items:[],manuell:true};
+  });
   return Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
 }
 // Ampel je Lieferanten-Gruppe: red = handeln, amber = im Blick behalten, ok = erledigt
@@ -4562,7 +4571,8 @@ function renderWartungBody(){
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
         <strong style="font-size:13px">🏭 ${esc(g.name)}</strong>
         <span style="font-size:11px;font-weight:700;color:${col}">${esc(wartungAmpelText(CUR,g.lk))}</span>
-        <span style="font-size:10.5px;color:rgba(28,28,30,.45);margin-left:auto">${g.items.length} Gerät${g.items.length===1?'':'e'}</span>
+        <span style="font-size:10.5px;color:rgba(28,28,30,.45);margin-left:auto">${g.manuell?'manuell angelegt':g.items.length+' Gerät'+(g.items.length===1?'':'e')}</span>
+        <button onclick="delWartung('${escA(g.lk)}')" title="Diese Wartung löschen" style="background:rgba(139,34,34,.10);color:#8b2222;border:none;width:26px;height:26px;border-radius:7px;cursor:pointer;font-size:12px">🗑</button>
       </div>
       <div style="margin-bottom:8px">${devs}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
@@ -4592,6 +4602,11 @@ function renderWartungBody(){
       ${kandidaten.map(o=>`<option value="${o.idx}">${escA(o.p.pos)} · ${escA(o.p.bez)}</option>`).join('')}
     </select></div>`;
   }
+  // Freie Wartung ohne Positionsbezug (z.B. externe Lüftungs-/Kältefirma)
+  html+=`<div style="display:flex;gap:8px;margin-top:8px">
+    <input type="text" id="wartAddName" placeholder="＋ Neue Wartung: Lieferant/Firma eintippen …" onkeydown="if(event.key==='Enter')addWartungManuell()" style="flex:1;padding:8px 10px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:rgba(255,255,255,.8);font-size:12px;font-family:inherit">
+    <button onclick="addWartungManuell()" style="padding:8px 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">＋ Wartung</button>
+  </div>`;
   body.innerHTML=html;
 }
 async function wartSet(lk,field,val){
@@ -4606,6 +4621,40 @@ async function wartSet(lk,field,val){
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   renderWartungBody();
   updateWartungBtn();
+}
+// Freie Wartung anlegen (ohne Positionsbezug, z.B. externe Firma)
+async function addWartungManuell(){
+  if(!requireLogin())return;
+  const inp=document.getElementById('wartAddName');
+  const name=(inp&&inp.value||'').trim();
+  if(!name){toast('Bitte Lieferant/Firma eintippen','err');return;}
+  ensureWartungMeta();
+  const lk=normLief(name)||name.toLowerCase();
+  if(wartungGruppen(CUR).some(g=>g.lk===lk)){toast('Für "'+name+'" gibt es hier schon eine Wartung','err',3000);return;}
+  SETTINGS.wartung[wartKey(CUR.name,lk)]={status:'anfragen',ek:0,gueltigBis:'',hauptauftrag:false,notiz:'',manuell:true,name,user:EDITOR||'',at:today()};
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderWartungBody();updateWartungBtn();
+  toast('Wartung für "'+name+'" angelegt','ok');
+}
+// Wartung einer Lieferanten-Gruppe löschen. Bei automatisch erkannten Gruppen werden
+// die Positionen als 'keine Wartung' markiert, damit die Gruppe nicht sofort wiederkommt.
+async function delWartung(lk){
+  if(!requireLogin())return;
+  ensureWartungMeta();
+  const g=wartungGruppen(CUR).find(x=>x.lk===lk);
+  const nm=g?g.name:lk;
+  const hint=(g&&g.items.length)?'\n\nDie '+g.items.length+' zugehörige(n) Position(en) werden als "keine Wartung" markiert.':'';
+  if(!confirm('Wartung für "'+nm+'" in diesem Projekt löschen?'+hint))return;
+  if(g&&g.items.length){
+    g.items.forEach(it=>{it.p.wartOverride='nein';logAction(it.p,'Wartung: automatisch → keine Wartung (manuell)');});
+    touchProject(CUR);
+    await saveCur();
+    renderDetail();
+  }
+  delete SETTINGS.wartung[wartKey(CUR.name,lk)];
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderWartungBody();updateWartungBtn();
+  toast('Wartung für "'+nm+'" gelöscht','ok');
 }
 // Toolbar-Button im Projekt: zeigt Zahl offener Wartungs-Gruppen
 function updateWartungBtn(){
