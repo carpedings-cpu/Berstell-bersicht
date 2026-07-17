@@ -1831,7 +1831,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-17 · v63';
+const APP_VERSION='2026-07-17 · v64';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4577,10 +4577,11 @@ function renderWartungBody(){
     const bd=kBind?daysBtw(today(),kBind):null;
     const bStyle=bd===null?'':bd<0?'border-color:#d92020;background:rgba(217,32,32,.06)':bd<=30?'border-color:#c47700;background:rgba(196,119,0,.06)':'';
     const bHint=bd===null?'':bd<0?`<span style="font-size:10.5px;font-weight:700;color:#d92020">abgelaufen!</span>`:bd<=30?`<span style="font-size:10.5px;font-weight:700;color:#c47700">noch ${bd} Tage</span>`:'';
-    kBindFeld=`<span style="display:inline-flex;align-items:center;gap:6px">
+    kBindFeld=`<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
       <label style="font-size:10.5px;font-weight:700;color:#6b5040">Preisbindung bis</label>
       <input type="date" value="${escA(kBind)}" onchange="setWartungKundeBind(this.value)" style="padding:6px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.15);background:#fff;font-size:12px;font-family:inherit;${bStyle}">
-      ${bHint}</span>`;
+      ${bHint}
+      <input type="text" value="${escA(kEntry.bindText||'')}" placeholder="oder z.B. 6 Wochen nach Abnahme" onchange="setWartungKundeBindText(this.value)" style="min-width:200px;padding:6px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.15);background:#fff;font-size:12px;font-family:inherit"></span>`;
   }
   html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:9px 11px;background:rgba(107,80,64,.06);border-radius:10px">
     <span style="font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#6b5040">Beim Kunden:</span>
@@ -4678,6 +4679,17 @@ async function setWartungKundeBind(val){
   const e=SETTINGS.wartungKunde[CUR.name];
   if(!e||e.status!=='ep')return;
   e.bindung=val||'';
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e2){}
+  renderWartungBody();
+  toast('Preisbindung gespeichert','ok');
+}
+// Freitext-Bindung (wenn kein festes Datum, z.B. '6 Wochen nach Abnahme')
+async function setWartungKundeBindText(val){
+  if(!requireLogin())return;
+  ensureWartungMeta();
+  const e=SETTINGS.wartungKunde[CUR.name];
+  if(!e||e.status!=='ep')return;
+  e.bindText=String(val||'').trim();
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e2){}
   renderWartungBody();
   toast('Preisbindung gespeichert','ok');
