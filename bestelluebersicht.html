@@ -103,6 +103,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard .pwarn-r:hover{background:rgba(217,32,32,.22);}
 .pcard .pwarn-a{background:rgba(196,119,0,.14);color:#7d4d00;}
 .pcard .pwarn-a:hover{background:rgba(196,119,0,.24);}
+.pcard .pwarn-n{background:rgba(120,120,128,.12);color:rgba(28,28,30,.6);}
+.pcard .pwarn-n:hover{background:rgba(120,120,128,.22);}
 .pcard .pstats{display:flex;gap:12px;margin-top:10px;font-size:11px;font-weight:600;}
 .pcard .pst{display:flex;align-items:center;gap:4px;}
 .pcard .pst .dot{width:7px;height:7px;border-radius:50%;}
@@ -1829,7 +1831,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-17 · v61';
+const APP_VERSION='2026-07-17 · v62';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -1874,11 +1876,11 @@ function renderHome(){
         ${amb?`<span class="pst st-a"><span class="dot"></span>${amb} bald fällig</span>`:''}
         <span class="pst st-g pst-click" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?"><span class="dot"></span>${best}/${tot} bestellt</span>
       </div>
-      ${(abFehlt||abrufNoetig||wartOffen.length)?`<div class="pwarn">
+      <div class="pwarn">
         ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
         ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
-        ${wartOffen.length?`<button class="pwarn-b ${wartRed?'pwarn-r':'pwarn-a'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht">⚙ ${wartOffen.length} Wartung</button>`:''}
-      </div>`:''}
+        <button class="pwarn-b ${wartOffen.length?(wartRed?'pwarn-r':'pwarn-a'):'pwarn-n'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="${wartOffen.length?'Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht':'Wartungsangebote ansehen und bearbeiten'}">⚙ ${wartOffen.length?wartOffen.length+' ':''}Wartung</button>
+      </div>
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
     g.appendChild(d);
