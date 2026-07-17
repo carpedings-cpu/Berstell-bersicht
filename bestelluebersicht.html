@@ -1831,7 +1831,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-17 · v62';
+const APP_VERSION='2026-07-17 · v63';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4492,8 +4492,13 @@ function closeZubehoerListe(){document.getElementById('zubListModal').classList.
 // Rename-Funktion (gleiche Einschränkung wie preisMeta.ang).
 function ensureWartungMeta(){
   if(!SETTINGS.wartung||typeof SETTINGS.wartung!=='object')SETTINGS.wartung={};
-  // Projektweiter Kundenstatus: 'ha' (im Hauptauftrag) | 'ep' | 'keine' (nicht angeboten)
+  // Projektweiter Kundenstatus: {status:'ha'|'ep'|'keine', bindung:'YYYY-MM-DD'}
+  // (bindung = Preisbindung unseres EP-Angebots an den Kunden)
   if(!SETTINGS.wartungKunde||typeof SETTINGS.wartungKunde!=='object')SETTINGS.wartungKunde={};
+  // Migration: alte String-Werte ('ha'/'ep'/'keine') → Objektform
+  Object.keys(SETTINGS.wartungKunde).forEach(k=>{
+    if(typeof SETTINGS.wartungKunde[k]==='string')SETTINGS.wartungKunde[k]={status:SETTINGS.wartungKunde[k],bindung:''};
+  });
 }
 function wartKey(projName,lk){return projName+'§'+lk;}
 function getWart(projName,lk){return (SETTINGS.wartung||{})[wartKey(projName,lk)]||null;}
@@ -4559,16 +4564,30 @@ function renderWartungBody(){
   let html=`<h3 style="margin-bottom:4px">🛠 Wartungsangebote · ${esc(CUR.name)}</h3>
     <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:10px">Je Lieferant ein Wartungsangebot anfragen und den Preis fixieren – damit bei späterer Beauftragung der kalkulierte Preis noch hält.</div>`;
   // Projektweiter Kundenstatus: Wie ist die Wartung beim Kunden angeboten?
-  const kunde=(SETTINGS.wartungKunde||{})[CUR.name]||'';
+  const kEntry=(SETTINGS.wartungKunde||{})[CUR.name]||{};
+  const kunde=kEntry.status||'';
+  const kBind=kEntry.bindung||'';
   const kChip=(val,label)=>{
     const on=kunde===val;
     return `<button onclick="setWartungKunde('${val}')" style="padding:7px 12px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;${on?'background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border:1px solid transparent':'background:rgba(255,255,255,.7);color:rgba(28,28,30,.65);border:1px solid rgba(0,0,0,.12)'}">${label}</button>`;
   };
+  // Bei EP: Preisbindung unseres Angebots erfassen (rot wenn abgelaufen, amber wenn ≤30 Tage)
+  let kBindFeld='';
+  if(kunde==='ep'){
+    const bd=kBind?daysBtw(today(),kBind):null;
+    const bStyle=bd===null?'':bd<0?'border-color:#d92020;background:rgba(217,32,32,.06)':bd<=30?'border-color:#c47700;background:rgba(196,119,0,.06)':'';
+    const bHint=bd===null?'':bd<0?`<span style="font-size:10.5px;font-weight:700;color:#d92020">abgelaufen!</span>`:bd<=30?`<span style="font-size:10.5px;font-weight:700;color:#c47700">noch ${bd} Tage</span>`:'';
+    kBindFeld=`<span style="display:inline-flex;align-items:center;gap:6px">
+      <label style="font-size:10.5px;font-weight:700;color:#6b5040">Preisbindung bis</label>
+      <input type="date" value="${escA(kBind)}" onchange="setWartungKundeBind(this.value)" style="padding:6px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.15);background:#fff;font-size:12px;font-family:inherit;${bStyle}">
+      ${bHint}</span>`;
+  }
   html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:9px 11px;background:rgba(107,80,64,.06);border-radius:10px">
     <span style="font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#6b5040">Beim Kunden:</span>
     ${kChip('ha','📋 Wartung im HA enthalten')}
     ${kChip('ep','💶 Wartung als EP')}
     ${kChip('keine','🚫 keine Wartung angeboten')}
+    ${kBindFeld}
   </div>`;
   if(groups.length===0){
     html+=`<div style="padding:20px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">Keine wartungsrelevanten Positionen erkannt<br><span style="font-size:11px">(Spültechnik, Lüftung, Kälte, Wasserspender, Kaffeemaschinen)</span></div>`;
@@ -4643,11 +4662,25 @@ async function wartSet(lk,field,val){
 async function setWartungKunde(val){
   if(!requireLogin())return;
   ensureWartungMeta();
-  const cur=SETTINGS.wartungKunde[CUR.name]||'';
+  const cur=(SETTINGS.wartungKunde[CUR.name]||{}).status||'';
   if(cur===val)delete SETTINGS.wartungKunde[CUR.name]; // erneuter Tipp hebt die Wahl auf
-  else SETTINGS.wartungKunde[CUR.name]=val;
+  else{
+    const prev=SETTINGS.wartungKunde[CUR.name]||{};
+    SETTINGS.wartungKunde[CUR.name]={status:val,bindung:prev.bindung||''};
+  }
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   renderWartungBody();
+}
+// Preisbindung unseres EP-Angebots an den Kunden
+async function setWartungKundeBind(val){
+  if(!requireLogin())return;
+  ensureWartungMeta();
+  const e=SETTINGS.wartungKunde[CUR.name];
+  if(!e||e.status!=='ep')return;
+  e.bindung=val||'';
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e2){}
+  renderWartungBody();
+  toast('Preisbindung gespeichert','ok');
 }
 // Freie Wartung anlegen (ohne Positionsbezug, z.B. externe Firma)
 async function addWartungManuell(){
