@@ -238,7 +238,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ck.on.st-abg{background:linear-gradient(135deg,#b85a00,#d97706);box-shadow:0 3px 10px rgba(184,90,0,.35);}
 .ck.on.st-gel{background:linear-gradient(135deg,#1e8a4a,#34c759);box-shadow:0 3px 10px rgba(52,199,89,.35);}
 .ck.on.st-ab{background:linear-gradient(135deg,#0f7b8a,#13a0b0);box-shadow:0 3px 10px rgba(19,160,176,.35);}
-.ck.on.st-prot{background:linear-gradient(135deg,#4a5d8a,#5a70a5);box-shadow:0 3px 10px rgba(74,93,138,.35);}
 .cki{font-size:12px;line-height:1;}
 /* Inline-Meta neben aktiver Checkbox: wer hat angeklickt (Name · TT.MM) */
 .ckm{display:inline-block;margin-left:5px;padding:1px 5px;border-radius:8px;background:rgba(255,255,255,.22);font-size:9.5px;font-weight:600;letter-spacing:.2px;opacity:.95;line-height:1.3;white-space:nowrap;}
@@ -1104,6 +1103,17 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Protokolle (Nachweise Nachunternehmer) pro Projekt -->
+<div class="modal" id="protokolleModal" onclick="if(event.target===this)closeProtokolleModal()">
+  <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
+    <button class="modal-x" onclick="closeProtokolleModal()" title="Schließen (Esc)">✕</button>
+    <div id="protokolleBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeProtokolleModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="projStatusModal" onclick="if(event.target===this)closeProjStatus()">
   <div class="modal-box flex-scroll" style="max-width:560px;max-height:88vh">
     <button class="modal-x" onclick="closeProjStatus()" title="Schließen (Esc)">✕</button>
@@ -1420,10 +1430,9 @@ function istProtokollpflichtig(p){
   const hay=deUml([p.bez,p.typ,p.fabrikat,p.lieferant].filter(Boolean).join(' ').toLowerCase());
   return /\bmiele\b/.test(hay);
 }
-// Sind alle Protokolle abgehakt (IBN + Einweisung + frei ergänzte)?
+// Sind die Geräte-Protokolle einer Position abgehakt (IBN + Einweisung)?
 function protokolleVollstaendig(p){
-  if(!p.protIbn||!p.protEinw)return false;
-  return (p.protExtra||[]).every(x=>x.done);
+  return !!(p.protIbn&&p.protEinw);
 }
 const escA=s=>String(s||'').replace(/"/g,'&quot;');
 const today=()=>new Date().toISOString().slice(0,10);
@@ -1848,7 +1857,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-20 · v65';
+const APP_VERSION='2026-07-23 · v66';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -1879,6 +1888,7 @@ function renderHome(){
     const abrufNoetig=proj.positionen.filter(p=>istAbrufFaellig(p,proj)).length;
     const wartOffen=wartungGruppen(proj).filter(g=>wartungAmpel(proj,g.lk)!=='ok');
     const wartRed=wartOffen.some(g=>wartungAmpel(proj,g.lk)==='red');
+    const protOff=protokollOffen(proj);
     const cls=(red>0||abrufUeberf>0)?'s-red':amb>0?'s-amber':gel===tot&&tot>0?'s-green':'';
     const d=document.createElement('div');d.className='pcard '+cls;
     d.onclick=()=>openProject(proj.id);
@@ -1897,6 +1907,7 @@ function renderHome(){
         ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
         ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
         <button class="pwarn-b ${wartOffen.length?(wartRed?'pwarn-r':'pwarn-a'):'pwarn-n'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="${wartOffen.length?'Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht':'Wartungsangebote ansehen und bearbeiten'}">⚙ ${wartOffen.length?wartOffen.length+' ':''}Wartung</button>
+        <button class="pwarn-b ${protOff?'pwarn-r':'pwarn-n'}" onclick="event.stopPropagation();openProtokolleVonHome('${proj.id}')" title="${protOff?'Protokolle fehlen (IBN/Einweisung) – tippen öffnet die Liste':'Protokolle ansehen und abhaken'}">📋 ${protOff?protOff+' ':''}Protokolle</button>
       </div>
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
@@ -2378,6 +2389,8 @@ document.addEventListener('keydown',e=>{
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
   const wm=document.getElementById('wartungModal');
   if(wm&&wm.classList.contains('on')){closeWartungModal();e.preventDefault();return;}
+  const prm=document.getElementById('protokolleModal');
+  if(prm&&prm.classList.contains('on')){closeProtokolleModal();e.preventDefault();return;}
   const pzm=document.getElementById('preisZusatzModal');
   if(pzm&&pzm.classList.contains('on')){closePreisZusatz();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
@@ -2802,8 +2815,6 @@ function renderDetail(){
   const cntInLief=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
   const cntBauseits=CUR.positionen.filter(istNichtBestellbar).length;
   const cntZubehoer=CUR.positionen.filter(p=>Array.isArray(p.zubehoer)&&p.zubehoer.length>0).length;
-  const protPos=CUR.positionen.filter(p=>p.quelle==='bestellt'&&istProtokollpflichtig(p));
-  const protDone=protPos.filter(protokolleVollstaendig).length;
   const totalP=CUR.positionen.length;
   document.getElementById('dChips').innerHTML=
     `<button class="chip${DFILTER===''?' on':''}" onclick="setDFilter('')">Alle <span class="cn">${totalP}</span></button>`+
@@ -2811,7 +2822,6 @@ function renderDetail(){
     `<button class="chip${DFILTER==='aboffen'?' on':''}" onclick="setDFilter('aboffen')">AB offen <span class="cn">${cntABoffen}</span></button>`+
     `<button class="chip${DFILTER==='lieferung'?' on':''}" onclick="setDFilter('lieferung')">In Lieferung <span class="cn">${cntInLief}</span></button>`+
     (cntZubehoer?`<button class="chip${DFILTER==='zubehoer'?' on':''}" onclick="setDFilter('zubehoer')" title="Nur Positionen mit Zubehör-Eintrag (Mischbatterien, Spender, GN-Behälter)">🔧 Mit Zubehör <span class="cn">${cntZubehoer}</span></button>`:'')+
-    (protPos.length?`<button class="chip${DFILTER==='protokolle'?' on':''}" onclick="setDFilter('protokolle')" title="Protokollpflichtige Positionen (IBN/Einweisung, Nachunternehmer) – Filter zeigt die mit fehlenden Protokollen"${protDone<protPos.length?' style="color:#a01515;font-weight:800"':''}>⚡ Protokolle <span class="cn">${protDone}/${protPos.length}</span></button>`:'')+
     (cntBauseits?`<button class="chip${DFILTER==='bauseits'?' on':''}" onclick="setDFilter('bauseits')" title="Bauseits, Dienstleistungen (Stundenlohn, Anschluesse, Reinigung, Montage, Anfahrt, Entsorgung) und entfallene Positionen">Nicht bestellbar <span class="cn">${cntBauseits}</span></button>`:'')+
     `<button class="chip" onclick="toggleAllBereiche(true)" title="Alle Bereiche zuklappen">▶ Alle zu</button>`+
     `<button class="chip" onclick="toggleAllBereiche(false)" title="Alle Bereiche aufklappen">▼ Alle auf</button>`;
@@ -2936,20 +2946,6 @@ function renderDetail(){
       html+=`<div class="ck st-ab${p.abBestaetigt?' on':''}" onclick="toggleAB(${idx})" title="${escA(p.abBestaetigt?(tipAB?tipAB+' · ':'')+hintReset:'AB liegt vor – ohne Datei markieren (Datei separat über 📄 AB anhängen)')}"><span class="cki">${p.abBestaetigt?'✓':'○'}</span>Auftragsbestätigung${checkInline(p,'abBestaetigt',p.abBestaetigt)}</div>`;
     }
     html+=`</div>`;
-    // Protokoll-Nachweise vom Nachunternehmer (Kälte, Kaffee, Miele, Wartungs-Gewerke):
-    // IBN + Einweisung fest, weitere Protokolle frei ergänzbar
-    if(p.quelle==='bestellt' && istProtokollpflichtig(p)){
-      const tipIbn=checkTip(p,'prot:ibn','IBN-Protokoll erfasst');
-      const tipEinw=checkTip(p,'prot:einw','Einweisung erfasst');
-      html+=`<div class="crow" style="margin-top:2px">`;
-      html+=`<div class="ck st-prot${p.protIbn?' on':''}" onclick="toggleProt(${idx},'ibn')" title="${escA(p.protIbn?(tipIbn?tipIbn+' · ':'')+hintReset:'Inbetriebnahmeprotokoll liegt vor?')}"><span class="cki">${p.protIbn?'✓':'○'}</span>⚡ IBN-Protokoll${checkInline(p,'prot:ibn',!!p.protIbn)}</div>`;
-      html+=`<div class="ck st-prot${p.protEinw?' on':''}" onclick="toggleProt(${idx},'einw')" title="${escA(p.protEinw?(tipEinw?tipEinw+' · ':'')+hintReset:'Einweisungsprotokoll liegt vor?')}"><span class="cki">${p.protEinw?'✓':'○'}</span>📝 Einweisung${checkInline(p,'prot:einw',!!p.protEinw)}</div>`;
-      (p.protExtra||[]).forEach((x,i)=>{
-        html+=`<div class="ck st-prot${x.done?' on':''}" onclick="toggleProtExtra(${idx},${i})" title="${escA(x.done?hintReset:esc(x.name)+' liegt vor?')}"><span class="cki">${x.done?'✓':'○'}</span>📄 ${esc(x.name)}<span onclick="event.stopPropagation();delProtExtra(${idx},${i})" title="Protokoll entfernen" style="margin-left:6px;opacity:.65;cursor:pointer">✕</span></div>`;
-      });
-      html+=`<div class="ck" onclick="addProtExtra(${idx})" title="Weiteres Protokoll ergänzen, z.B. Dichtheitsprüfung"><span class="cki">＋</span>Protokoll</div>`;
-      html+=`</div>`;
-    }
     // AB-Statuszeile + Drop-Zone: bei jeder Bestellware verfuegbar (unabhaengig vom Status)
     if(p.quelle==='bestellt'){
       // Statuszeile nur sinnvoll, wenn bestelltAm gesetzt (sonst keine Frist berechenbar)
@@ -3070,7 +3066,6 @@ function passesDFilter(p){
   if(DFILTER==='lieferung')return p.quelle==='bestellt' && p.abBestaetigt && p.status!=='geliefert' && !istNichtBestellbar(p);
   if(DFILTER==='bauseits')return istNichtBestellbar(p);
   if(DFILTER==='zubehoer')return Array.isArray(p.zubehoer) && p.zubehoer.length>0;
-  if(DFILTER==='protokolle')return p.quelle==='bestellt' && istProtokollpflichtig(p) && !protokolleVollstaendig(p);
   return severity(p,CUR)===DFILTER;
 }
 async function toggleBereich(key){
@@ -3203,7 +3198,71 @@ async function setWartOverride(idx,val){
   if(wm&&wm.classList.contains('on'))renderWartungBody();
   toast('Wartungsrelevanz angepasst','ok');
 }
-// ── Protokoll-Nachweise (IBN / Einweisung / frei ergänzt) ────────────────
+// ── PROTOKOLLE (Projektkarte vorne): IBN/Einweisung je Gerät + freie Einträge ──
+// Freie Protokolle liegen PRO PROJEKT in SETTINGS.protokolle (cloud-synchron).
+function ensureProtMeta(){
+  if(!SETTINGS.protokolle||typeof SETTINGS.protokolle!=='object')SETTINGS.protokolle={};
+}
+// Offene Protokoll-Punkte eines Projekts (für den Button auf der Projektkarte):
+// nur BESTELLTE protokollpflichtige Geräte zählen + offene freie Protokolle.
+function protokollOffen(proj){
+  const pos=(proj.positionen||[]).filter(p=>p.quelle==='bestellt'&&istProtokollpflichtig(p)&&!protokolleVollstaendig(p)).length;
+  const frei=((SETTINGS.protokolle||{})[proj.name]||[]).filter(x=>!x.done).length;
+  return pos+frei;
+}
+function openProtokolleModal(){
+  if(!CUR)return;
+  renderProtokolleBody();
+  document.getElementById('protokolleModal').classList.add('on');
+}
+function closeProtokolleModal(){document.getElementById('protokolleModal').classList.remove('on');}
+function openProtokolleVonHome(id){openProject(id,null,'');openProtokolleModal();}
+function renderProtokolleBody(){
+  if(!CUR)return;
+  ensureProtMeta();
+  const body=document.getElementById('protokolleBody');
+  const items=(CUR.positionen||[]).map((p,idx)=>({p,idx})).filter(o=>istProtokollpflichtig(o.p));
+  const pill=(on,label,click)=>`<button onclick="${click}" style="flex:0 0 auto;padding:5px 10px;border-radius:14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;${on?'background:linear-gradient(135deg,#4a5d8a,#5a70a5);color:#fff;border:1px solid transparent':'background:rgba(255,255,255,.75);color:rgba(28,28,30,.6);border:1px solid rgba(0,0,0,.14)'}">${on?'✓ ':''}${label}</button>`;
+  let html=`<h3 style="margin-bottom:4px">📋 Protokolle · ${esc(CUR.name)}</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">Nachweise der Nachunternehmer (Kälte, Kaffeemaschinen, Miele, Wartungs-Gewerke): Inbetriebnahme- und Einweisungsprotokoll je Gerät – plus frei ergänzbare Protokolle.</div>`;
+  if(items.length===0){
+    html+=`<div style="padding:16px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">Keine protokollpflichtigen Positionen erkannt.</div>`;
+  }
+  html+=items.map(o=>{
+    const p=o.p;
+    const unbestellt=p.quelle!=='bestellt';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:.5px solid rgba(0,0,0,.06)">
+      <span style="flex:1;min-width:0;font-size:12px;color:#2d2926">${esc(p.pos)} · ${esc(p.bez)}${p.fabrikat?' <span style="color:rgba(28,28,30,.45)">('+esc(p.fabrikat)+')</span>':''}${unbestellt?' <span style="font-size:10px;color:rgba(28,28,30,.4);font-style:italic">noch nicht bestellt</span>':''}</span>
+      ${pill(!!p.protIbn,'⚡ IBN',`toggleProt(${o.idx},'ibn')`)}
+      ${pill(!!p.protEinw,'📝 Einweisung',`toggleProt(${o.idx},'einw')`)}
+      <button onclick="setProtOverride(${o.idx},'nein')" title="Braucht kein Protokoll – aus der Liste entfernen" style="flex:0 0 auto;background:rgba(139,34,34,.12);color:#8b2222;border:none;width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:11px">✕</button>
+    </div>`;
+  }).join('');
+  // Freie Protokolle (selbst geschrieben, erweiterbar)
+  const frei=(SETTINGS.protokolle[CUR.name]||[]);
+  if(frei.length){
+    html+=`<div style="margin-top:12px;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#6b5040">Weitere Protokolle</div>`;
+    html+=frei.map((x,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:.5px solid rgba(0,0,0,.06)">
+      <span style="flex:1;min-width:0;font-size:12px;color:#2d2926">📄 ${esc(x.name)}${x.user?' <span style="font-size:10px;color:rgba(28,28,30,.4)">'+esc(x.user)+(x.at?' · '+fmtD(x.at):'')+'</span>':''}</span>
+      ${pill(!!x.done,'liegt vor',`toggleProjProtokoll(${i})`)}
+      <button onclick="delProjProtokoll(${i})" title="Protokoll entfernen" style="flex:0 0 auto;background:rgba(139,34,34,.12);color:#8b2222;border:none;width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:11px">✕</button>
+    </div>`).join('');
+  }
+  // Position manuell aufnehmen (falls die Automatik ein Gerät nicht erkennt)
+  const kandidaten=(CUR.positionen||[]).map((p,idx)=>({p,idx})).filter(o=>!istProtokollpflichtig(o.p)&&!istNichtBestellbar(o.p));
+  if(kandidaten.length){
+    html+=`<div style="margin-top:10px"><select onchange="if(this.value!=='')setProtOverride(parseInt(this.value),'ja');this.value=''" style="padding:8px 10px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:rgba(255,255,255,.8);font-size:12px;font-family:inherit;max-width:100%">
+      <option value="">＋ Position manuell als protokollpflichtig aufnehmen …</option>
+      ${kandidaten.map(o=>`<option value="${o.idx}">${escA(o.p.pos)} · ${escA(o.p.bez)}</option>`).join('')}
+    </select></div>`;
+  }
+  // Leerfeld: zusätzliches Protokoll selbst schreiben (erweiterbar)
+  html+=`<div style="display:flex;gap:8px;margin-top:8px">
+    <input type="text" id="protAddName" placeholder="＋ Zusätzliches Protokoll eintippen, z.B. Dichtheitsprüfung …" onkeydown="if(event.key==='Enter')addProjProtokoll()" style="flex:1;padding:8px 10px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:rgba(255,255,255,.8);font-size:12px;font-family:inherit">
+    <button onclick="addProjProtokoll()" style="padding:8px 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#4a5d8a,#5a70a5);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">＋ Protokoll</button>
+  </div>`;
+  body.innerHTML=html;
+}
 async function toggleProt(idx,which){
   if(!requireLogin())return;
   const p=CUR.positionen[idx];
@@ -3213,38 +3272,51 @@ async function toggleProt(idx,which){
   logAction(p,lbl+(p[f]?' liegt vor':' zurückgesetzt'));
   if(p[f])recordCheck(p,'prot:'+which);
   touchProject(CUR);
-  await saveCur();renderDetail();
+  await saveCur();
+  renderProtokolleBody();
 }
-async function addProtExtra(idx){
+async function setProtOverride(idx,val){
   if(!requireLogin())return;
-  const name=(window.prompt('Name des Protokolls (z.B. Dichtheitsprüfung):')||'').trim();
-  if(!name)return;
   const p=CUR.positionen[idx];
-  if(!Array.isArray(p.protExtra))p.protExtra=[];
-  if(p.protExtra.some(x=>x.name.toLowerCase()===name.toLowerCase())){toast('Gibt es schon','err');return;}
-  p.protExtra.push({name,done:false});
-  logAction(p,'Protokoll ergänzt: '+name);
+  const prev=p.protOverride||'';
+  p.protOverride=val||'';
+  const lbl=v=>v==='ja'?'protokollpflichtig (manuell)':v==='nein'?'kein Protokoll (manuell)':'automatisch';
+  logAction(p,`Protokollpflicht: ${lbl(prev)} → ${lbl(val||'')}`);
   touchProject(CUR);
-  await saveCur();renderDetail();
+  await saveCur();
+  renderProtokolleBody();
 }
-async function toggleProtExtra(idx,i){
+async function addProjProtokoll(){
   if(!requireLogin())return;
-  const p=CUR.positionen[idx];
-  const x=(p.protExtra||[])[i];if(!x)return;
+  ensureProtMeta();
+  const inp=document.getElementById('protAddName');
+  const name=(inp&&inp.value||'').trim();
+  if(!name){toast('Bitte Protokoll-Namen eintippen','err');return;}
+  const list=SETTINGS.protokolle[CUR.name]||(SETTINGS.protokolle[CUR.name]=[]);
+  if(list.some(x=>x.name.toLowerCase()===name.toLowerCase())){toast('Gibt es schon','err');return;}
+  list.push({name,done:false,user:EDITOR||'',at:today()});
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderProtokolleBody();
+  toast('Protokoll "'+name+'" ergänzt','ok');
+}
+async function toggleProjProtokoll(i){
+  if(!requireLogin())return;
+  ensureProtMeta();
+  const x=(SETTINGS.protokolle[CUR.name]||[])[i];if(!x)return;
   x.done=!x.done;
-  logAction(p,x.name+(x.done?' liegt vor':' zurückgesetzt'));
-  touchProject(CUR);
-  await saveCur();renderDetail();
+  x.user=EDITOR||'';x.at=today();
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderProtokolleBody();
 }
-async function delProtExtra(idx,i){
+async function delProjProtokoll(i){
   if(!requireLogin())return;
-  const p=CUR.positionen[idx];
-  const x=(p.protExtra||[])[i];if(!x)return;
+  ensureProtMeta();
+  const list=SETTINGS.protokolle[CUR.name]||[];
+  const x=list[i];if(!x)return;
   if(!confirm('Protokoll "'+x.name+'" entfernen?'))return;
-  p.protExtra.splice(i,1);
-  logAction(p,'Protokoll entfernt: '+x.name);
-  touchProject(CUR);
-  await saveCur();renderDetail();
+  list.splice(i,1);
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderProtokolleBody();
 }
 async function updF(idx,k,v){
   const p=CUR.positionen[idx];
