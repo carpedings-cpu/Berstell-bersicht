@@ -1460,7 +1460,7 @@ function istBestellt(p){return p.quelle==='bestellt';}
 // Liste wird spaeter verfeinert. Lieferant wird aus dem Typ-Praefix abgeleitet.
 const ZUB_KATALOG={
   mischbatterie:[
-    'KWC Sensor Netz Einbau Seifenspender 12.696.071.000','KWC Sensor Batterie 12.696.061.000',
+    'KWC Sensor Netz 12.696.071.000','KWC Sensor Batterie 12.696.061.000',
     'KWC Geschirrbrause K24.42.64.000C71',
     'KWC Isla 10.371.023.000FL (35mm)','KWC Luna-E 10.441.013.000FL (35mm)',
     'KWC Standsäule 24.501.054.000 (42mm)','KWC Standsäule 24.501.066.000 (42mm)',
@@ -1484,6 +1484,29 @@ const ZUB_KATALOG={
   ]
 };
 const ZUB_LABEL={becken:'Becken',mischbatterie:'Mischbatterie',seifenspender:'Seifenspender',desinfektionsspender:'Desinfektionsspender',handtuchspender:'Handtuchspender',gn:'GN-Behälter',spuelkorb:'Spülkörbe',sonstiges:'Sonstiges'};
+// EK-Preise (netto) fuer Zubehoer. Erste passende Regel gewinnt – Reihenfolge wichtig
+// (Armag VOR Wagner Ewar, beide tragen 'WP165'; Seifenspender Einbau VOR Aufputz-Regeln).
+const ZUB_PREISE=[
+  {rx:/12\.?696\.?071/i,                ek:303.00},  // KWC Sensor Netz
+  {rx:/12\.?696\.?061/i,                ek:293.70},  // KWC Sensor Batterie
+  {rx:/isla/i,                          ek:137.58},  // KWC Isla
+  {rx:/luna/i,                          ek:171.74},  // KWC Luna-E
+  {rx:/armag|wandmischbatterie/i,       ek:178.20},  // Armag Wandmischbatterie WP165
+  {rx:/geschirrbrause|k24\.?42\.?64/i,  ek:410.00},  // KWC Geschirrbrause
+  {rx:/seifenspender einbau|538\.?409/i,ek:65.00},   // KWC Seifenspender Einbau
+  {rx:/standsäule|standsaeule|24\.?501\.?0/i, ek:350.00}, // KWC Standsäulen
+  {rx:/wagner|ewar/i,                   ek:152.60},  // Wagner Ewar Einbau-Handtuchspender
+  {rx:/(seifen|desinfektions)spender.*aufputz|aufputz.*(seifen|desinfektions)spender/i, ek:26.40},
+  {rx:/handtuchspender.*aufputz|aufputz.*handtuchspender/i, ek:32.00},
+  {rx:/7011\/100|gn 1\/1-100/i,         ek:17.00},   // GN 1/1-100
+  {rx:/7011\/150|gn 1\/1-150/i,         ek:27.75},   // GN 1/1-150
+  {rx:/7011\/200|gn 1\/1-200/i,         ek:32.50},   // GN 1/1-200
+];
+function zubPreis(typ){
+  const t=String(typ||'');
+  for(const r of ZUB_PREISE){if(r.rx.test(t))return r.ek;}
+  return 0;
+}
 // Becken → standardmaessig Mischbatterie-Vorschlag
 const ZUB_KAT_TO_KATALOG={becken:'mischbatterie',mischbatterie:'mischbatterie',seifenspender:'seifenspender',desinfektionsspender:'desinfektionsspender',handtuchspender:'handtuchspender',gn:'gn'};
 // Auto-Erkennung: welche Zubehoer-Kategorie passt zur Position?
@@ -1857,7 +1880,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-23 · v66';
+const APP_VERSION='2026-07-24 · v67';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4494,12 +4517,12 @@ function parseKatalogEintrag(kat,entry){
 }
 function exportKatalogExcel(){
   if(typeof XLSX==='undefined'){toast('Excel-Bibliothek nicht geladen','err');return;}
-  const aoa=[['Artikel','Hersteller','Typ','Artikelnummer','Maß / Anschluss']];
+  const aoa=[['Artikel','Hersteller','Typ','Artikelnummer','Maß / Anschluss','EK € netto']];
   Object.keys(ZUB_LABEL).filter(k=>k!=='becken').forEach(kat=>{
-    zubKatalogFor(kat).forEach(e=>{const r=parseKatalogEintrag(kat,e);aoa.push([r.artikel,r.hersteller,r.typ,r.artnr,r.mass]);});
+    zubKatalogFor(kat).forEach(e=>{const r=parseKatalogEintrag(kat,e);const ek=zubPreis(e);aoa.push([r.artikel,r.hersteller,r.typ,r.artnr,r.mass,ek||'']);});
   });
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:20},{wch:16},{wch:40},{wch:24},{wch:16}];
+  ws['!cols']=[{wch:20},{wch:16},{wch:40},{wch:24},{wch:16},{wch:11}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Zubehör-Katalog');
   XLSX.writeFile(wb,'KPC_Zubehoer_Katalog.xlsx');
@@ -4606,6 +4629,7 @@ function openZubehoerListe(){
         const katLbl=ZUB_LABEL[z.kat]||z.kat||'?';
         const stat=z.quelle==='bestellt'?'<span style="color:#0f6332;font-weight:700">✓ Bestellt</span>':z.quelle==='lager'?'<span style="color:#1a5f7a;font-weight:700">▣ Lager</span>':'<span style="color:#a01515;font-weight:700">○ offen</span>';
         const komm=z.kommNr?` · 🏷 ${esc(z.kommNr)}`:'';
+        const ek=zubPreis(z.typ);
         return `<tr>
           <td style="padding:7px 9px;font-weight:700;color:#2d2926;font-size:11.5px;white-space:nowrap;vertical-align:top">${esc(p.pos)}</td>
           <td style="padding:7px 9px;font-size:12px;color:#2d2926">
@@ -4613,14 +4637,16 @@ function openZubehoerListe(){
             <div style="font-size:10.5px;color:rgba(28,28,30,.6);margin-top:2px">${esc(katLbl)} · für ${esc(p.bez)}${komm}</div>
           </td>
           <td style="padding:7px 9px;font-size:12px;font-weight:700;color:#6b5040;text-align:center;white-space:nowrap;vertical-align:top">${esc(z.menge||1)} Stk</td>
+          <td style="padding:7px 9px;font-size:11.5px;font-weight:700;color:#2d2926;text-align:right;white-space:nowrap;vertical-align:top">${ek?fmtEur(ek):'–'}</td>
           <td style="padding:7px 9px;font-size:11px;text-align:right;white-space:nowrap;vertical-align:top">${stat}</td>
         </tr>`;
       }).join('');
       const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
+      const ekSum=g.items.reduce((s,it)=>s+zubPreis(it.z.typ)*(parseInt(it.z.menge)||1),0);
       return `<div style="margin-bottom:14px;border:.5px solid rgba(107,80,64,.25);border-radius:10px;overflow:hidden">
         <div style="padding:8px 12px;background:linear-gradient(135deg,#6b5040,#3d2d22);color:#fff;font-size:12.5px;font-weight:700;display:flex;justify-content:space-between;align-items:center">
           <span>🏭 ${esc(g.lief)}</span>
-          <span style="font-size:11px;background:rgba(255,255,255,.18);padding:2px 9px;border-radius:7px">${g.items.length} Pos · ${sum} Stk</span>
+          <span style="font-size:11px;background:rgba(255,255,255,.18);padding:2px 9px;border-radius:7px">${g.items.length} Pos · ${sum} Stk${ekSum?' · EK '+fmtEur(ekSum):''}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;background:#fff">
           ${rows}
