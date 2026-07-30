@@ -1880,7 +1880,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-24 · v67';
+const APP_VERSION='2026-07-28 · v68';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2985,6 +2985,15 @@ function renderDetail(){
         } else {
           html+=`<div class="ab-pend">⏳ Auftragsbestätigung ausstehend · bestellt am ${fmtD(p.bestelltAm)} (Frist ${frist} Tage)</div>`;
         }
+      }
+      // Lieferschein OPTIONAL bei gelieferten Positionen anhängen (Drag&Drop oder Datei-Auswahl).
+      // NUR Lieferschein – Auftragsbestätigung wird bewusst nicht als Datei angehängt.
+      if(p.status==='geliefert'){
+        const lsDrag=`id="LS${idx}" ondragenter="_enterDrop(event)" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})"`;
+        const lsBtn=p.lieferschein
+          ? `<button class="fbtn hasFile" ${lsDrag} onclick="openLs(${idx})" title="${escA(p.lieferschein.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📦</span> LS${p.lieferschein.datum?' '+fmtD(p.lieferschein.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delLs(${idx})" title="Lieferschein entfernen">✕</span></button>`
+          : `<button class="fbtn" ${lsDrag} onclick="pickLs(${idx})" title="PDF per Datei-Auswahl oder Drag&Drop – optional"><span class="fbtn-ic">📦</span> Lieferschein anhängen (optional)</button>`;
+        html+=`<div class="fbtn-row">${lsBtn}</div>`;
       }
     }
 
