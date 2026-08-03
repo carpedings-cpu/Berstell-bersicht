@@ -1880,7 +1880,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-28 · v68';
+const APP_VERSION='2026-07-30 · v69';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5497,7 +5497,15 @@ function renderPreise(){
     wrap.innerHTML=hasData?'<div class="empty">Keine Treffer.</div>':'<div class="empty">Noch keine Preisdaten.<br>Beim Hochladen eines Projekts werden EK/VK automatisch übernommen – oder lade oben gezielt eine EK/VK-Excel hoch.</div>';
     return;
   }
-  wrap.innerHTML=groupList.map((g,gi)=>{
+  // Mehrfachauswahl-Leiste: nur ausgewählte Lieferanten, die aktuell auch angezeigt werden
+  const selKeys=[...PR_SEL].filter(k=>groupList.some(g=>(normLief(g.lief)||'_')===k));
+  const selBar=selKeys.length?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;margin-bottom:10px;background:rgba(107,80,64,.08);border:.5px solid rgba(107,80,64,.25);border-radius:11px">
+    <span style="font-size:12px;font-weight:700;color:#6b5040">✓ ${selKeys.length} Lieferant${selKeys.length===1?'':'en'} ausgewählt</span>
+    <button onclick="printLieferantenPDFMulti()" style="padding:7px 13px;border-radius:9px;border:none;background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📄 PDF Sammel-Liste</button>
+    <button onclick="exportPreiseExcel()" style="padding:7px 13px;border-radius:9px;border:none;background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📊 Excel</button>
+    <button onclick="clearPrSel()" style="margin-left:auto;padding:7px 11px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:rgba(255,255,255,.7);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">✕ Auswahl aufheben</button>
+  </div>`:'';
+  wrap.innerHTML=selBar+groupList.map((g,gi)=>{
     const b=(g.items.find(it=>it.bindung)?{status:'warn',text:g.items.find(it=>it.bindung).bindung}:null);
     const liefKey=normLief(g.lief)||'_';
     const margeAvg=g.vkSum>0?((g.vkSum-g.ekSum)/g.vkSum*100):0;
@@ -5568,6 +5576,7 @@ function renderPreise(){
     const isOpen=PR_OPEN.has(liefKey);
     return `<div class="pr-group">
       <div class="pr-hd${isOpen?' open':''}" onclick="togglePr(this)" data-lk="${escA(liefKey)}">
+        <input type="checkbox"${PR_SEL.has(liefKey)?' checked':''} onclick="event.stopPropagation();togglePrSel('${escA(liefKey)}')" title="Für Sammel-Liste (PDF/Excel) auswählen" style="width:17px;height:17px;flex:0 0 auto">
         <span class="pr-tog">▶</span>
         <span class="pr-name">🏭 ${esc(g.lief)}</span>
         ${b?'<span class="pr-bind '+b.status+'">'+(b.status==='ok'?'✓ aktuell':b.status==='warn'?'⚠ Preisbindung':'⚠ abgelaufen')+'</span>':''}
@@ -5587,12 +5596,18 @@ function renderPreise(){
 }
 
 let PR_OPEN=new Set(); // welche Lieferanten-Gruppen aufgeklappt sind (bleibt über renderPreise erhalten)
+let PR_SEL=new Set();  // Mehrfachauswahl von Lieferanten für Sammel-PDF/-Excel
 function togglePr(el){
   el.classList.toggle('open');
   el.nextElementSibling.classList.toggle('open');
   const lk=el.dataset.lk;
   if(lk){ if(el.classList.contains('open'))PR_OPEN.add(lk); else PR_OPEN.delete(lk); }
 }
+function togglePrSel(lk){
+  if(PR_SEL.has(lk))PR_SEL.delete(lk); else PR_SEL.add(lk);
+  renderPreise();
+}
+function clearPrSel(){PR_SEL.clear();renderPreise();}
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
 // ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
 let _pzLief=null;
@@ -5640,9 +5655,8 @@ async function delZusatzGlobal(zIdx){
 // (Häkchen-Auswahl), jedes mit eigener Angebotsnummer.
 // Lieferanten-PDF: alle Positionen dieses Lieferanten (App-Projekte + app-fremde Zusatzpositionen),
 // EK sichtbar, KEIN VK, KEINE Marge. Eine Angebotsnummer pro Lieferant.
-function printLieferantenPDF(liefKey,liefName){
-  ensurePreisMeta();
-  const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// ── Lieferanten-PDF/Excel: gemeinsame Datensammlung ──────────────────────
+function collectLiefPrintItems(liefKey){
   const items=[];
   PROJECTS.forEach(proj=>(proj.positionen||[]).forEach(p=>{
     if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
@@ -5654,13 +5668,22 @@ function printLieferantenPDF(liefKey,liefName){
     items.push({pos:z.pos||'—',bez:z.bez,typ:'',proj:z.proj,menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
   });
   // Vom Druck ausgeschlossene Positionen weglassen (bleiben in der Liste erhalten)
-  const printItems=items.filter(it=>!isExcl(excludeKey(it)));
-  if(printItems.length===0){toast('Keine druckbaren Positionen (alle abgewählt)','err');return;}
+  return items.filter(it=>!isExcl(excludeKey(it)));
+}
+function liefNameForKey(k){
+  for(const proj of PROJECTS)for(const p of (proj.positionen||[])){
+    const n=p.lieferant||p.fabrikat;
+    if(n&&normLief(n)===k)return n;
+  }
+  for(const z of (SETTINGS.preisMeta.zusatz||[]))if(normLief(z.lief)===k)return z.lief;
+  return k;
+}
+// Projekt-Sektionen (eigene Angebots-Nr. + hervorgehobener Liefertermin je Projekt)
+function liefPdfSections(liefKey,printItems,e){
   const fd=d=>d?new Date(d).toLocaleDateString('de-DE'):'';
-  // Nach Projekt gruppieren – jede Sektion mit EIGENER Angebots-Nummer + Liefertermin
   const byProj={}; printItems.forEach(it=>{(byProj[it.proj]=byProj[it.proj]||[]).push(it);});
   const projNames=Object.keys(byProj).sort((a,b)=>String(a).localeCompare(String(b)));
-  const sections=projNames.map(pn=>{
+  return projNames.map(pn=>{
     const its=byProj[pn];
     const angNr=getAng(pn,liefKey);
     const appP=PROJECTS.find(p=>p.name===pn);
@@ -5685,30 +5708,88 @@ function printLieferantenPDF(liefKey,liefName){
       </table>
     </div>`;
   }).join('');
-  const stand=new Date().toLocaleString('de-DE');
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${e(liefName)}</title>
-    <style>
-      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:920px;margin:0 auto}
-      h1{font-size:22px;color:#6b5040;margin:0 0 2px} .head-sub{font-size:12px;color:#666;margin-bottom:18px}
-      .sec{margin-bottom:24px} .sec h2{font-size:15px;color:#3d2d22;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #c8a882}
-      .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px}
-      .meta b{color:#6b5040}
-      .termin{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-      .termin-lbl{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#8a5a1a}
-      .termin-val{font-size:15px;font-weight:800;color:#7a3f0a;background:#fbe9c8;border:1.5px solid #e0a94a;border-radius:8px;padding:3px 12px}
-      @media print{.termin-val{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-      table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
-      td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
-      @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid}}
-    </style></head><body>
-    <h1>🏭 ${e(liefName)}</h1>
-    <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}</div>
-    ${sections}
-    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
-    </body></html>`;
+}
+const LIEF_PDF_CSS=`
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:920px;margin:0 auto}
+  h1{font-size:22px;color:#6b5040;margin:0 0 2px} .head-sub{font-size:12px;color:#666;margin-bottom:18px}
+  .liefblock{margin-bottom:36px}
+  .sec{margin-bottom:24px} .sec h2{font-size:15px;color:#3d2d22;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #c8a882}
+  .meta{display:flex;gap:24px;flex-wrap:wrap;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px}
+  .meta b{color:#6b5040}
+  .termin{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .termin-lbl{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#8a5a1a}
+  .termin-val{font-size:15px;font-weight:800;color:#7a3f0a;background:#fbe9c8;border:1.5px solid #e0a94a;border-radius:8px;padding:3px 12px}
+  table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
+  td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
+  @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid} .termin-val{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
+function openLiefPrintWindow(title,inner){
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>${LIEF_PDF_CSS}</style></head><body>${inner}<script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
   const w=window.open('','_blank');
   if(!w){toast('Bitte Pop-Ups erlauben','err');return;}
   w.document.write(html);w.document.close();
+}
+function printLieferantenPDF(liefKey,liefName){
+  ensurePreisMeta();
+  const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const printItems=collectLiefPrintItems(liefKey);
+  if(printItems.length===0){toast('Keine druckbaren Positionen (alle abgewählt)','err');return;}
+  const stand=new Date().toLocaleString('de-DE');
+  openLiefPrintWindow(e(liefName),`<h1>🏭 ${e(liefName)}</h1>
+    <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}</div>
+    ${liefPdfSections(liefKey,printItems,e)}`);
+}
+// Sammel-PDF über die per Haken ausgewählten Lieferanten
+function printLieferantenPDFMulti(){
+  ensurePreisMeta();
+  if(PR_SEL.size===0){toast('Bitte erst Lieferanten auswählen (Haken im Kopf)','err',3000);return;}
+  const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const keys=[...PR_SEL].sort((a,b)=>liefNameForKey(a).localeCompare(liefNameForKey(b)));
+  let inner='',count=0;
+  keys.forEach(k=>{
+    const its=collectLiefPrintItems(k);
+    if(its.length===0)return;
+    count++;
+    inner+=`<div class="liefblock"><h1>🏭 ${e(liefNameForKey(k))}</h1>${liefPdfSections(k,its,e)}</div>`;
+  });
+  if(!count){toast('Keine druckbaren Positionen in der Auswahl','err');return;}
+  const stand=new Date().toLocaleString('de-DE');
+  openLiefPrintWindow('Preisliste Sammel-Liste',`<div class="head-sub" style="font-size:14px;font-weight:700;color:#3d2d22">Preisliste (Einkauf) · ${count} Lieferant(en) · Stand: ${e(stand)}</div>${inner}`);
+}
+// Excel-Export der Auswahl – gleiche Daten wie das PDF, aber editierbar
+function exportPreiseExcel(){
+  ensurePreisMeta();
+  if(typeof XLSX==='undefined'){toast('Excel-Bibliothek nicht geladen','err');return;}
+  if(PR_SEL.size===0){toast('Bitte erst Lieferanten auswählen (Haken im Kopf)','err',3000);return;}
+  const keys=[...PR_SEL].sort((a,b)=>liefNameForKey(a).localeCompare(liefNameForKey(b)));
+  const aoa=[['Lieferant','Projekt','Angebots-Nr','Liefertermin','Pos','Bezeichnung','Typ','Menge','EK / Stk','EK gesamt']];
+  let any=false;
+  keys.forEach(k=>{
+    const name=liefNameForKey(k);
+    const its=collectLiefPrintItems(k);
+    if(its.length===0)return;
+    any=true;
+    const byProj={}; its.forEach(it=>{(byProj[it.proj]=byProj[it.proj]||[]).push(it);});
+    let liefSum=0;
+    Object.keys(byProj).sort((a,b)=>String(a).localeCompare(String(b))).forEach(pn=>{
+      const appP=PROJECTS.find(p=>p.name===pn);
+      const termin=appP&&appP.liefertermin?appP.liefertermin:'';
+      const ang=getAng(pn,k);
+      byProj[pn].forEach(it=>{
+        const ges=(it.ek||0)*(it.menge||1);
+        liefSum+=ges;
+        aoa.push([name,pn,ang,termin,it.pos,it.bez,it.typ||'',it.menge,it.ek||'',ges||'']);
+      });
+    });
+    aoa.push(['','','','','','Summe '+name,'','','',liefSum]);
+    aoa.push([]);
+  });
+  if(!any){toast('Keine druckbaren Positionen in der Auswahl','err');return;}
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:18},{wch:26},{wch:16},{wch:12},{wch:10},{wch:38},{wch:24},{wch:7},{wch:10},{wch:11}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Preisliste');
+  XLSX.writeFile(wb,`Preisliste_Auswahl_${today()}.xlsx`);
+  toast('Excel-Preisliste heruntergeladen','ok');
 }
 
 
