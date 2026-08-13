@@ -1880,7 +1880,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-07-30 · v69';
+const APP_VERSION='2026-08-03 · v70';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4543,21 +4543,70 @@ function buildZubListe(proj,excludeKats){
     if(!Array.isArray(p.zubehoer))return;
     p.zubehoer.forEach((z,zi)=>{
       if(excludeKats && excludeKats.has(z.kat||''))return; // Kategorie ausgeblendet → ueberspringen
-      items.push({p,idx,z,zi});
+      items.push({p,idx,z,zi,projId:proj.id,projName:proj.name});
     });
   });
-  // Gruppieren nach Zubehoer-Lieferant (auto-erkannt wenn leer)
+  return {items,groups:zubGruppiere(items)};
+}
+function zubGruppiere(items){
   const groups={};
   items.forEach(it=>{
     const lief=it.z.lieferant||lieferantFromZubTyp(it.z.typ)||'(ohne Zuordnung)';
     if(!groups[lief])groups[lief]={lief,items:[]};
     groups[lief].items.push(it);
   });
-  return {items,groups:Object.values(groups).sort((a,b)=>{
+  return Object.values(groups).sort((a,b)=>{
     if(a.lief==='(ohne Zuordnung)')return 1;
     if(b.lief==='(ohne Zuordnung)')return -1;
     return a.lief.localeCompare(b.lief);
-  })};
+  });
+}
+// Filter-Zustand der Zubehoer-Liste (bleibt in der Sitzung erhalten)
+let ZUB_LISTE_ALL=false;      // false = nur aktuelles Projekt, true = alle Projekte
+let ZUB_LISTE_LIEF='';        // normLief-Key des Lieferanten-Filters, '' = alle
+let ZUB_LISTE_NUROFFEN=false; // true = nur offene (nicht bestellt/Lager)
+// Zentrale Quelle: liefert Items+Gruppen unter Beruecksichtigung ALLER Filter
+function zubListeQuelle(){
+  const excludeKats=zubExcludeSet();
+  const projs=ZUB_LISTE_ALL?PROJECTS:(CUR?[CUR]:[]);
+  let items=[];
+  projs.forEach(pr=>{items=items.concat(buildZubListe(pr,excludeKats).items);});
+  // Lieferanten-Optionen VOR dem Lieferanten-Filter ermitteln (fuers Dropdown)
+  const liefOpts={};
+  items.forEach(it=>{
+    const name=it.z.lieferant||lieferantFromZubTyp(it.z.typ)||'(ohne Zuordnung)';
+    liefOpts[normLief(name)||'(ohne)']=name;
+  });
+  if(ZUB_LISTE_NUROFFEN)items=items.filter(it=>!it.z.quelle);
+  if(ZUB_LISTE_LIEF)items=items.filter(it=>{
+    const name=it.z.lieferant||lieferantFromZubTyp(it.z.typ)||'(ohne Zuordnung)';
+    return (normLief(name)||'(ohne)')===ZUB_LISTE_LIEF;
+  });
+  return {items,groups:zubGruppiere(items),liefOpts};
+}
+function setZubScope(all){ZUB_LISTE_ALL=!!all;ZUB_LISTE_KATS=null;openZubehoerListe();}
+function setZubLief(k){ZUB_LISTE_LIEF=k||'';openZubehoerListe();}
+function setZubOffen(v){ZUB_LISTE_NUROFFEN=!!v;openZubehoerListe();}
+// Bestellt direkt aus der Zubehoer-Liste togglen (auch projektuebergreifend)
+async function zubListeToggleBestellt(projId,posIdx,zi){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.id===projId); if(!proj)return;
+  const p=proj.positionen[posIdx]; const z=p&&Array.isArray(p.zubehoer)?p.zubehoer[zi]:null; if(!z)return;
+  if(z.quelle==='lager')return; // Lagerware wird hier nicht umgestellt
+  if(z.quelle==='bestellt'){
+    z.quelle='';delete z.meta;
+    logAction(p,`Zubehör "${z.typ||z.kat}" → Bestellt zurückgesetzt (Zubehör-Liste)`);
+  } else {
+    z.quelle='bestellt';
+    z.meta={at:new Date().toISOString(),user:EDITOR||'?'};
+    if(!z.lieferant)z.lieferant=lieferantFromZubTyp(z.typ)||'';
+    logAction(p,`Zubehör "${z.typ||z.kat}" → Bestellt (Zubehör-Liste)`);
+  }
+  touchProject(proj);
+  await dbPut('projects',proj);markChanged();
+  if(CUR&&CUR.id===proj.id)renderDetail();
+  updateGlobalCounters();
+  openZubehoerListe();
 }
 // Alle in diesem Projekt tatsaechlich vorhandenen Zubehoer-Kategorien
 function zubKategorienInProjekt(proj){
@@ -4568,10 +4617,20 @@ function zubKategorienInProjekt(proj){
   }));
   return m; // {mischbatterie:5, seifenspender:8, ...}
 }
+// Kategorien im aktuellen Sichtbereich (aktuelles Projekt oder alle Projekte)
+function zubKatsAktuell(){
+  if(!ZUB_LISTE_ALL)return CUR?zubKategorienInProjekt(CUR):{};
+  const m={};
+  PROJECTS.forEach(pr=>{
+    const k=zubKategorienInProjekt(pr);
+    Object.keys(k).forEach(x=>{m[x]=(m[x]||0)+k[x];});
+  });
+  return m;
+}
 function zubExcludeSet(){
   // Kategorien, die NICHT aktiv (also ausgeblendet) sind
-  if(!ZUB_LISTE_KATS||!CUR)return new Set();
-  const kats=zubKategorienInProjekt(CUR);
+  if(!ZUB_LISTE_KATS)return new Set();
+  const kats=zubKatsAktuell();
   const exc=new Set();
   Object.keys(kats).forEach(k=>{if(!ZUB_LISTE_KATS.has(k))exc.add(k);});
   return exc;
@@ -4583,19 +4642,33 @@ function toggleZubKat(k){
 }
 function zubKatAlleSetzen(an){
   if(!CUR)return;
-  ZUB_LISTE_KATS=new Set(an?Object.keys(zubKategorienInProjekt(CUR)):[]);
+  ZUB_LISTE_KATS=new Set(an?Object.keys(zubKatsAktuell()):[]);
   openZubehoerListe();
 }
 function openZubehoerListe(){
   if(!CUR)return;
   // Beim ersten Oeffnen: alle Kategorien als 'aktiv' markieren
-  const katsAll=zubKategorienInProjekt(CUR);
+  const katsAll=zubKatsAktuell();
   if(ZUB_LISTE_KATS===null)ZUB_LISTE_KATS=new Set(Object.keys(katsAll));
-  // Defensive: Kategorien die nicht mehr im Projekt sind, aus dem Set entfernen
+  // Defensive: Kategorien die nicht mehr im Sichtbereich sind, aus dem Set entfernen
   [...ZUB_LISTE_KATS].forEach(k=>{if(!(k in katsAll))ZUB_LISTE_KATS.delete(k);});
-  const excludeKats=zubExcludeSet();
-  const {items,groups}=buildZubListe(CUR,excludeKats);
+  const {items,groups,liefOpts}=zubListeQuelle();
   const body=document.getElementById('zubListBody');
+  // Filter-Leiste: Projektbereich, Lieferant, Offen/Alle
+  const scopeBtn=(on,label,click)=>`<button onclick="${click}" style="padding:6px 12px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;${on?'background:linear-gradient(135deg,#6b5040,#3d2d22);color:#fff;border:1px solid transparent':'background:rgba(255,255,255,.7);color:rgba(107,80,64,.75);border:.5px solid rgba(107,80,64,.3)'}">${label}</button>`;
+  const liefSelect=`<select onchange="setZubLief(this.value)" style="padding:6px 10px;border-radius:9px;border:.5px solid rgba(107,80,64,.3);background:rgba(255,255,255,.85);font-size:11.5px;font-family:inherit;max-width:220px">
+      <option value="">🏭 Alle Lieferanten</option>
+      ${Object.entries(liefOpts).sort((a,b)=>a[1].localeCompare(b[1])).map(([k,n])=>`<option value="${escA(k)}"${ZUB_LISTE_LIEF===k?' selected':''}>${escA(n)}</option>`).join('')}
+    </select>`;
+  const filterBar=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 4px">
+    ${scopeBtn(!ZUB_LISTE_ALL,'Dieses Projekt','setZubScope(false)')}
+    ${scopeBtn(ZUB_LISTE_ALL,'Alle Projekte','setZubScope(true)')}
+    <span style="width:8px"></span>
+    ${liefSelect}
+    <span style="width:8px"></span>
+    ${scopeBtn(!ZUB_LISTE_NUROFFEN,'Alle','setZubOffen(false)')}
+    ${scopeBtn(ZUB_LISTE_NUROFFEN,'Nur offene','setZubOffen(true)')}
+  </div>`;
   // Filter-Chips fuer Kategorien (immer da, wenn Zubehoer ueberhaupt vorhanden)
   const katChips=Object.entries(katsAll).length===0?'':`
     <div style="margin:8px 0 12px;padding:10px 12px;background:rgba(200,168,130,.12);border-radius:10px;border:.5px solid rgba(107,80,64,.2)">
@@ -4612,38 +4685,45 @@ function openZubehoerListe(){
         }).join('')}
       </div>
     </div>`;
+  const scopeName=ZUB_LISTE_ALL?'Alle Projekte':CUR.name;
   if(items.length===0){
     body.innerHTML=`<h3 style="margin-bottom:6px">🔧 Zubehör-Liste</h3>
-      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(CUR.name)}</div>
+      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:4px">${esc(scopeName)}</div>
+      ${filterBar}
       ${katChips}
       <div style="padding:30px;text-align:center;color:rgba(28,28,30,.5);font-size:13px">
         ${Object.keys(katsAll).length===0
           ? 'Noch kein Zubehör angelegt.<br>Beim Anlegen einer Position mit Becken/Spender wird automatisch ein Vorschlag erzeugt – ansonsten 🔧 Zubehör-Block in jeder Position öffnen und ergänzen.'
-          : 'Keine Kategorie ausgewählt – nichts anzuzeigen.<br>Oben mindestens eine Kategorie aktivieren.'}
+          : 'Nichts anzuzeigen – Filter oben anpassen (Kategorie, Lieferant, Offen/Alle).'}
       </div>`;
   } else {
     const offen=items.filter(it=>!it.z.quelle).length;
     const bestellt=items.filter(it=>it.z.quelle==='bestellt').length;
     const lager=items.filter(it=>it.z.quelle==='lager').length;
     const head=`<h3 style="margin-bottom:6px">🔧 Zubehör-Liste</h3>
-      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:6px">${esc(CUR.name)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)
+      <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:4px">${esc(scopeName)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)
         ${offen?` · <span style="color:#a01515;font-weight:700">${offen} offen</span>`:''}
         ${bestellt?` · <span style="color:#0f6332;font-weight:700">${bestellt} bestellt</span>`:''}
         ${lager?` · <span style="color:#1a5f7a;font-weight:700">${lager} Lager</span>`:''}
       </div>
+      ${filterBar}
       ${katChips}`;
     const grpHtml=groups.map(g=>{
       const rows=g.items.map(it=>{
         const z=it.z, p=it.p;
         const katLbl=ZUB_LABEL[z.kat]||z.kat||'?';
-        const stat=z.quelle==='bestellt'?'<span style="color:#0f6332;font-weight:700">✓ Bestellt</span>':z.quelle==='lager'?'<span style="color:#1a5f7a;font-weight:700">▣ Lager</span>':'<span style="color:#a01515;font-weight:700">○ offen</span>';
+        // Bestellt-Markierung direkt in der Liste klickbar (Lager bleibt reine Anzeige)
+        const stat=z.quelle==='lager'
+          ?'<span style="color:#1a5f7a;font-weight:700">▣ Lager</span>'
+          :`<button onclick="zubListeToggleBestellt('${escA(it.projId)}',${it.idx},${it.zi})" title="${z.quelle==='bestellt'?'Als bestellt markiert – Klick zum Zurücksetzen':'Als bestellt markieren'}" style="padding:5px 10px;border-radius:14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;${z.quelle==='bestellt'?'background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;border:1px solid transparent':'background:rgba(255,255,255,.85);color:#a01515;border:1px solid rgba(160,21,21,.35)'}">${z.quelle==='bestellt'?'✓ Bestellt':'○ offen'}</button>`;
         const komm=z.kommNr?` · 🏷 ${esc(z.kommNr)}`:'';
         const ek=zubPreis(z.typ);
+        const projInfo=ZUB_LISTE_ALL?` · <span style="font-weight:700;color:#6b5040">${esc(it.projName)}</span>`:'';
         return `<tr>
           <td style="padding:7px 9px;font-weight:700;color:#2d2926;font-size:11.5px;white-space:nowrap;vertical-align:top">${esc(p.pos)}</td>
           <td style="padding:7px 9px;font-size:12px;color:#2d2926">
             <div style="font-weight:600">${esc(z.typ||'(Typ fehlt)')}</div>
-            <div style="font-size:10.5px;color:rgba(28,28,30,.6);margin-top:2px">${esc(katLbl)} · für ${esc(p.bez)}${komm}</div>
+            <div style="font-size:10.5px;color:rgba(28,28,30,.6);margin-top:2px">${esc(katLbl)} · für ${esc(p.bez)}${komm}${projInfo}</div>
           </td>
           <td style="padding:7px 9px;font-size:12px;font-weight:700;color:#6b5040;text-align:center;white-space:nowrap;vertical-align:top">${esc(z.menge||1)} Stk</td>
           <td style="padding:7px 9px;font-size:11.5px;font-weight:700;color:#2d2926;text-align:right;white-space:nowrap;vertical-align:top">${ek?fmtEur(ek):'–'}</td>
@@ -4921,12 +5001,13 @@ function updateWartungBtn(){
   b.innerHTML=off?`🛠 Wartung <span style="background:rgba(217,32,32,.15);color:#a01515;font-weight:800;font-size:10.5px;padding:1px 6px;border-radius:8px">${off}</span>`:'🛠 Wartung';
 }
 function zubListeAsText(proj){
-  // Respektiert die Kategorie-Auswahl (Chips im Modal) – Kopieren gibt nur die aktiven Kategorien aus.
-  const {items,groups}=buildZubListe(proj,zubExcludeSet());
-  if(items.length===0)return `🔧 Zubehör-Liste · ${proj.name}\n\n(keine Einträge in der Auswahl)`;
+  // Respektiert ALLE Filter des Modals (Projektbereich, Lieferant, Offen/Alle, Kategorien).
+  const scopeName=ZUB_LISTE_ALL?'Alle Projekte':proj.name;
+  const {items,groups}=zubListeQuelle();
+  if(items.length===0)return `🔧 Zubehör-Liste · ${scopeName}\n\n(keine Einträge in der Auswahl)`;
   const aktiveKats=ZUB_LISTE_KATS?[...ZUB_LISTE_KATS].map(k=>ZUB_LABEL[k]||k).join(', '):'alle';
-  const L=[`🔧 ZUBEHÖR-LISTE · ${proj.name}`,
-    `Stand: ${new Date().toLocaleString('de-DE')} · ${items.length} Einträge bei ${groups.length} Lieferant(en)`,
+  const L=[`🔧 ZUBEHÖR-LISTE · ${scopeName}`,
+    `Stand: ${new Date().toLocaleString('de-DE')} · ${items.length} Einträge bei ${groups.length} Lieferant(en)${ZUB_LISTE_NUROFFEN?' · nur offene':''}`,
     `Kategorien: ${aktiveKats}`,''];
   groups.forEach(g=>{
     const sum=g.items.reduce((s,it)=>s+(parseInt(it.z.menge)||1),0);
@@ -4937,7 +5018,7 @@ function zubListeAsText(proj){
       const stat=z.quelle==='bestellt'?'✓ bestellt':z.quelle==='lager'?'▣ Lager':'○ offen';
       const komm=z.kommNr?`  [Komm ${z.kommNr}]`:'';
       L.push(`  Pos ${p.pos}  ${z.menge||1}× ${z.typ||'(Typ fehlt)'}  ·  ${ZUB_LABEL[z.kat]||z.kat}  ·  ${stat}${komm}`);
-      L.push(`    └ für: ${p.bez}`);
+      L.push(`    └ für: ${p.bez}${ZUB_LISTE_ALL?'  ·  Projekt: '+it.projName:''}`);
     });
     L.push('');
   });
@@ -4955,8 +5036,9 @@ async function copyZubListe(){
 }
 function printZubListe(){
   if(!CUR)return;
-  // Respektiert die Kategorie-Auswahl (Chips) – Druck enthaelt nur die aktiven Kategorien.
-  const {items,groups}=buildZubListe(CUR,zubExcludeSet());
+  // Respektiert ALLE Filter des Modals (Projektbereich, Lieferant, Offen/Alle, Kategorien).
+  const scopeName=ZUB_LISTE_ALL?'Alle Projekte':CUR.name;
+  const {items,groups}=zubListeQuelle();
   const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const stand=new Date().toLocaleString('de-DE');
   const aktiveKats=ZUB_LISTE_KATS?[...ZUB_LISTE_KATS].map(k=>ZUB_LABEL[k]||k).join(', '):'alle';
@@ -4969,7 +5051,7 @@ function printZubListe(){
         <td style="padding:6px 8px;border-bottom:1px solid #ddd;font-weight:600;white-space:nowrap">${e(p.pos)}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #ddd">
           <strong>${e(z.typ||'(Typ fehlt)')}</strong><br>
-          <small style="color:#666">${e(ZUB_LABEL[z.kat]||z.kat)} · für ${e(p.bez)}${z.kommNr?' · Komm '+e(z.kommNr):''}</small>
+          <small style="color:#666">${e(ZUB_LABEL[z.kat]||z.kat)} · für ${e(p.bez)}${z.kommNr?' · Komm '+e(z.kommNr):''}${ZUB_LISTE_ALL?' · <b>'+e(it.projName)+'</b>':''}</small>
         </td>
         <td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;white-space:nowrap">${e(z.menge||1)} Stk</td>
         <td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;font-size:11px">${e(stat)}</td>
@@ -4978,15 +5060,15 @@ function printZubListe(){
     return `<h2 style="font-size:14px;background:#3d2d22;color:#fff;padding:8px 12px;margin:18px 0 0;border-radius:6px 6px 0 0">🏭 ${e(g.lief)}  <span style="float:right;font-size:11px;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:5px">${g.items.length} Pos · ${sum} Stk</span></h2>
     <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd">${rows}</table>`;
   }).join('');
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zubehör · ${e(CUR.name)}</title>
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zubehör · ${e(scopeName)}</title>
     <style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2d2926;padding:24px;max-width:900px;margin:0 auto}
       h1{font-size:20px;color:#6b5040;margin:0 0 4px}
       .stand{font-size:11px;color:#888;margin-bottom:18px}
       @media print{body{padding:10mm} h2{page-break-after:avoid}}
     </style></head><body>
-    <h1>🔧 Zubehör-Liste · ${e(CUR.name)}</h1>
-    <div class="stand">Stand: ${e(stand)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)<br>Kategorien: ${e(aktiveKats)}</div>
+    <h1>🔧 Zubehör-Liste · ${e(scopeName)}</h1>
+    <div class="stand">Stand: ${e(stand)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)${ZUB_LISTE_NUROFFEN?' · nur offene':''}<br>Kategorien: ${e(aktiveKats)}</div>
     ${tablesHtml||'<p style="padding:30px;text-align:center;color:#888">Keine Einträge in der gewählten Kategorie-Auswahl.</p>'}
     <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
     </body></html>`;
