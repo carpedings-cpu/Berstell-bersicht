@@ -959,6 +959,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button onclick="zipExpAll()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">⬇️ Backup herunterladen</button>
       <button onclick="trigImportBackup()" style="background:linear-gradient(135deg,#b8860b,#c8961b)">⬆️ Backup wiederherstellen</button>
     </div>
+    <div style="border-top:.5px solid rgba(0,0,0,.08);margin-top:14px;padding-top:12px">
+      <div class="hint" style="margin-top:0;margin-bottom:8px"><strong>Automatische Schnappschüsse:</strong> Beim ersten Öffnen des Tages wird der komplette Stand zusätzlich in der Cloud gesichert (30 Tage aufbewahrt). Wiederherstellen setzt alle Projekte auf den gewählten Tag zurück – Projekte, die erst danach angelegt wurden, bleiben erhalten.</div>
+      <button onclick="showBackups()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🕓 Schnappschüsse anzeigen</button>
+      <div id="backupList" style="margin-top:10px"></div>
+    </div>
   </div>
   <div class="setbox">
     <h3>ℹ️ Version</h3>
@@ -1671,6 +1676,7 @@ async function init(){
       try{const pd2=await dbGet('settings','preiseData');if(pd2&&pd2.v)PREISE_DATA=pd2.v;}catch(e){}
       sbSubscribe();
       sbReady=true;
+      ensureDailyBackup(); // taegliche Datensicherung (nicht blockierend)
     } else {
       sbStatus('off','Cloud nicht verfuegbar – nur lokal');
     }
@@ -1880,7 +1886,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-03 · v70';
+const APP_VERSION='2026-08-13 · v71';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3880,6 +3886,57 @@ async function zipExp(){
   a.download=`Backup_${CUR.name.replace(/\s+/g,'_')}_${today()}.zip`;a.click();
   hideLoader();toast('Backup heruntergeladen','ok');
 }
+// ── Automatische taegliche Datensicherung (Supabase kpc_backups, 30 Tage) ──
+async function ensureDailyBackup(){
+  if(!sb)return;
+  try{
+    const day=today();
+    const {data:ex}=await sb.from('kpc_backups').select('day').eq('day',day).limit(1);
+    if(ex&&ex.length)return; // heute schon gesichert
+    const {error}=await sb.from('kpc_backups').insert({day,data:{projects:PROJECTS,settings:SETTINGS}});
+    if(error)throw error;
+    // Aufbewahrung: 30 Tage
+    const cutoff=new Date(Date.now()-30*864e5).toISOString().slice(0,10);
+    await sb.from('kpc_backups').delete().lt('day',cutoff);
+    console.log('Tages-Backup',day,'angelegt');
+  }catch(e){console.warn('Backup',e);}
+}
+async function showBackups(){
+  const box=document.getElementById('backupList');
+  if(!box)return;
+  if(!sb){box.innerHTML='<div class="hint">Cloud nicht verbunden – keine Schnappschüsse verfügbar.</div>';return;}
+  box.innerHTML='<div class="hint">Lade …</div>';
+  try{
+    const {data,error}=await sb.from('kpc_backups').select('id,day,created_at').order('day',{ascending:false}).limit(31);
+    if(error)throw error;
+    if(!data||!data.length){box.innerHTML='<div class="hint">Noch keine Schnappschüsse vorhanden – der erste entsteht beim nächsten Öffnen der App.</div>';return;}
+    box.innerHTML=data.map(b=>{
+      const t=b.created_at?new Date(b.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:.5px solid rgba(0,0,0,.06)">
+        <span style="flex:1;font-size:12.5px;font-weight:600">💾 ${fmtD(b.day)}${t?' <span style="font-weight:400;color:rgba(28,28,30,.5);font-size:11px">('+t+' Uhr)</span>':''}</span>
+        <button onclick="restoreBackup(${b.id},'${escA(b.day)}')" style="padding:6px 12px;font-size:11.5px;background:linear-gradient(135deg,#8b2222,#a83232)">Wiederherstellen</button>
+      </div>`;
+    }).join('');
+  }catch(e){console.warn(e);box.innerHTML='<div class="hint">Fehler beim Laden der Schnappschüsse.</div>';}
+}
+async function restoreBackup(id,day){
+  if(!requireLogin())return;
+  if(!confirm(`Stand vom ${fmtD(day)} wiederherstellen?\n\nAlle Projekte, die im Schnappschuss enthalten sind, werden auf diesen Stand zurückgesetzt.\nProjekte, die erst NACH dem Schnappschuss angelegt wurden, bleiben unverändert.\n\nDer heutige Schnappschuss bleibt erhalten, du kannst also auch wieder zurück.`))return;
+  try{
+    const {data,error}=await sb.from('kpc_backups').select('data').eq('id',id).single();
+    if(error||!data||!data.data)throw error||new Error('Backup leer');
+    const snap=data.data;
+    for(const pr of (snap.projects||[])){
+      await dbPut('projects',pr); // schreibt lokal und pusht in die Cloud
+    }
+    if(snap.settings){
+      SETTINGS={...snap.settings};
+      await dbPut('settings',{k:'main',...SETTINGS});
+    }
+    toast('Stand vom '+fmtD(day)+' wiederhergestellt – App lädt neu','ok',2500);
+    setTimeout(()=>location.reload(),1200);
+  }catch(e){console.warn(e);toast('Wiederherstellen fehlgeschlagen','err');}
+}
 async function zipExpAll(){
   showLoader('Gesamt-Backup …');
   const zip=new JSZip();
@@ -4063,6 +4120,10 @@ async function confirmLs(){
   const prevStatus=p.status;
   const lsId='ls_'+CUR.id+'_'+idx+'_'+Date.now();
   await dbPut('lieferscheine',{id:lsId,blob:buffer,type:file.type,name:file.name});
+  // Zusaetzlich in die Cloud, damit die Datei auf jedem Geraet abrufbar ist
+  lsCloudUpload(lsId,buffer,file.type).then(ok=>{
+    if(ok)dbPut('lieferscheine',{id:lsId,blob:buffer,type:file.type,name:file.name,synced:true}).catch(()=>{});
+  });
   p.lieferschein={id:lsId,name:file.name,type:file.type,datum,lieferscheinNr:lsNr};
   // Lieferschein da = geliefert; impliziert bestellt → quelle setzen, damit Karte konsistent ist
   if(!istNichtBestellbar(p))p.quelle='bestellt';
@@ -4083,10 +4144,35 @@ async function confirmLs(){
   renderDetail();updateGlobalCounters();
   toast('Lieferung erfasst'+(kommNr?' · Komm-Nr '+kommNr:''),'ok');
 }
+// Datei in den Cloud-Speicher hochladen (Bucket 'lieferscheine'); true bei Erfolg
+async function lsCloudUpload(id,buffer,type){
+  if(!sb)return false;
+  try{
+    const {error}=await sb.storage.from('lieferscheine').upload(id,new Blob([buffer],{type:type||'application/pdf'}),{contentType:type||'application/pdf',upsert:true});
+    if(error)throw error;
+    return true;
+  }catch(e){console.warn('LS-Upload',e);return false;}
+}
 async function openLs(idx){
   const p=CUR.positionen[idx];if(!p.lieferschein)return;
-  const rec=await dbGet('lieferscheine',p.lieferschein.id);
-  if(!rec){toast('Lieferschein nicht gefunden','err');return;}
+  let rec=await dbGet('lieferscheine',p.lieferschein.id);
+  if(!rec&&sb){
+    // Nicht auf diesem Geraet vorhanden → aus der Cloud holen und lokal ablegen
+    try{
+      const {data,error}=await sb.storage.from('lieferscheine').download(p.lieferschein.id);
+      if(!error&&data){
+        const buf=await data.arrayBuffer();
+        rec={id:p.lieferschein.id,blob:buf,type:p.lieferschein.type,name:p.lieferschein.name,synced:true};
+        await dbPut('lieferscheine',rec);
+      }
+    }catch(e){console.warn('LS-Download',e);}
+  } else if(rec&&!rec.synced&&sb){
+    // Aeltere, nur lokal gespeicherte Datei still nachtraeglich hochladen
+    lsCloudUpload(rec.id,rec.blob,rec.type).then(ok=>{
+      if(ok)dbPut('lieferscheine',{...rec,synced:true}).catch(()=>{});
+    });
+  }
+  if(!rec){toast('Lieferschein nicht gefunden – Datei liegt nicht auf diesem Gerät und die Cloud ist nicht erreichbar','err',3500);return;}
   const blob=new Blob([rec.blob],{type:rec.type||'application/pdf'});
   showDocViewer(blob,p.lieferschein.name||'Lieferschein',rec.type||p.lieferschein.type);
 }
@@ -4121,6 +4207,7 @@ async function delLs(idx){
   const p=CUR.positionen[idx];
   if(p.lieferschein){
     const fn=p.lieferschein.name;
+    if(sb){try{sb.storage.from('lieferscheine').remove([p.lieferschein.id]);}catch(e){}}
     await dbDel('lieferscheine',p.lieferschein.id);p.lieferschein=null;
     logAction(p,`Lieferschein entfernt: ${fn}`);
   }
@@ -6073,8 +6160,11 @@ async function saveAddPos(){
 }
 async function delPos(idx){
   const p=CUR.positionen[idx];
-  // Lieferschein- und AB-Blob mitlöschen falls vorhanden
-  if(p.lieferschein&&p.lieferschein.id){try{await dbDel('lieferscheine',p.lieferschein.id);}catch(e){}}
+  // Lieferschein- und AB-Blob mitlöschen falls vorhanden (lokal + Cloud)
+  if(p.lieferschein&&p.lieferschein.id){
+    try{await dbDel('lieferscheine',p.lieferschein.id);}catch(e){}
+    if(sb){try{sb.storage.from('lieferscheine').remove([p.lieferschein.id]);}catch(e){}}
+  }
   if(p.abDoc&&p.abDoc.id){try{await dbDel('auftragsbestaetigungen',p.abDoc.id);}catch(e){}}
   // EK/VK in der Preise-Ansicht ebenfalls entfernen (alle Lieferanten-Varianten dieser Pos)
   const beforeP=PREISE_DATA.length;
