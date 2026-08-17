@@ -1209,17 +1209,85 @@ function sbStatus(state,txt){
   el.textContent={ok:'☁ Cloud',sync:'⟳ Sync',err:'⚠ offline',off:'◌ lokal'}[state]||state;
   if(txt)el.title=txt;
 }
-// Projekt-Push: in Cloud upserten
-async function sbPushProject(proj){
+// ── Konfliktschutz: Versionszaehler (rev) + Zusammenfuehren statt Ueberschreiben ──
+function rowToProj(row){
+  return {id:row.id,name:row.name,liefertermin:row.liefertermin||'',
+    positionen:row.positionen||[],collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
+    demo:!!row.demo,created:row.created||new Date().toISOString(),
+    rev:row.rev||0,lastEdit:row.last_edit||undefined};
+}
+function projToRow(proj,rev){
+  return {name:proj.name,liefertermin:proj.liefertermin||null,
+    positionen:proj.positionen||[],collapsed_bereiche:proj.collapsedBereiche||[],
+    demo:!!proj.demo,created:proj.created||new Date().toISOString(),
+    rev,last_edit:proj.lastEdit||null};
+}
+// Juengster Bearbeitungszeitpunkt einer Position (Audit-Eintraege + Checkbox-Metadaten)
+function posZeit(p){
+  let t=0;
+  ((p&&p.audit)||[]).forEach(a=>{const x=Date.parse(a&&a.at)||0;if(x>t)t=x;});
+  const cm=(p&&p.checkMeta)||{};
+  Object.keys(cm).forEach(k=>{const x=Date.parse(cm[k]&&cm[k].at)||0;if(x>t)t=x;});
+  return t;
+}
+// Zwei Staende desselben Projekts zusammenfuehren: pro Position gewinnt die juenger
+// bearbeitete Fassung; Positionen, die nur auf einer Seite existieren, bleiben erhalten.
+function mergeProjekt(mine,theirs){
+  const mT=Date.parse(mine.lastEdit&&mine.lastEdit.at)||0;
+  const tT=Date.parse(theirs.lastEdit&&theirs.lastEdit.at)||0;
+  const out={...(mT>=tT?mine:theirs)};
+  const rest=new Map();
+  (theirs.positionen||[]).forEach(p=>rest.set(String(p.pos),p));
+  const merged=[];
+  (mine.positionen||[]).forEach(mp=>{
+    const tp=rest.get(String(mp.pos));
+    if(tp===undefined){merged.push(mp);return;}
+    merged.push(posZeit(mp)>=posZeit(tp)?mp:tp);
+    rest.delete(String(mp.pos));
+  });
+  rest.forEach(tp=>merged.push(tp));
+  out.positionen=merged;
+  return out;
+}
+// Projekt-Push: bedingtes Update nur wenn die Cloud noch auf unserem Basis-Stand (rev)
+// ist. Wenn nicht, hat ein anderer Rechner zwischenzeitlich gespeichert → dessen Stand
+// holen, zusammenfuehren, erneut versuchen. Pro Projekt serialisiert (kein Selbst-Rennen).
+const _pushChain={};
+function sbPushProject(proj){
+  if(!sb)return Promise.resolve();
+  _pushChain[proj.id]=(_pushChain[proj.id]||Promise.resolve()).then(()=>_sbPushProjectNow(proj)).catch(()=>{});
+  return _pushChain[proj.id];
+}
+async function _sbPushProjectNow(proj){
   if(!sb)return;
   try{
     sbEchoIds.add('proj:'+proj.id);
-    const {error}=await sb.from('kpc_projects').upsert({
-      id:proj.id, name:proj.name, liefertermin:proj.liefertermin||null,
-      positionen:proj.positionen||[], collapsed_bereiche:proj.collapsedBereiche||[],
-      demo:!!proj.demo, created:proj.created||new Date().toISOString()
-    });
-    if(error)throw error;
+    let versuch=0;
+    while(true){
+      const base=proj.rev||0;
+      const row=projToRow(proj,base+1);
+      const {data,error}=await sb.from('kpc_projects').update(row).eq('id',proj.id).eq('rev',base).select('id');
+      if(error)throw error;
+      if(data&&data.length){proj.rev=base+1;await dbPutLocal('projects',proj);break;}
+      // Kein Treffer: Zeile neu? → Insert. Sonst: Konflikt.
+      const {data:cur,error:e2}=await sb.from('kpc_projects').select('*').eq('id',proj.id).maybeSingle();
+      if(e2)throw e2;
+      if(!cur){
+        const {error:e3}=await sb.from('kpc_projects').insert({id:proj.id,...row});
+        if(e3)throw e3;
+        proj.rev=base+1;await dbPutLocal('projects',proj);break;
+      }
+      if(++versuch>3)throw new Error('Sync-Konflikt nicht auflösbar – bitte App neu laden');
+      const merged=mergeProjekt(proj,rowToProj(cur));
+      merged.rev=cur.rev||0; // Cloud-Stand ist die neue Basis
+      Object.assign(proj,merged); // in-place, damit CUR/PROJECTS-Referenzen gueltig bleiben
+      await dbPutLocal('projects',proj);
+      if(!isEditingInput()){
+        if(CUR&&CUR.id===proj.id)renderDetail();
+        renderHome();
+      }
+      toast('Änderungen von anderem Rechner zusammengeführt','ok');
+    }
     sbStatus('ok');
   }catch(e){console.warn('Cloud-Push Projekt:',e);sbStatus('err',e.message||'');}
   finally{setTimeout(()=>sbEchoIds.delete('proj:'+proj.id),3000);}
@@ -1265,11 +1333,7 @@ async function sbPullAll(){
       sb.from('kpc_settings').select('*')
     ]);
     if(pr.error||se.error)throw pr.error||se.error;
-    const cloudProjects=(pr.data||[]).map(row=>({
-      id:row.id, name:row.name, liefertermin:row.liefertermin||'',
-      positionen:row.positionen||[], collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
-      demo:!!row.demo, created:row.created||new Date().toISOString()
-    }));
+    const cloudProjects=(pr.data||[]).map(rowToProj);
     if(cloudProjects.length===0 && PROJECTS.length>0){
       // Cloud leer, lokal hat was → Initial-Upload
       sbStatus('sync','Lade lokale Daten hoch …');
@@ -1307,12 +1371,12 @@ function sbSubscribe(){
       if(payload.eventType==='DELETE'){
         await dbDelLocal('projects',id); PROJECTS=PROJECTS.filter(p=>p.id!==id);
       }else{
-        const row=payload.new;
-        const p={id:row.id,name:row.name,liefertermin:row.liefertermin||'',positionen:row.positionen||[],
-          collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
-          demo:!!row.demo,created:row.created||new Date().toISOString()};
+        const p=rowToProj(payload.new);
+        const i=PROJECTS.findIndex(x=>x.id===p.id);
+        // Veraltetes Event (unsere Version ist bereits neuer) → ignorieren
+        if(i>=0 && (PROJECTS[i].rev||0)>(p.rev||0))return;
         await dbPutLocal('projects',p);
-        const i=PROJECTS.findIndex(x=>x.id===p.id); if(i>=0)PROJECTS[i]=p; else PROJECTS.push(p);
+        if(i>=0)PROJECTS[i]=p; else PROJECTS.push(p);
         if(CUR&&CUR.id===p.id){
           // Bei aktiv editierten Karten kein Re-Render, sonst springt das Tipp-Feld weg
           if(!isEditingInput()){CUR=p;renderDetail();}
@@ -1886,7 +1950,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-13 · v71';
+const APP_VERSION='2026-08-17 · v72';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
