@@ -729,6 +729,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <input type="date" id="dTermin" onchange="updProjTermin()">
     </div>
   </div>
+  <div id="dTermine"></div>
   <div id="dLastEdit" class="dlast"></div>
   <div class="cockpit" id="dCockpit"></div>
   <div class="chipbar" id="dChips"></div>
@@ -1122,6 +1123,27 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Weitere Termine pro Projekt (frei benennbar, z.B. Montage Dunstabzugshauben) -->
+<div class="modal" id="terminModal" onclick="if(event.target===this)closeTerminModal()">
+  <div class="modal-box" style="max-width:400px;position:relative">
+    <button class="modal-x" onclick="closeTerminModal()" title="Schließen">✕</button>
+    <h3 style="margin-bottom:4px" id="tmTitle">＋ Termin hinzufügen</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:12px">Frei benennbarer Zusatz-Termin für dieses Projekt.</div>
+    <div class="frm-row"><div class="frm-fld" style="flex:1 1 100%">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Bezeichnung</label>
+      <input id="tmName" type="text" placeholder="z.B. Montage Dunstabzugshauben, Beginn Kältetechnik" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
+    </div></div>
+    <div class="frm-row" style="margin-top:10px"><div class="frm-fld" style="flex:0 0 170px">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Datum</label>
+      <input id="tmDatum" type="date" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
+    </div></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeTerminModal()">Abbrechen</button>
+      <button class="mok" onclick="saveTermin()">Speichern</button>
+    </div>
+  </div>
+</div>
+
 <!-- Protokolle (Nachweise Nachunternehmer) pro Projekt -->
 <div class="modal" id="protokolleModal" onclick="if(event.target===this)closeProtokolleModal()">
   <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
@@ -1227,12 +1249,14 @@ function sbStatus(state,txt){
 function rowToProj(row){
   return {id:row.id,name:row.name,liefertermin:row.liefertermin||'',
     positionen:row.positionen||[],collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
+    termine:Array.isArray(row.termine)?row.termine:[],
     demo:!!row.demo,created:row.created||new Date().toISOString(),
     rev:row.rev||0,lastEdit:row.last_edit||undefined};
 }
 function projToRow(proj,rev){
   return {name:proj.name,liefertermin:proj.liefertermin||null,
     positionen:proj.positionen||[],collapsed_bereiche:proj.collapsedBereiche||[],
+    termine:Array.isArray(proj.termine)?proj.termine:[],
     demo:!!proj.demo,created:proj.created||new Date().toISOString(),
     rev,last_edit:proj.lastEdit||null};
 }
@@ -1964,7 +1988,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v79';
+const APP_VERSION='2026-08-19 · v80';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2498,6 +2522,8 @@ document.addEventListener('keydown',e=>{
   if(wm&&wm.classList.contains('on')){closeWartungModal();e.preventDefault();return;}
   const prm=document.getElementById('protokolleModal');
   if(prm&&prm.classList.contains('on')){closeProtokolleModal();e.preventDefault();return;}
+  const tm=document.getElementById('terminModal');
+  if(tm&&tm.classList.contains('on')){closeTerminModal();e.preventDefault();return;}
   const pzm=document.getElementById('preisZusatzModal');
   if(pzm&&pzm.classList.contains('on')){closePreisZusatz();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
@@ -2741,6 +2767,7 @@ function openProject(id,scrollToPos,filter){
   SEL.clear();SEL_MODE=false;
   document.getElementById('dTitle').textContent=CUR.name;
   document.getElementById('dTermin').value=CUR.liefertermin||'';
+  renderTermine();
   showView('vDetail');
   // Direkt mit gesetztem Filter oeffnen (z.B. von der Startseiten-Warnung 'AB fehlt' / 'Abruf nötig')
   if(filter!==undefined)DFILTER=filter;
@@ -2785,6 +2812,63 @@ function jumpToProjPos(projNameOrId,pos){
   openProject(proj.id,pos);
 }
 
+// ── Weitere Termine pro Projekt (frei benennbar, beliebig viele) ─────────
+function renderTermine(){
+  const box=document.getElementById('dTermine');
+  if(!box||!CUR)return;
+  const liste=(CUR.termine||[]).slice().sort((a,b)=>String(a.datum||'').localeCompare(String(b.datum||'')));
+  const chips=liste.map(t=>{
+    const i=(CUR.termine||[]).indexOf(t);
+    const d=t.datum?daysBtw(today(),t.datum):null;
+    const farbe=d===null?'background:rgba(255,255,255,.7);color:rgba(28,28,30,.7);border:.5px solid rgba(0,0,0,.12)'
+      :d<0?'background:rgba(217,32,32,.12);color:#a01515;border:.5px solid rgba(217,32,32,.3)'
+      :d<=14?'background:rgba(196,119,0,.13);color:#7d4d00;border:.5px solid rgba(196,119,0,.3)'
+      :'background:rgba(255,255,255,.7);color:rgba(28,28,30,.75);border:.5px solid rgba(0,0,0,.12)';
+    const hint=d===null?'':d<0?' · '+Math.abs(d)+' Tage vorbei':d===0?' · HEUTE':d<=14?' · in '+d+' Tagen':'';
+    return `<button onclick="openTerminModal(${i})" title="Termin bearbeiten – klicken" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;${farbe}">📅 ${esc(t.name)}${t.datum?' · '+fmtD(t.datum):''}${hint}<span onclick="event.stopPropagation();delTermin(${i})" title="Termin entfernen" style="opacity:.6;margin-left:2px">✕</span></button>`;
+  }).join('');
+  box.innerHTML=`<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    ${liste.length?`<span style="font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#6b5040">Termine:</span>`:''}
+    ${chips}
+    <button onclick="openTerminModal()" title="Weiteren Termin ergänzen, z.B. Montage Dunstabzugshauben" style="padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.6);color:rgba(107,80,64,.8);border:.5px dashed rgba(107,80,64,.4)">＋ Termin</button>
+  </div>`;
+}
+let _terminEditIdx=null;
+function openTerminModal(idx){
+  if(!requireLogin())return;
+  _terminEditIdx=(idx==null?null:idx);
+  const t=_terminEditIdx!=null?(CUR.termine||[])[_terminEditIdx]:null;
+  document.getElementById('tmTitle').textContent=t?'✏️ Termin bearbeiten':'＋ Termin hinzufügen';
+  document.getElementById('tmName').value=t?t.name||'':'';
+  document.getElementById('tmDatum').value=t?t.datum||'':'';
+  document.getElementById('terminModal').classList.add('on');
+  setTimeout(()=>document.getElementById(t?'tmDatum':'tmName').focus(),120);
+}
+function closeTerminModal(){document.getElementById('terminModal').classList.remove('on');_terminEditIdx=null;}
+async function saveTermin(){
+  if(!requireLogin())return;
+  const name=document.getElementById('tmName').value.trim();
+  if(!name){toast('Bitte Bezeichnung eingeben','err');return;}
+  const datum=document.getElementById('tmDatum').value;
+  if(!Array.isArray(CUR.termine))CUR.termine=[];
+  if(_terminEditIdx!=null&&CUR.termine[_terminEditIdx])Object.assign(CUR.termine[_terminEditIdx],{name,datum});
+  else CUR.termine.push({name,datum});
+  touchProject(CUR);
+  await saveCur();
+  closeTerminModal();
+  renderDetail();
+  toast('Termin gespeichert','ok');
+}
+async function delTermin(i){
+  if(!requireLogin())return;
+  const t=(CUR.termine||[])[i];if(!t)return;
+  if(!confirm('Termin "'+t.name+'" entfernen?'))return;
+  CUR.termine.splice(i,1);
+  touchProject(CUR);
+  await saveCur();
+  renderDetail();
+  toast('Termin entfernt','ok');
+}
 async function updProjTermin(){
   const old=CUR.liefertermin;
   const neu=document.getElementById('dTermin').value;
