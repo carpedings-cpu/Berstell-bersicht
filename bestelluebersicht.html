@@ -699,6 +699,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <button class="actbtn" onclick="syncAllProjectPrices()" style="background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;border-color:transparent;padding:8px 13px;border-radius:11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:none">🔄 Aus Projekten übernehmen</button>
     <button class="actbtn" onclick="trigPreiseExcel()" style="background:rgba(107,80,64,.92);color:#fff;border-color:transparent">📥 EK/VK Excel hochladen</button>
+    <button class="actbtn" onclick="openPreisZusatz('')" title="Zusatzposition erfassen – Lieferant und Projekt frei wählbar, jederzeit" style="background:linear-gradient(135deg,#b8860b,#c8961b);color:#fff;border:none">＋ Position ergänzen</button>
     <div class="sw" style="flex:1;min-width:160px">
       <span class="si">⌕</span>
       <input type="text" id="prSrch" placeholder="Filter: Lieferant, Bezeichnung, Projekt…" oninput="renderPreise()">
@@ -1059,10 +1060,16 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   <div class="modal-box" style="max-width:440px;position:relative">
     <button class="modal-x" onclick="closePreisZusatz()" title="Schließen">✕</button>
     <h3 style="margin-bottom:4px" id="pzTitle">＋ Position hinzufügen</h3>
-    <div style="font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:12px">Lieferant: <strong id="pzLief"></strong> · nur für die Preisliste (kein Einfluss auf die Bestellübersicht)</div>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:12px">Nur für die Preisliste – kein Einfluss auf die Bestellübersicht.</div>
     <div class="frm-row"><div class="frm-fld" style="flex:1 1 100%">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Lieferant (frei eingeben, Vorschläge beim Tippen)</label>
+      <input id="pzLiefInp" type="text" list="pzLiefList" placeholder="Lieferantenname eintippen" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
+      <datalist id="pzLiefList"></datalist>
+    </div></div>
+    <div class="frm-row" style="margin-top:10px"><div class="frm-fld" style="flex:1 1 100%">
       <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Projekt (frei eingeben – auch app-fremde)</label>
-      <input id="pzProj" type="text" placeholder="Projektname eintippen" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
+      <input id="pzProj" type="text" list="pzProjList" placeholder="Projektname eintippen" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
+      <datalist id="pzProjList"></datalist>
     </div></div>
     <div class="frm-row" style="margin-top:10px">
       <div class="frm-fld" style="flex:1 1 100px"><label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Pos.-Nr.</label>
@@ -1956,7 +1963,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v73';
+const APP_VERSION='2026-08-19 · v74';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5849,12 +5856,25 @@ function togglePrSel(lk){
 function clearPrSel(){PR_SEL.clear();renderPreise();}
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
 // ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
-let _pzLief=null,_pzEditIdx=null;
+let _pzEditIdx=null;
+// Vorschlagslisten fuer Lieferant + Projekt (alles Bekannte aus App und Zusatzliste)
+function pzFillListen(){
+  const liefs=new Set(),projs=new Set();
+  PROJECTS.forEach(pr=>{
+    projs.add(pr.name);
+    (pr.positionen||[]).forEach(p=>{const n=p.lieferant||p.fabrikat;if(n)liefs.add(n);});
+  });
+  (((SETTINGS.preisMeta||{}).zusatz)||[]).forEach(z=>{if(z.lief)liefs.add(z.lief);if(z.proj)projs.add(z.proj);});
+  (PREISE_DATA||[]).forEach(e=>{if(e.lief)liefs.add(e.lief);});
+  document.getElementById('pzLiefList').innerHTML=[...liefs].sort((a,b)=>a.localeCompare(b)).map(n=>`<option value="${escA(n)}">`).join('');
+  document.getElementById('pzProjList').innerHTML=[...projs].sort((a,b)=>a.localeCompare(b)).map(n=>`<option value="${escA(n)}">`).join('');
+}
 function openPreisZusatz(liefName,defaultProj){
   if(!requireLogin())return;
-  _pzLief=liefName;_pzEditIdx=null;
+  _pzEditIdx=null;
+  pzFillListen();
   document.getElementById('pzTitle').textContent='＋ Position hinzufügen';
-  document.getElementById('pzLief').textContent=liefName;
+  document.getElementById('pzLiefInp').value=liefName||'';
   document.getElementById('pzProj').value=defaultProj||'';
   document.getElementById('pzPos').value='';
   document.getElementById('pzMenge').value='1';
@@ -5864,16 +5884,17 @@ function openPreisZusatz(liefName,defaultProj){
   document.getElementById('pzSaveNext').style.display='';
   document.getElementById('pzSave').textContent='Übernehmen & schließen';
   document.getElementById('preisZusatzModal').classList.add('on');
-  setTimeout(()=>document.getElementById('pzProj').focus(),120);
+  setTimeout(()=>document.getElementById(liefName?'pzProj':'pzLiefInp').focus(),120);
 }
 // Bestehende Zusatzposition zum Bearbeiten öffnen (Klick auf die Zeile)
 function editPreisZusatz(zIdx){
   if(!requireLogin())return;
   ensurePreisMeta();
   const z=SETTINGS.preisMeta.zusatz[zIdx]; if(!z)return;
-  _pzLief=z.lief;_pzEditIdx=zIdx;
+  _pzEditIdx=zIdx;
+  pzFillListen();
   document.getElementById('pzTitle').textContent='✏️ Position bearbeiten';
-  document.getElementById('pzLief').textContent=z.lief||'';
+  document.getElementById('pzLiefInp').value=z.lief||'';
   document.getElementById('pzProj').value=z.proj||'';
   document.getElementById('pzPos').value=z.pos||'';
   document.getElementById('pzMenge').value=z.menge||1;
@@ -5885,9 +5906,11 @@ function editPreisZusatz(zIdx){
   document.getElementById('preisZusatzModal').classList.add('on');
   setTimeout(()=>document.getElementById('pzBez').focus(),120);
 }
-function closePreisZusatz(){document.getElementById('preisZusatzModal').classList.remove('on');_pzLief=null;_pzEditIdx=null;}
+function closePreisZusatz(){document.getElementById('preisZusatzModal').classList.remove('on');_pzEditIdx=null;}
 async function savePreisZusatz(weitere){
   if(!requireLogin())return;
+  const lief=document.getElementById('pzLiefInp').value.trim();
+  if(!lief){toast('Bitte Lieferanten eingeben','err');return;}
   const projName=document.getElementById('pzProj').value.trim();
   if(!projName){toast('Bitte Projektnamen eingeben','err');return;}
   const bez=document.getElementById('pzBez').value.trim();
@@ -5899,14 +5922,14 @@ async function savePreisZusatz(weitere){
   const vk=parseEur(document.getElementById('pzVk').value);
   ensurePreisMeta();
   if(_pzEditIdx!=null && SETTINGS.preisMeta.zusatz[_pzEditIdx]){
-    // Bearbeiten: Eintrag in place aktualisieren (Lieferant bleibt)
-    Object.assign(SETTINGS.preisMeta.zusatz[_pzEditIdx],{proj:projName,pos,bez,menge,ek,vk});
+    // Bearbeiten: Eintrag in place aktualisieren (auch Lieferant aenderbar)
+    Object.assign(SETTINGS.preisMeta.zusatz[_pzEditIdx],{lief,proj:projName,pos,bez,menge,ek,vk});
     try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
     closePreisZusatz();renderPreise();
     toast('Position aktualisiert','ok');
     return;
   }
-  SETTINGS.preisMeta.zusatz.push({lief:_pzLief,proj:projName,pos,bez,menge,ek,vk});
+  SETTINGS.preisMeta.zusatz.push({lief,proj:projName,pos,bez,menge,ek,vk});
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   renderPreise();
   if(weitere){
