@@ -1964,7 +1964,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v77';
+const APP_VERSION='2026-08-19 · v78';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5414,14 +5414,35 @@ function trigPreiseExcel(){
     try{
       const parsed=parsePreiseExcel(await f.arrayBuffer(),f.name);
       if(parsed.length===0){hideLoader();toast('Keine EK/VK-Spalten erkannt. Bitte Spaltennamen prüfen.','err',4500);fi.onchange=null;fi.value='';return;}
-      // Mit vorhandenen mergen (nach Projekt+Pos eindeutig)
+      // Ist der Projektname (aus dem Dateinamen) ein App-Projekt? Dann die Preise DIREKT
+      // auf die Projekt-Positionen schreiben (Zuordnung über Pos.-Nr.) – nur so erscheinen
+      // sie in der Preisliste, denn App-Projekte zeigen ihre eigenen Positionen.
+      const appProj=PROJECTS.find(p=>p.name===parsed[0].proj);
+      let hit=0,miss=0;
+      if(appProj){
+        parsed.forEach(np=>{
+          const pp=(appProj.positionen||[]).find(p=>String(p.pos).trim()===String(np.pos).trim());
+          if(pp){
+            if(np.ek)pp.ek=np.ek;
+            if(np.vk)pp.vk=np.vk;
+            hit++;
+          } else miss++;
+        });
+        if(hit){
+          touchProject(appProj);
+          await dbPut('projects',appProj);
+        }
+      }
+      // Zusaetzlich im Preisspeicher mergen (nach Projekt+Pos+Lieferant eindeutig) –
+      // fuer app-fremde Projekte ist das die Anzeigequelle
       parsed.forEach(np=>{
         const i=PREISE_DATA.findIndex(e=>e.proj===np.proj && e.pos===np.pos && e.lief===np.lief);
         if(i>=0)PREISE_DATA[i]=np; else PREISE_DATA.push(np);
       });
       await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
       hideLoader();
-      toast(parsed.length+' Positionen aus "'+f.name+'" geladen','ok',3500);
+      if(appProj)toast(hit+' Preise in Projekt "'+appProj.name+'" übernommen'+(miss?' · '+miss+' Pos.-Nr. nicht im Projekt gefunden':''),miss?'err':'ok',5000);
+      else toast(parsed.length+' Positionen aus "'+f.name+'" geladen','ok',3500);
       renderPreise();
     }catch(e){hideLoader();console.error(e);toast('Import fehlgeschlagen: '+e.message,'err',4500);}
     fi.onchange=null;fi.value='';
@@ -5429,13 +5450,13 @@ function trigPreiseExcel(){
   fi.click();
 }
 
-// Parser für EK/VK-Excel – erkennt Spalten automatisch
+// Parser für EK/VK-Excel – erkennt Spalten automatisch.
+// Durchsucht ALLE Blätter (bevorzugt 'Kalkulation') und akzeptiert viele
+// Überschriften-Varianten (EK, EK €, EK netto, Einkaufspreis, VK, Verkaufspreis, …).
 function parsePreiseExcel(ab,fname){
   const wb=XLSX.read(ab,{type:'array'});
-  const sn=wb.SheetNames.includes('Kalkulation')?'Kalkulation':wb.SheetNames[0];
-  const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});
-  // Anmerkungs-Sheet suchen
-  let anmSheet=wb.SheetNames.find(s=>/angebot|gültig|preis|lieferant/i.test(s));
+  // Anmerkungs-Sheet suchen (Preisbindungen je Lieferant)
+  let anmSheet=wb.SheetNames.find(s=>/angebot|gültig|preis.*info|lieferant/i.test(s));
   const bindungen={};
   if(anmSheet){
     const ar=XLSX.utils.sheet_to_json(wb.Sheets[anmSheet],{header:1,defval:null});
@@ -5446,30 +5467,8 @@ function parsePreiseExcel(ab,fname){
       if(lief && txt && !/lieferant|firma/i.test(lief))bindungen[lief]=txt;
     });
   }
-  // Header-Zeile finden (mit EK/VK)
-  let headerRow=-1, ekCol=-1, vkCol=-1, posCol=0, bezCol=-1, fabCol=-1, typCol=-1, mengeCol=-1, einhCol=-1;
-  for(let i=0;i<Math.min(rows.length,15);i++){
-    const r=rows[i];if(!r)continue;
-    r.forEach((c,j)=>{
-      if(c==null)return;
-      const h=String(c).toLowerCase().trim();
-      if(/^ek$|einkauf|ek.netto|ek.preis|einstand/.test(h)&&ekCol<0)ekCol=j;
-      if(/^vk$|verkauf|vk.netto|vk.preis|angebot.*preis|listenpreis/.test(h)&&vkCol<0)vkCol=j;
-      if(/bezeichnung|artikel|benennung/.test(h)&&bezCol<0)bezCol=j;
-      if(/fabrikat|hersteller|marke/.test(h)&&fabCol<0)fabCol=j;
-      if(/^typ$|modell|type|art.*nr/.test(h)&&typCol<0)typCol=j;
-      if(/menge|anzahl|stk|stück/.test(h)&&mengeCol<0)mengeCol=j;
-      if(/einheit|einh\.|^me$/.test(h)&&einhCol<0)einhCol=j;
-    });
-    if(ekCol>=0||vkCol>=0){headerRow=i;break;}
-  }
-  if(ekCol<0&&vkCol<0)return []; // keine Preisspalten
-  // Default-Spalten wenn nicht gefunden
-  if(bezCol<0)bezCol=3; if(fabCol<0)fabCol=5; if(typCol<0)typCol=6;
-  if(mengeCol<0)mengeCol=1; if(einhCol<0)einhCol=2;
   // Projektname aus Dateiname ableiten
   const projName=fname.replace(/\.(xlsx|xlsm|xls)$/i,'').replace(/^Auftragsliste[_\s]*/i,'').replace(/[_]/g,' ').trim();
-  const out=[];
   const num=v=>{
     if(v==null)return 0;
     if(typeof v==='number'&&isFinite(v))return v;
@@ -5477,26 +5476,58 @@ function parsePreiseExcel(ab,fname){
     if(s.indexOf(',')>=0) s = s.indexOf('.')>=0 ? s.replace(/\./g,'').replace(',','.') : s.replace(',','.');
     const n=parseFloat(s); return isNaN(n)?0:n;
   };
-  for(let i=headerRow+1;i<rows.length;i++){
-    const r=rows[i];if(!r)continue;
-    const pos=r[posCol]!=null?String(r[posCol]).trim():'';
-    const bez=r[bezCol]!=null?String(r[bezCol]).trim():'';
-    if(!bez)continue;
-    const ek=num(r[ekCol]), vk=num(r[vkCol]);
-    if(ek===0&&vk===0)continue; // Zeile ohne Preis überspringen
-    const fab=r[fabCol]!=null?String(r[fabCol]).trim():'';
-    const lief=fab||'(ohne Lieferant)';
-    out.push({
-      proj:projName, pos, bez,
-      typ:r[typCol]!=null?String(r[typCol]).trim():'',
-      lief,
-      menge:num(r[mengeCol])||1,
-      ek, vk,
-      termin:'', anm:'',
-      bindung:bindungen[fab]||bindungen[lief]||''
-    });
+  // Ein Blatt parsen; [] wenn keine EK/VK-Spalten gefunden
+  const parseSheet=sheet=>{
+    const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:null});
+    let headerRow=-1, ekCol=-1, vkCol=-1, posCol=0, bezCol=-1, fabCol=-1, typCol=-1, mengeCol=-1, einhCol=-1;
+    for(let i=0;i<Math.min(rows.length,40);i++){
+      const r=rows[i];if(!r)continue;
+      r.forEach((c,j)=>{
+        if(c==null)return;
+        const h=String(c).toLowerCase().replace(/\s+/g,' ').trim();
+        if(ekCol<0 && (/(^|[^a-zäöü])ek([^a-zäöü]|$)/.test(h)||/einkauf|einstand/.test(h)))ekCol=j;
+        if(vkCol<0 && (/(^|[^a-zäöü])vk([^a-zäöü]|$)/.test(h)||/verkauf|angebot.*preis|listenpreis/.test(h)))vkCol=j;
+        if(/bezeichnung|artikel|benennung/.test(h)&&bezCol<0)bezCol=j;
+        if(/fabrikat|hersteller|marke/.test(h)&&fabCol<0)fabCol=j;
+        if(/^typ$|modell|type|art.*nr/.test(h)&&typCol<0)typCol=j;
+        if(/menge|anzahl|stk|stück/.test(h)&&mengeCol<0)mengeCol=j;
+        if(/einheit|einh\.|^me$/.test(h)&&einhCol<0)einhCol=j;
+        if(/^pos/.test(h))posCol=j;
+      });
+      if(ekCol>=0||vkCol>=0){headerRow=i;break;}
+    }
+    if(ekCol<0&&vkCol<0)return [];
+    if(bezCol<0)bezCol=3; if(fabCol<0)fabCol=5; if(typCol<0)typCol=6;
+    if(mengeCol<0)mengeCol=1; if(einhCol<0)einhCol=2;
+    const out=[];
+    for(let i=headerRow+1;i<rows.length;i++){
+      const r=rows[i];if(!r)continue;
+      const pos=r[posCol]!=null?String(r[posCol]).trim():'';
+      const bez=r[bezCol]!=null?String(r[bezCol]).trim():'';
+      if(!bez)continue;
+      const ek=num(r[ekCol]), vk=num(r[vkCol]);
+      if(ek===0&&vk===0)continue; // Zeile ohne Preis überspringen
+      const fab=r[fabCol]!=null?String(r[fabCol]).trim():'';
+      const lief=fab||'(ohne Lieferant)';
+      out.push({
+        proj:projName, pos, bez,
+        typ:r[typCol]!=null?String(r[typCol]).trim():'',
+        lief,
+        menge:num(r[mengeCol])||1,
+        ek, vk,
+        termin:'', anm:'',
+        bindung:bindungen[fab]||bindungen[lief]||''
+      });
+    }
+    return out;
+  };
+  // Blaetter der Reihe nach probieren: 'Kalkulation' zuerst, dann alle anderen
+  const order=[...wb.SheetNames].sort((a,b)=>(a==='Kalkulation'?-1:0)-(b==='Kalkulation'?-1:0));
+  for(const sn of order){
+    const out=parseSheet(wb.Sheets[sn]);
+    if(out.length)return out;
   }
-  return out;
+  return [];
 }
 
 function fmtEur(n){return n.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
