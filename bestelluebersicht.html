@@ -1964,7 +1964,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v76';
+const APP_VERSION='2026-08-19 · v77';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5769,7 +5769,7 @@ function renderPreise(){
         return `<tr class="pr-zusatz pr-clickable${exclCls}" onclick="editPreisZusatz(${it._zIdx})" title="Zusatzposition bearbeiten – klicken">
           ${printCell}
           <td><span class="pr-pos" style="background:rgba(184,134,11,.15);color:#8a6a10">${esc(it.pos)}</span></td>
-          <td><div class="pr-bez">${esc(it.bez)} <span style="font-size:9.5px;font-weight:700;color:#8a6a10;background:rgba(184,134,11,.12);padding:1px 6px;border-radius:6px">ZUSATZ</span></div></td>
+          <td><div class="pr-bez">${esc(it.bez)}</div></td>
           <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
           <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
           <td class="pr-ek">${it.ek?fmtEur(it.ek):'–'}</td>
@@ -6028,7 +6028,7 @@ function liefPdfSections(liefKey,printItems,e){
     const ekSum=its.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
     const rows=its.map(it=>`<tr>
       <td>${e(it.pos)}</td>
-      <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}${it.zusatz?' <span style="font-size:9px;background:#eee;padding:1px 5px;border-radius:4px">Zusatz</span>':''}</td>
+      <td><strong>${e(it.bez)}</strong>${it.typ?'<br><small style="color:#666">'+e(it.typ)+'</small>':''}</td>
       <td style="text-align:center">${e(it.menge)}</td>
       <td style="text-align:right">${it.ek?fmtEur(it.ek):'–'}</td>
       <td style="text-align:right">${it.ek?fmtEur(it.ek*it.menge):'–'}</td>
