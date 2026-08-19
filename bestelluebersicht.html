@@ -1058,7 +1058,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 <div class="modal" id="preisZusatzModal" onclick="if(event.target===this)closePreisZusatz()">
   <div class="modal-box" style="max-width:440px;position:relative">
     <button class="modal-x" onclick="closePreisZusatz()" title="Schließen">✕</button>
-    <h3 style="margin-bottom:4px">＋ Position hinzufügen</h3>
+    <h3 style="margin-bottom:4px" id="pzTitle">＋ Position hinzufügen</h3>
     <div style="font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:12px">Lieferant: <strong id="pzLief"></strong> · nur für die Preisliste (kein Einfluss auf die Bestellübersicht)</div>
     <div class="frm-row"><div class="frm-fld" style="flex:1 1 100%">
       <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Projekt (frei eingeben – auch app-fremde)</label>
@@ -1073,12 +1073,18 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <div class="frm-row" style="margin-top:10px"><div class="frm-fld" style="flex:1 1 100%">
       <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Bezeichnung</label>
       <input id="pzBez" type="text" placeholder="z.B. Sonderarmatur XY" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit"></div></div>
-    <div class="frm-row" style="margin-top:10px"><div class="frm-fld" style="flex:0 0 120px">
-      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">EK € (optional)</label>
-      <input id="pzEk" type="number" step="0.01" placeholder="0" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right"></div></div>
+    <div class="frm-row" style="margin-top:10px">
+      <div class="frm-fld" style="flex:0 0 120px">
+        <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">EK € (optional)</label>
+        <input id="pzEk" type="number" step="0.01" placeholder="0" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right"></div>
+      <div class="frm-fld" style="flex:0 0 120px">
+        <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">VK € (optional)</label>
+        <input id="pzVk" type="number" step="0.01" placeholder="0" style="width:100%;padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right"></div>
+    </div>
     <div class="modal-act">
       <button class="mcancel" onclick="closePreisZusatz()">Abbrechen</button>
-      <button class="mok" onclick="savePreisZusatz()">Hinzufügen</button>
+      <button class="mok" id="pzSaveNext" onclick="savePreisZusatz(true)" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">＋ Übernehmen & nächste</button>
+      <button class="mok" id="pzSave" onclick="savePreisZusatz(false)">Übernehmen & schließen</button>
     </div>
   </div>
 </div>
@@ -1950,7 +1956,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-17 · v72';
+const APP_VERSION='2026-08-19 · v73';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5601,7 +5607,7 @@ function buildPreiseLive(showAll,projFilter){
     out.push({
       proj:z.proj||'(ohne Projekt)', pos:z.pos||'—', bez:z.bez||'', typ:'',
       lief:z.lief||'(ohne Lieferant)', _liefRaw:z.lief||'', _fabRaw:'',
-      menge:toI(z.menge)||1, ek:z.ek||0, vk:0,
+      menge:toI(z.menge)||1, ek:z.ek||0, vk:z.vk||0,
       termin:appProj?appProj.liefertermin||'':'', anm:'', bindung:'',
       _status:'', _zusatz:true, _zIdx:zIdx, _projName:z.proj, _extern:!appProj
     });
@@ -5749,16 +5755,16 @@ function renderPreise(){
       // Druck-Haken: an = wird gedruckt, aus = nur ausgeblendet im PDF (bleibt in der Liste)
       const printCell=`<td style="text-align:center" onclick="event.stopPropagation()" title="Im PDF drucken"><input type="checkbox" ${excl?'':'checked'} onchange="togglePrintPos('${escA(exKey)}')"></td>`;
       const exclCls=excl?' pr-noprint':'';
-      // Zusatzposition: nicht klickbar (keine Projekt-Position), dafuer loeschbar
+      // Zusatzposition: Klick oeffnet das Bearbeiten-Fenster (Tippfehler, Preise, Bezeichnung), ✕ loescht
       if(it._zusatz){
-        return `<tr class="pr-zusatz${exclCls}">
+        return `<tr class="pr-zusatz pr-clickable${exclCls}" onclick="editPreisZusatz(${it._zIdx})" title="Zusatzposition bearbeiten – klicken">
           ${printCell}
           <td><span class="pr-pos" style="background:rgba(184,134,11,.15);color:#8a6a10">${esc(it.pos)}</span></td>
           <td><div class="pr-bez">${esc(it.bez)} <span style="font-size:9.5px;font-weight:700;color:#8a6a10;background:rgba(184,134,11,.12);padding:1px 6px;border-radius:6px">ZUSATZ</span></div></td>
           <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
           <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
           <td class="pr-ek">${it.ek?fmtEur(it.ek):'–'}</td>
-          <td class="pr-vk">–</td>
+          <td class="pr-vk">${it.vk?fmtEur(it.vk):'–'}</td>
           <td style="text-align:center"><button onclick="event.stopPropagation();delZusatzGlobal(${it._zIdx})" title="Zusatzposition entfernen" style="background:rgba(139,34,34,.12);color:#8b2222;border:none;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px">✕</button></td>
           <td class="pr-anm">${esc(it.anm||'')}</td>
         </tr>`;
@@ -5843,21 +5849,44 @@ function togglePrSel(lk){
 function clearPrSel(){PR_SEL.clear();renderPreise();}
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
 // ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
-let _pzLief=null;
+let _pzLief=null,_pzEditIdx=null;
 function openPreisZusatz(liefName,defaultProj){
   if(!requireLogin())return;
-  _pzLief=liefName;
+  _pzLief=liefName;_pzEditIdx=null;
+  document.getElementById('pzTitle').textContent='＋ Position hinzufügen';
   document.getElementById('pzLief').textContent=liefName;
   document.getElementById('pzProj').value=defaultProj||'';
   document.getElementById('pzPos').value='';
   document.getElementById('pzMenge').value='1';
   document.getElementById('pzBez').value='';
   document.getElementById('pzEk').value='';
+  document.getElementById('pzVk').value='';
+  document.getElementById('pzSaveNext').style.display='';
+  document.getElementById('pzSave').textContent='Übernehmen & schließen';
   document.getElementById('preisZusatzModal').classList.add('on');
   setTimeout(()=>document.getElementById('pzProj').focus(),120);
 }
-function closePreisZusatz(){document.getElementById('preisZusatzModal').classList.remove('on');_pzLief=null;}
-async function savePreisZusatz(){
+// Bestehende Zusatzposition zum Bearbeiten öffnen (Klick auf die Zeile)
+function editPreisZusatz(zIdx){
+  if(!requireLogin())return;
+  ensurePreisMeta();
+  const z=SETTINGS.preisMeta.zusatz[zIdx]; if(!z)return;
+  _pzLief=z.lief;_pzEditIdx=zIdx;
+  document.getElementById('pzTitle').textContent='✏️ Position bearbeiten';
+  document.getElementById('pzLief').textContent=z.lief||'';
+  document.getElementById('pzProj').value=z.proj||'';
+  document.getElementById('pzPos').value=z.pos||'';
+  document.getElementById('pzMenge').value=z.menge||1;
+  document.getElementById('pzBez').value=z.bez||'';
+  document.getElementById('pzEk').value=z.ek||'';
+  document.getElementById('pzVk').value=z.vk||'';
+  document.getElementById('pzSaveNext').style.display='none';
+  document.getElementById('pzSave').textContent='Speichern';
+  document.getElementById('preisZusatzModal').classList.add('on');
+  setTimeout(()=>document.getElementById('pzBez').focus(),120);
+}
+function closePreisZusatz(){document.getElementById('preisZusatzModal').classList.remove('on');_pzLief=null;_pzEditIdx=null;}
+async function savePreisZusatz(weitere){
   if(!requireLogin())return;
   const projName=document.getElementById('pzProj').value.trim();
   if(!projName){toast('Bitte Projektnamen eingeben','err');return;}
@@ -5865,13 +5894,34 @@ async function savePreisZusatz(){
   if(!bez){toast('Bezeichnung fehlt','err');return;}
   const pos=document.getElementById('pzPos').value.trim();
   const menge=parseInt(document.getElementById('pzMenge').value)||1;
-  const ek=parseFloat(String(document.getElementById('pzEk').value||'').replace(/\./g,'').replace(',','.'))||0;
+  const parseEur=v=>parseFloat(String(v||'').replace(',','.'))||0;
+  const ek=parseEur(document.getElementById('pzEk').value);
+  const vk=parseEur(document.getElementById('pzVk').value);
   ensurePreisMeta();
-  SETTINGS.preisMeta.zusatz.push({lief:_pzLief,proj:projName,pos,bez,menge,ek});
+  if(_pzEditIdx!=null && SETTINGS.preisMeta.zusatz[_pzEditIdx]){
+    // Bearbeiten: Eintrag in place aktualisieren (Lieferant bleibt)
+    Object.assign(SETTINGS.preisMeta.zusatz[_pzEditIdx],{proj:projName,pos,bez,menge,ek,vk});
+    try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+    closePreisZusatz();renderPreise();
+    toast('Position aktualisiert','ok');
+    return;
+  }
+  SETTINGS.preisMeta.zusatz.push({lief:_pzLief,proj:projName,pos,bez,menge,ek,vk});
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
-  closePreisZusatz();
   renderPreise();
-  toast('Position hinzugefügt ('+projName+')','ok');
+  if(weitere){
+    // Serie: Modal bleibt offen, Projekt bleibt stehen, Rest leeren → nächste Position
+    document.getElementById('pzPos').value='';
+    document.getElementById('pzMenge').value='1';
+    document.getElementById('pzBez').value='';
+    document.getElementById('pzEk').value='';
+    document.getElementById('pzVk').value='';
+    setTimeout(()=>document.getElementById('pzPos').focus(),80);
+    toast('Hinzugefügt – nächste Position','ok',1500);
+  } else {
+    closePreisZusatz();
+    toast('Position hinzugefügt ('+projName+')','ok');
+  }
 }
 async function delZusatzGlobal(zIdx){
   if(!requireLogin())return;
