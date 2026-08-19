@@ -446,6 +446,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-table tr:last-child td{border-bottom:none;}
 .pr-table tr.pr-sum td{background:rgba(107,80,64,.07);border-top:1.5px solid rgba(107,80,64,.25);padding-top:10px;padding-bottom:10px;font-size:12.5px;}
 .pr-table tr.pr-sum:hover td{background:rgba(107,80,64,.10);}
+.pr-table tr.pr-zwsum td{background:rgba(107,80,64,.04);border-top:1px dashed rgba(107,80,64,.3);padding-top:7px;padding-bottom:7px;}
 .pr-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;}
 .pr-bez{font-weight:600;color:#1c1c1e;}
 .pr-clickable{cursor:pointer;transition:background .12s ease;-webkit-tap-highlight-color:rgba(26,95,122,.18);touch-action:manipulation;}
@@ -1963,7 +1964,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v74';
+const APP_VERSION='2026-08-19 · v75';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5804,7 +5805,21 @@ function renderPreise(){
         ${termin?`<span class="pr-projrow-term">📅 Liefertermin: ${esc(termin)}</span>`:''}
         <span class="pr-projrow-ang"><label>Angebots-Nr.</label><input type="text" value="${escA(getAng(pn,liefKey))}" placeholder="z.B. AN-2026-0815" onclick="event.stopPropagation()" onchange="setAng('${escA(pn)}','${escA(liefKey)}',this.value)"></span>
       </td></tr>`;
-      return hdr+byProj[pn].map(rowFor).join('');
+      // Zwischensumme je Projekt (nur sinnvoll, wenn der Lieferant mehrere Projekte hat)
+      let zRow='';
+      if(projNames.length>1){
+        const zEk=byProj[pn].reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
+        const zVk=byProj[pn].reduce((s,it)=>s+(it.vk||0)*(it.menge||1),0);
+        const zMarge=zVk>0?((zVk-zEk)/zVk*100):0;
+        zRow=`<tr class="pr-zwsum">
+          <td colspan="5" style="text-align:right;font-weight:700;color:#6b5040;font-size:11.5px">Zwischensumme ${esc(pn)} (${byProj[pn].length} Pos.)</td>
+          <td class="pr-ek" style="font-weight:700">${fmtEur(zEk)}</td>
+          <td class="pr-vk" style="font-weight:700">${zVk?fmtEur(zVk):'–'}</td>
+          <td>${zVk?`<span class="pr-marge ${margeClass(zMarge)}">${Math.round(zMarge)}%</span>`:''}</td>
+          <td></td>
+        </tr>`;
+      }
+      return hdr+byProj[pn].map(rowFor).join('')+zRow;
     }).join('');
     const sumRow=`<tr class="pr-sum">
       <td colspan="4" style="text-align:right;font-weight:800;color:#6b5040">Σ Gesamt (${g.items.length} Pos.)</td>
@@ -6075,16 +6090,19 @@ function exportPreiseExcel(){
     if(its.length===0)return;
     any=true;
     const byProj={}; its.forEach(it=>{(byProj[it.proj]=byProj[it.proj]||[]).push(it);});
+    const projKeys=Object.keys(byProj).sort((a,b)=>String(a).localeCompare(String(b)));
     let liefSum=0;
-    Object.keys(byProj).sort((a,b)=>String(a).localeCompare(String(b))).forEach(pn=>{
+    projKeys.forEach(pn=>{
       const appP=PROJECTS.find(p=>p.name===pn);
       const termin=appP&&appP.liefertermin?appP.liefertermin:'';
       const ang=getAng(pn,k);
+      let projSum=0;
       byProj[pn].forEach(it=>{
         const ges=(it.ek||0)*(it.menge||1);
-        liefSum+=ges;
+        liefSum+=ges;projSum+=ges;
         aoa.push([name,pn,ang,termin,it.pos,it.bez,it.typ||'',it.menge,it.ek||'',ges||'']);
       });
+      if(projKeys.length>1)aoa.push(['','','','','','Zwischensumme '+pn,'','','',projSum]);
     });
     aoa.push(['','','','','','Summe '+name,'','','',liefSum]);
     aoa.push([]);
