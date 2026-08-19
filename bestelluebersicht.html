@@ -1964,7 +1964,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v75';
+const APP_VERSION='2026-08-19 · v76';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5616,7 +5616,7 @@ function buildPreiseLive(showAll,projFilter){
       proj:z.proj||'(ohne Projekt)', pos:z.pos||'—', bez:z.bez||'', typ:'',
       lief:z.lief||'(ohne Lieferant)', _liefRaw:z.lief||'', _fabRaw:'',
       menge:toI(z.menge)||1, ek:z.ek||0, vk:z.vk||0,
-      termin:appProj?appProj.liefertermin||'':'', anm:'', bindung:'',
+      termin:appProj?(appProj.liefertermin||''):(((pm.termine||{})[z.proj])||''), anm:'', bindung:'',
       _status:'', _zusatz:true, _zIdx:zIdx, _projName:z.proj, _extern:!appProj
     });
   });
@@ -5635,6 +5635,7 @@ function ensurePreisMeta(){
   if(!Array.isArray(pm.zusatz))pm.zusatz=[];
   if(!pm.show||typeof pm.show!=='object')pm.show={};
   if(!Array.isArray(pm.exclude))pm.exclude=[];  // Positionen vom Druck ausgeschlossen (bleiben in der Liste)
+  if(!pm.termine||typeof pm.termine!=='object')pm.termine={}; // Liefertermine app-fremder Projekte {projName:'YYYY-MM-DD'}
   // Einmal-Migration: alte proj.angebotsnr + proj.preisZusatz in den globalen Speicher ziehen
   if(!pm._migv1){
     PROJECTS.forEach(proj=>{
@@ -5802,7 +5803,9 @@ function renderPreise(){
       const termin=appP&&appP.liefertermin?fmtD(appP.liefertermin):'';
       const hdr=`<tr class="pr-projrow"><td colspan="9">
         <span class="pr-projrow-name">📁 ${esc(pn)}${isExtern?' <span style="font-weight:400;color:#888;font-size:10px">(app-fremd)</span>':''}</span>
-        ${termin?`<span class="pr-projrow-term">📅 Liefertermin: ${esc(termin)}</span>`:''}
+        ${isExtern
+          ?`<span class="pr-projrow-ang"><label>📅 Liefertermin</label><input type="date" value="${escA(getExtTermin(pn))}" onclick="event.stopPropagation()" onchange="setExtTermin('${escA(pn)}',this.value)"></span>`
+          :(termin?`<span class="pr-projrow-term">📅 Liefertermin: ${esc(termin)}</span>`:'')}
         <span class="pr-projrow-ang"><label>Angebots-Nr.</label><input type="text" value="${escA(getAng(pn,liefKey))}" placeholder="z.B. AN-2026-0815" onclick="event.stopPropagation()" onchange="setAng('${escA(pn)}','${escA(liefKey)}',this.value)"></span>
       </td></tr>`;
       // Zwischensumme je Projekt (nur sinnvoll, wenn der Lieferant mehrere Projekte hat)
@@ -5871,6 +5874,18 @@ function togglePrSel(lk){
 function clearPrSel(){PR_SEL.clear();renderPreise();}
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
 // ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
+// Liefertermin fuer app-fremde (zusaetzliche) Projekte – App-Projekte pflegen ihn im Projekt selbst
+function getExtTermin(pn){
+  return ((SETTINGS.preisMeta||{}).termine||{})[pn]||'';
+}
+async function setExtTermin(pn,val){
+  if(!requireLogin())return;
+  ensurePreisMeta();
+  if(val)SETTINGS.preisMeta.termine[pn]=val; else delete SETTINGS.preisMeta.termine[pn];
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderPreise();
+  toast('Liefertermin gespeichert','ok');
+}
 let _pzEditIdx=null;
 // Vorschlagslisten fuer Lieferant + Projekt (alles Bekannte aus App und Zusatzliste)
 function pzFillListen(){
@@ -6009,7 +6024,7 @@ function liefPdfSections(liefKey,printItems,e){
     const angNr=getAng(pn,liefKey);
     const appP=PROJECTS.find(p=>p.name===pn);
     const isExtern=!appP;
-    const termin=appP&&appP.liefertermin?fd(appP.liefertermin):'';
+    const termin=fd((appP&&appP.liefertermin)||getExtTermin(pn));
     const ekSum=its.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
     const rows=its.map(it=>`<tr>
       <td>${e(it.pos)}</td>
@@ -6094,7 +6109,7 @@ function exportPreiseExcel(){
     let liefSum=0;
     projKeys.forEach(pn=>{
       const appP=PROJECTS.find(p=>p.name===pn);
-      const termin=appP&&appP.liefertermin?appP.liefertermin:'';
+      const termin=(appP&&appP.liefertermin)||getExtTermin(pn)||'';
       const ang=getAng(pn,k);
       let projSum=0;
       byProj[pn].forEach(it=>{
