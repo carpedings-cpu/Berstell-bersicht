@@ -1964,7 +1964,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v78';
+const APP_VERSION='2026-08-19 · v79';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5460,15 +5460,20 @@ function parsePreiseExcel(ab,fname){
   const bindungen={};
   if(anmSheet){
     const ar=XLSX.utils.sheet_to_json(wb.Sheets[anmSheet],{header:1,defval:null});
+    // Excel-Datums-Seriennummern (z.B. 46192) lesbar machen
+    const cv=c=>{
+      if(typeof c==='number'&&c>30000&&c<60000)return new Date(Date.UTC(1899,11,30)+c*864e5).toLocaleDateString('de-DE');
+      return String(c).trim();
+    };
     ar.forEach(r=>{
       if(!r||!r[0])return;
       const lief=String(r[0]).trim();
-      const txt=r.slice(1).filter(c=>c!=null).map(c=>String(c).trim()).join(' · ');
+      const txt=r.slice(1).filter(c=>c!=null&&String(c).trim()!=='').map(cv).join(' · ');
       if(lief && txt && !/lieferant|firma/i.test(lief))bindungen[lief]=txt;
     });
   }
-  // Projektname aus Dateiname ableiten
-  const projName=fname.replace(/\.(xlsx|xlsm|xls)$/i,'').replace(/^Auftragsliste[_\s]*/i,'').replace(/[_]/g,' ').trim();
+  // Projektname aus Dateiname ableiten ('Auftragsliste'/'Auftragsstückliste'-Präfix weg)
+  const projName=fname.replace(/\.(xlsx|xlsm|xls)$/i,'').replace(/^auftrags(st(ü|ue|_)?ck)?liste[_\s-]*/i,'').replace(/[_]/g,' ').trim();
   const num=v=>{
     if(v==null)return 0;
     if(typeof v==='number'&&isFinite(v))return v;
