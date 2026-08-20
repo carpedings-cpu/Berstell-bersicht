@@ -626,6 +626,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     </button>
   </div>
   <div class="pgrid" id="pgrid"></div>
+  <div id="archivWrap"></div>
 
   <!-- Neues Projekt Modal -->
   <div class="modal" id="newProjModal">
@@ -738,6 +739,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <button class="ptbtn" onclick="openTermininfo()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;border-color:transparent">📧 Lieferanten zu Termin</button>
     <button class="ptbtn" onclick="openZubehoerListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border-color:transparent">🔧 Zubehör-Liste</button>
     <button class="ptbtn" id="wartungBtn" onclick="openWartungModal()">🛠 Wartung</button>
+    <button class="ptbtn" id="archivBtn" onclick="toggleArchivProjekt()">📦 Abschließen</button>
   </div>
   <div class="fbar">
     <div class="sw"><span class="si">⌕</span>
@@ -1246,10 +1248,13 @@ function sbStatus(state,txt){
   if(txt)el.title=txt;
 }
 // ── Konfliktschutz: Versionszaehler (rev) + Zusammenfuehren statt Ueberschreiben ──
+// Aktive (nicht abgeschlossene) Projekte – Basis aller Sammel-Listen und Zaehler
+function aktiveProjekte(){return PROJECTS.filter(p=>!p.archiviert);}
 function rowToProj(row){
   return {id:row.id,name:row.name,liefertermin:row.liefertermin||'',
     positionen:row.positionen||[],collapsedBereiche:Array.isArray(row.collapsed_bereiche)?row.collapsed_bereiche:[],
     termine:Array.isArray(row.termine)?row.termine:[],
+    archiviert:row.archiviert||null,
     demo:!!row.demo,created:row.created||new Date().toISOString(),
     rev:row.rev||0,lastEdit:row.last_edit||undefined};
 }
@@ -1257,6 +1262,7 @@ function projToRow(proj,rev){
   return {name:proj.name,liefertermin:proj.liefertermin||null,
     positionen:proj.positionen||[],collapsed_bereiche:proj.collapsedBereiche||[],
     termine:Array.isArray(proj.termine)?proj.termine:[],
+    archiviert:proj.archiviert||null,
     demo:!!proj.demo,created:proj.created||new Date().toISOString(),
     rev,last_edit:proj.lastEdit||null};
 }
@@ -1699,7 +1705,7 @@ function istABUeberfaellig(p){
 }
 function countAbrufFaellig(){
   let n=0;
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{if(istAbrufFaellig(p,proj))n++;}));
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach(p=>{if(istAbrufFaellig(p,proj))n++;}));
   return n;
 }
 function severity(p,proj){
@@ -1739,7 +1745,7 @@ async function init(){
     try{const pd=await dbGet('settings','preiseData');if(pd&&pd.v)PREISE_DATA=pd.v;}catch(e){}
     // Migration: altes sollTermin-Feld → abrufTermin
     let migrated=false;
-    PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
+    aktiveProjekte().forEach(proj=>proj.positionen.forEach(p=>{
       if('sollTermin' in p && !('abrufTermin' in p)){p.abrufTermin='';migrated=true;delete p.sollTermin;}
       if(!('abrufTermin' in p)){p.abrufTermin='';migrated=true;}
       // Auftragsbestätigungs-Felder nachrüsten
@@ -1763,7 +1769,7 @@ async function init(){
       }
     }));
     // Preis-Felder pro Projekt: Angebotsnummer je Lieferant + Zusatzpositionen (nur Preisliste)
-    PROJECTS.forEach(proj=>{
+    aktiveProjekte().forEach(proj=>{
       if(!proj.angebotsnr||typeof proj.angebotsnr!=='object'){proj.angebotsnr={};migrated=true;}
       if(!Array.isArray(proj.preisZusatz)){proj.preisZusatz=[];migrated=true;}
     });
@@ -1988,7 +1994,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-19 · v80';
+const APP_VERSION='2026-08-20 · v81';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -1997,10 +2003,62 @@ function goSettings(){
 }
 
 // ── HOME ────────────────────────────────────────────────────────────────
+// ── Abgeschlossene Projekte (Archiv): unten auf der Startseite, zugeklappt ──
+let ARCHIV_OPEN=false;
+function renderArchiv(){
+  const w=document.getElementById('archivWrap');
+  if(!w)return;
+  const arch=PROJECTS.filter(p=>p.archiviert)
+    .sort((a,b)=>String((b.archiviert&&b.archiviert.at)||'').localeCompare(String((a.archiviert&&a.archiviert.at)||'')));
+  if(arch.length===0){w.innerHTML='';return;}
+  const rows=ARCHIV_OPEN?arch.map(p=>{
+    const a=p.archiviert||{};
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.55);border:.5px solid rgba(0,0,0,.08);border-radius:12px">
+      <span style="flex:1;min-width:0;font-weight:700;font-size:13.5px;color:rgba(28,28,30,.75);cursor:pointer" onclick="openProject('${p.id}')" title="Projekt ansehen (bleibt abgeschlossen)">📦 ${esc(p.name)}</span>
+      <span style="flex:0 0 auto;font-size:11px;color:rgba(28,28,30,.5)">${(p.positionen||[]).length} Pos.${a.at?' · abgeschlossen '+fmtD(a.at):''}${a.user?' von '+esc(a.user):''}</span>
+      <button onclick="reaktiviereProjekt('${p.id}')" style="flex:0 0 auto;padding:6px 12px;border-radius:9px;border:none;background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">↩ Reaktivieren</button>
+    </div>`;
+  }).join(''):'';
+  w.innerHTML=`<div style="margin-top:26px">
+    <button onclick="ARCHIV_OPEN=!ARCHIV_OPEN;renderArchiv()" style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.5);font-size:12.5px;font-weight:700;color:rgba(28,28,30,.6);cursor:pointer;font-family:inherit">
+      ${ARCHIV_OPEN?'▼':'▶'} 📦 Abgeschlossene Projekte <span style="background:rgba(0,0,0,.08);padding:1px 8px;border-radius:7px;font-size:11px">${arch.length}</span>
+    </button>
+    ${ARCHIV_OPEN?`<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${rows}</div>`:''}
+  </div>`;
+}
+// Abschließen/Reaktivieren aus dem Projekt heraus (Button in der Werkzeugleiste)
+async function toggleArchivProjekt(){
+  if(!requireLogin()||!CUR)return;
+  if(CUR.archiviert){
+    CUR.archiviert=null;
+    touchProject(CUR);
+    await saveCur();
+    renderDetail();
+    toast('Projekt reaktiviert','ok');
+    return;
+  }
+  if(!confirm('Projekt "'+CUR.name+'" abschließen?\n\nEs wandert in den Bereich "Abgeschlossene Projekte" unten auf der Startseite und verschwindet aus allen Sammel-Listen (Preise, Zu bestellen, Abrufe, Zubehör). Reaktivieren ist jederzeit möglich.'))return;
+  CUR.archiviert={at:today(),user:EDITOR||''};
+  touchProject(CUR);
+  await saveCur();
+  toast('Projekt abgeschlossen – liegt jetzt unten im Archiv','ok',3000);
+  goHome();
+}
+async function reaktiviereProjekt(id){
+  if(!requireLogin())return;
+  const p=PROJECTS.find(x=>x.id===id);if(!p)return;
+  p.archiviert=null;
+  touchProject(p);
+  await dbPut('projects',p);
+  renderHome();
+  updateGlobalCounters();
+  toast('Projekt "'+p.name+'" reaktiviert','ok');
+}
 function renderHome(){
   const g=document.getElementById('pgrid');
   g.innerHTML='';
-  PROJECTS.forEach(proj=>{
+  renderArchiv();
+  aktiveProjekte().forEach(proj=>{
     const tot=proj.positionen.length;
     const gel=proj.positionen.filter(istGeliefert).length;
     // 'Bestellt'-Zaehlung = quelle==='bestellt' (siehe istBestellt). Exakt das, was im
@@ -2768,6 +2826,8 @@ function openProject(id,scrollToPos,filter){
   document.getElementById('dTitle').textContent=CUR.name;
   document.getElementById('dTermin').value=CUR.liefertermin||'';
   renderTermine();
+  const abv=document.getElementById('archivBtn');
+  if(abv)abv.textContent=CUR.archiviert?'↩ Reaktivieren':'📦 Abschließen';
   showView('vDetail');
   // Direkt mit gesetztem Filter oeffnen (z.B. von der Startseiten-Warnung 'AB fehlt' / 'Abruf nötig')
   if(filter!==undefined)DFILTER=filter;
@@ -3351,7 +3411,7 @@ function requireLogin(){
 // Globale Counter (Home-Buttons + Banner) refreshen, ohne den ganzen Home zu rendern
 function updateGlobalCounters(){
   let zb=0,zub=0;
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach(p=>{
     if(istZuBestellen(p))zb++;
     if(Array.isArray(p.zubehoer))p.zubehoer.forEach(z=>{if(istZubZuBestellen(z))zub++;});
   }));
@@ -3856,7 +3916,7 @@ function goToProject(id){openProject(id);}
 function abOffeneListe(){
   // Identisch zur Karten-Warnung + dem Detail-Filter (zentrale Helper)
   const out=[];
-  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach((p,idx)=>{
     if(!istABUeberfaellig(p))return;
     out.push({proj,idx,p,projekt:proj.name,pos:p.pos,bez:p.bez,
       lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',
@@ -4598,7 +4658,7 @@ function renderZuBestellen(){
   // Sammeln: alle Positionen die noch zu bestellen sind
   // = Status offen (nicht bestellt/abgerufen/geliefert) UND keine Lagerware
   const items=[];
-  PROJECTS.forEach(proj=>{
+  aktiveProjekte().forEach(proj=>{
     proj.positionen.forEach((p,idx)=>{
       if(istZuBestellen(p))items.push({projId:proj.id,projName:proj.name,projTermin:proj.liefertermin,p,idx});
     });
@@ -4662,7 +4722,7 @@ function renderZuBestellen(){
 
   // ── Zubehoer-Sektion: alle offenen Zubehoer-Zeilen, gruppiert nach Zubehoer-Lieferant ──
   const zubItems=[];
-  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach((p,idx)=>{
     if(!Array.isArray(p.zubehoer))return;
     p.zubehoer.forEach((z,zi)=>{
       if(istZubZuBestellen(z))zubItems.push({projId:proj.id,projName:proj.name,p,idx,z,zi});
@@ -4817,7 +4877,7 @@ let ZUB_LISTE_NUROFFEN=false; // true = nur offene (nicht bestellt/Lager)
 // Zentrale Quelle: liefert Items+Gruppen unter Beruecksichtigung ALLER Filter
 function zubListeQuelle(){
   const excludeKats=zubExcludeSet();
-  const projs=ZUB_LISTE_ALL?PROJECTS:(CUR?[CUR]:[]);
+  const projs=ZUB_LISTE_ALL?aktiveProjekte():(CUR?[CUR]:[]);
   let items=[];
   projs.forEach(pr=>{items=items.concat(buildZubListe(pr,excludeKats).items);});
   // Lieferanten-Optionen VOR dem Lieferanten-Filter ermitteln (fuers Dropdown)
@@ -4870,7 +4930,7 @@ function zubKategorienInProjekt(proj){
 function zubKatsAktuell(){
   if(!ZUB_LISTE_ALL)return CUR?zubKategorienInProjekt(CUR):{};
   const m={};
-  PROJECTS.forEach(pr=>{
+  aktiveProjekte().forEach(pr=>{
     const k=zubKategorienInProjekt(pr);
     Object.keys(k).forEach(x=>{m[x]=(m[x]||0)+k[x];});
   });
@@ -5355,7 +5415,7 @@ async function markAllBestellt(lief){
   if(!confirm(`Alle Positionen von "${lief}" als bestellt markieren?`))return;
   const k=normLief(lief);
   const items=[];
-  PROJECTS.forEach(proj=>proj.positionen.forEach((p,idx)=>{
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach((p,idx)=>{
     if(istZuBestellen(p) && normLief(p.lieferant||p.fabrikat)===k)items.push({proj,idx});
   }));
   for(const it of items){
@@ -5372,7 +5432,7 @@ async function markAllBestellt(lief){
 async function copyGroup(lief){
   const lines=[`Bestellanfrage an ${lief}:`,''];
   const k=normLief(lief);
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach(p=>{
     if(istZuBestellen(p) && normLief(p.lieferant||p.fabrikat)===k){
       const t=p.abrufTermin||proj.liefertermin;
       lines.push(`• Projekt ${proj.name} · Pos ${p.pos} · ${p.bez}${p.fabrikat?' / '+p.fabrikat:''}${p.typ?' '+p.typ:''} · ${p.menge} ${p.einh}${t?' · Abruf '+new Date(t).toLocaleDateString('de-DE'):''}`);
@@ -5385,7 +5445,7 @@ async function copyGroup(lief){
 async function copyAllZuBestellen(){
   const lines=['Übersicht "Zu bestellen" – '+new Date().toLocaleDateString('de-DE'),''];
   const byLief={};
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach(p=>{
     if(istZuBestellen(p)){
       const raw=p.lieferant||p.fabrikat||'(ohne Zuordnung)';
       const key=normLief(raw)||'(ohne)';
@@ -5410,7 +5470,7 @@ renderHome=function(){
   _origRenderHome();
   // Counter aktualisieren
   let zubest=0;
-  PROJECTS.forEach(proj=>proj.positionen.forEach(p=>{if(istZuBestellen(p))zubest++;}));
+  aktiveProjekte().forEach(proj=>proj.positionen.forEach(p=>{if(istZuBestellen(p))zubest++;}));
   const cnt=document.getElementById('zubestCnt');
   if(cnt)cnt.textContent=zubest;
 };
@@ -5697,7 +5757,7 @@ function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 // bei Mainz). Jetzt: bei jedem renderPreise neu aus PROJECTS aufbauen.
 function buildPreiseLive(showAll,projFilter){
   const out=[];
-  PROJECTS.forEach(proj=>{
+  aktiveProjekte().forEach(proj=>{
     if(projFilter && proj.name!==projFilter)return;
     (proj.positionen||[]).forEach(p=>{
       const ek=p.ek||0, vk=p.vk||0;
@@ -5830,7 +5890,7 @@ function renderPreise(){
   const margeTot=vkTot>0?((vkTot-ekTot)/vkTot*100):0;
   // Preis-Vollstaendigkeit pro Projekt: wieviel hat Preis, wieviel fehlt
   const projStats={};
-  PROJECTS.forEach(proj=>{
+  aktiveProjekte().forEach(proj=>{
     let mit=0,ohne=0;
     (proj.positionen||[]).forEach(p=>{
       if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
@@ -6114,7 +6174,7 @@ async function delZusatzGlobal(zIdx){
 // ── Lieferanten-PDF/Excel: gemeinsame Datensammlung ──────────────────────
 function collectLiefPrintItems(liefKey){
   const items=[];
-  PROJECTS.forEach(proj=>(proj.positionen||[]).forEach(p=>{
+  aktiveProjekte().forEach(proj=>(proj.positionen||[]).forEach(p=>{
     if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
     if(normLief(p.lieferant||p.fabrikat)!==liefKey)return;
     items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',proj:proj.name,menge:toI(p.menge)||1,ek:p.ek||0});
@@ -6302,7 +6362,7 @@ async function goAbrufAnsicht(){
 function renderAbrufAnsicht(){
   const q=(document.getElementById('abrufSrch')?.value||'').toLowerCase().trim();
   const items=[];
-  PROJECTS.forEach(proj=>{
+  aktiveProjekte().forEach(proj=>{
     proj.positionen.forEach((p,idx)=>{
       // Nur bestellte Positionen, die noch auf Abruf warten. Was nicht bestellt ist,
       // kann auch nicht abgerufen werden – darf also gar nicht im Abrufplan stehen.
