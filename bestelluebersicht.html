@@ -2016,7 +2016,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-21 · v86';
+const APP_VERSION='2026-08-21 · v87';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5995,7 +5995,7 @@ function renderPreise(){
         ${printCell}
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
         <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}${diag}</td>
-        <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
+        <td style="text-align:center"><input type="number" min="1" step="1" class="pr-inp" style="width:58px;text-align:center" value="${it.menge}" title="Menge ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setMengeInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}',this.value)"></td>
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
         <td class="pr-ek"><input type="number" step="0.01" class="pr-inp" value="${it.ek||''}" placeholder="–" title="EK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','ek',this.value)"></td>
         <td class="pr-vk"><input type="number" step="0.01" class="pr-inp" value="${it.vk||''}" placeholder="–" title="VK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','vk',this.value)"></td>
@@ -6110,6 +6110,33 @@ async function setPreisInline(projName,pos,lief,feld,val){
   await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
   renderPreise();
   toast((feld==='ek'?'EK':'VK')+' gespeichert','ok',1500);
+}
+// Menge direkt in der Preisliste aendern (App-Position: mit Audit; Excel-Zeile: Preisspeicher)
+async function setMengeInline(projName,pos,lief,val){
+  if(!requireLogin()){renderPreise();return;}
+  const neu=parseInt(val)||1;
+  const proj=PROJECTS.find(p=>p.name===projName);
+  if(proj){
+    const p=(proj.positionen||[]).find(x=>String(x.pos).trim()===String(pos).trim());
+    if(p){
+      const alt=toI(p.menge)||1;
+      if(neu===alt)return;
+      p.menge=neu;
+      logAction(p,'Menge geändert: '+alt+' → '+neu+' (Preisliste)');
+      touchProject(proj);
+      await dbPut('projects',proj);
+      renderPreise();
+      if(CUR&&CUR.id===proj.id)renderDetail();
+      toast('Menge gespeichert','ok',1500);
+      return;
+    }
+  }
+  const e=PREISE_DATA.find(x=>x.proj===projName&&String(x.pos)===String(pos)&&(x.lief||'')===(lief||''));
+  if(!e){toast('Position nicht gefunden','err');renderPreise();return;}
+  e.menge=neu;
+  await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
+  renderPreise();
+  toast('Menge gespeichert','ok',1500);
 }
 // Liefertermin fuer app-fremde (zusaetzliche) Projekte – App-Projekte pflegen ihn im Projekt selbst
 function getExtTermin(pn){
