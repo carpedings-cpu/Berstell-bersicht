@@ -447,6 +447,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-table tr.pr-sum td{background:rgba(107,80,64,.07);border-top:1.5px solid rgba(107,80,64,.25);padding-top:10px;padding-bottom:10px;font-size:12.5px;}
 .pr-table tr.pr-sum:hover td{background:rgba(107,80,64,.10);}
 .pr-table tr.pr-zwsum td{background:rgba(107,80,64,.04);border-top:1px dashed rgba(107,80,64,.3);padding-top:7px;padding-bottom:7px;}
+.pr-inp{width:84px;padding:5px 7px;border-radius:7px;border:.5px solid rgba(0,0,0,.12);background:rgba(255,255,255,.85);font-size:12px;font-family:inherit;text-align:right;}
+.pr-inp:focus{outline:none;border-color:#6b5040;background:#fff;}
 .pr-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;}
 .pr-bez{font-weight:600;color:#1c1c1e;}
 .pr-clickable{cursor:pointer;transition:background .12s ease;-webkit-tap-highlight-color:rgba(26,95,122,.18);touch-action:manipulation;}
@@ -1994,7 +1996,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-20 · v81';
+const APP_VERSION='2026-08-20 · v82';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5968,8 +5970,8 @@ function renderPreise(){
         <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}${diag}</td>
         <td style="text-align:center;font-weight:700;color:#6b5040">${it.menge}</td>
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
-        <td class="pr-ek">${fmtEur(it.ek)}</td>
-        <td class="pr-vk">${fmtEur(it.vk)}</td>
+        <td class="pr-ek"><input type="number" step="0.01" class="pr-inp" value="${it.ek||''}" placeholder="–" title="EK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','ek',this.value)"></td>
+        <td class="pr-vk"><input type="number" step="0.01" class="pr-inp" value="${it.vk||''}" placeholder="–" title="VK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','vk',this.value)"></td>
         <td><span class="pr-marge ${margeClass(marge)}">${Math.round(marge)}%</span></td>
         <td class="pr-anm">${esc(it.anm||'')}</td>
       </tr>`;
@@ -6054,6 +6056,34 @@ function togglePrSel(lk){
 function clearPrSel(){PR_SEL.clear();renderPreise();}
 // ── Preise: Angebotsnummer + Zusatzpositionen + Lieferanten-PDF ──────────
 // ＋ Position: Modal öffnen (Projektname frei eingebbar, auch app-fremd)
+// EK/VK direkt in der Preisliste nachtraeglich aendern.
+// App-Projekt: schreibt auf die Projekt-Position (mit Audit). Excel-Zeile: aktualisiert PREISE_DATA.
+async function setPreisInline(projName,pos,lief,feld,val){
+  if(!requireLogin()){renderPreise();return;}
+  const neu=parseFloat(String(val||'').replace(',','.'))||0;
+  const proj=PROJECTS.find(p=>p.name===projName);
+  if(proj){
+    const p=(proj.positionen||[]).find(x=>String(x.pos).trim()===String(pos).trim());
+    if(p){
+      const alt=p[feld]||0;
+      if(neu===alt)return;
+      p[feld]=neu;
+      logAction(p,(feld==='ek'?'EK':'VK')+' geändert: '+fmtEur(alt)+' → '+fmtEur(neu)+' (Preisliste)');
+      touchProject(proj);
+      await dbPut('projects',proj);
+      renderPreise();
+      toast((feld==='ek'?'EK':'VK')+' gespeichert','ok',1500);
+      return;
+    }
+  }
+  // Externe Excel-Zeile ohne App-Projekt
+  const e=PREISE_DATA.find(x=>x.proj===projName&&String(x.pos)===String(pos)&&(x.lief||'')===(lief||''));
+  if(!e){toast('Position nicht gefunden','err');renderPreise();return;}
+  e[feld]=neu;
+  await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
+  renderPreise();
+  toast((feld==='ek'?'EK':'VK')+' gespeichert','ok',1500);
+}
 // Liefertermin fuer app-fremde (zusaetzliche) Projekte – App-Projekte pflegen ihn im Projekt selbst
 function getExtTermin(pn){
   return ((SETTINGS.preisMeta||{}).termine||{})[pn]||'';
