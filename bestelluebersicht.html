@@ -2016,7 +2016,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-21 · v85';
+const APP_VERSION='2026-08-21 · v86';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5964,6 +5964,8 @@ function renderPreise(){
     const b=(g.items.find(it=>it.bindung)?{status:'warn',text:g.items.find(it=>it.bindung).bindung}:null);
     const liefKey=normLief(g.lief)||'_';
     const margeAvg=g.vkSum>0?((g.vkSum-g.ekSum)/g.vkSum*100):0;
+    // Ausgeschlossene (🖨 abgewaehlt) zaehlen in der App-Summe, aber nicht im PDF/Excel
+    const exclEk=g.items.reduce((s,it)=>s+(isExcl(excludeKey(it))?(it.ek||0)*(it.menge||1):0),0);
     const rowFor=it=>{
       const marge=it.vk>0?((it.vk-it.ek)/it.vk*100):0;
       const lDat=it.termin?new Date(it.termin).toLocaleDateString('de-DE'):'';
@@ -6034,7 +6036,7 @@ function renderPreise(){
     const sumRow=`<tr class="pr-sum">
       <td colspan="4" style="text-align:right;font-weight:800;color:#6b5040">Σ Gesamt (${g.items.length} Pos.)</td>
       <td></td>
-      <td class="pr-ek" style="font-weight:800">${fmtEur(g.ekSum)}</td>
+      <td class="pr-ek" style="font-weight:800">${fmtEur(g.ekSum)}${exclEk?'<div style="font-size:9.5px;font-weight:600;color:rgba(28,28,30,.5);white-space:nowrap" title="Summe ohne die per 🖨 abgewählten Positionen – das steht im PDF/Excel">im Druck: '+fmtEur(g.ekSum-exclEk)+'</div>':''}</td>
       <td class="pr-vk" style="font-weight:800">${fmtEur(g.vkSum)}</td>
       <td><span class="pr-marge ${margeClass(margeAvg)}" style="font-weight:800">${Math.round(margeAvg)}%</span></td>
       <td></td>
@@ -6238,6 +6240,14 @@ function collectLiefPrintItems(liefKey){
     if(normLief(z.lief)!==liefKey)return;
     items.push({pos:z.pos||'—',bez:z.bez,typ:'',proj:z.proj,menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
   });
+  // Externe Excel-Zeilen (Projektname ist KEIN App-Projekt) gehoeren ebenfalls dazu –
+  // sie stehen in der App-Ansicht und muessen in PDF/Excel mitzaehlen
+  const projNamesSet=new Set(PROJECTS.map(p=>p.name));
+  (PREISE_DATA||[]).forEach(e2=>{
+    if(projNamesSet.has(e2.proj))return;
+    if(normLief(e2.lief||'')!==liefKey)return;
+    items.push({pos:e2.pos||'—',bez:e2.bez,typ:e2.typ||'',proj:e2.proj,menge:toI(e2.menge)||1,ek:e2.ek||0});
+  });
   // Vom Druck ausgeschlossene Positionen weglassen (bleiben in der Liste erhalten)
   return items.filter(it=>!isExcl(excludeKey(it)));
 }
@@ -6247,6 +6257,7 @@ function liefNameForKey(k){
     if(n&&normLief(n)===k)return n;
   }
   for(const z of (SETTINGS.preisMeta.zusatz||[]))if(normLief(z.lief)===k)return z.lief;
+  for(const e2 of (PREISE_DATA||[]))if(normLief(e2.lief||'')===k)return e2.lief;
   return k;
 }
 // Projekt-Sektionen (eigene Angebots-Nr. + hervorgehobener Liefertermin je Projekt)
