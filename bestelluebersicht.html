@@ -979,6 +979,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   </div>
 </div>
 
+<!-- Schwebender Zurück-Button, wenn aus einer Liste (Preise/Zu bestellen/Abruf/Suche) in eine Position gesprungen wurde -->
+<button id="jumpBackBtn" onclick="goJumpBack()" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:900;padding:12px 22px;border:none;border-radius:14px;background:linear-gradient(135deg,#3d2d22,#6b5040);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 6px 20px rgba(61,45,34,.4)">← Zurück</button>
+
 <!-- Login: Auswahl der Bearbeiterin -->
 <div class="modal" id="loginModal">
   <div class="modal-box" style="max-width:380px;text-align:center">
@@ -1983,20 +1986,37 @@ async function syncPreiseFromProject(proj){
 }
 
 // ── NAVIGATION ──────────────────────────────────────────────────────────
+// Ruecksprung: von wo wurde in eine Position gesprungen? (Preise, Zu bestellen, Abruf, Suche)
+let JUMP_BACK=null;
+const JUMP_LABELS={vPreise:'← Zurück zur Preisliste',vBestellen:'← Zurück zu „Zu bestellen"',vAbruf:'← Zurück zur Abruf-Liste',vSearch:'← Zurück zur Suche'};
+function goJumpBack(){
+  const v=JUMP_BACK;JUMP_BACK=null;
+  if(!v){goHome();return;}
+  showView(v);
+  if(v==='vPreise')renderPreise();
+  else if(v==='vBestellen')renderZuBestellen();
+  else if(v==='vAbruf')renderAbrufAnsicht();
+}
 function showView(id){
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id===id));
   document.querySelectorAll('.hbtn').forEach(b=>b.classList.remove('on'));
   const map={vHome:'navHome',vSearch:'navSearch',vSettings:'navSettings',vPreise:'navPreise',vAbruf:'navHome'};
   if(map[id])document.getElementById(map[id]).classList.add('on');
+  const jb=document.getElementById('jumpBackBtn');
+  if(jb){
+    const zeigen=id==='vDetail'&&JUMP_BACK;
+    jb.style.display=zeigen?'':'none';
+    if(zeigen)jb.textContent=JUMP_LABELS[JUMP_BACK]||'← Zurück';
+  }
 }
-function goHome(){CUR=null;SEL.clear();SEL_MODE=false;showView('vHome');renderHome();}
+function goHome(){CUR=null;SEL.clear();SEL_MODE=false;JUMP_BACK=null;showView('vHome');renderHome();}
 async function goSearch(){
   showView('vSearch');
   document.getElementById('gSrch').value='';
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-20 · v82';
+const APP_VERSION='2026-08-20 · v83';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2871,6 +2891,9 @@ function scrollToCardWhenReady(scrollToPos,tries){
 function jumpToProjPos(projNameOrId,pos){
   const proj=PROJECTS.find(p=>p.id===projNameOrId)||PROJECTS.find(p=>p.name===projNameOrId);
   if(!proj){toast('Projekt nicht gefunden','err');return;}
+  // Merken, von welcher Liste aus gesprungen wurde → schwebender Zurück-Button im Projekt
+  const av=document.querySelector('.view.on');
+  JUMP_BACK=(av&&JUMP_LABELS[av.id])?av.id:null;
   openProject(proj.id,pos);
 }
 
