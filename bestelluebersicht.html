@@ -2016,7 +2016,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-21 · v84';
+const APP_VERSION='2026-08-21 · v85';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -6292,7 +6292,9 @@ const LIEF_PDF_CSS=`
   .termin-val{font-size:15px;font-weight:800;color:#7a3f0a;background:#fbe9c8;border:1.5px solid #e0a94a;border-radius:8px;padding:3px 12px}
   table{width:100%;border-collapse:collapse;font-size:12px} th{background:#3d2d22;color:#fff;padding:7px 9px;text-align:left}
   td{padding:6px 9px;border-bottom:1px solid #ddd} tfoot td{font-weight:800;border-top:2px solid #6b5040;background:#f4efe8}
-  @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid} .termin-val{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
+  .liefsum{display:flex;justify-content:space-between;margin-top:6px;padding:9px 14px;background:#f4efe8;border:1px solid #e5dcc9;border-radius:8px;font-size:13px;font-weight:800;color:#6b5040}
+  .gesamt{display:flex;justify-content:space-between;margin-top:22px;padding:13px 18px;background:#3d2d22;color:#fff;border-radius:10px;font-size:15.5px;font-weight:800}
+  @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid} .termin-val,.gesamt{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
 function openLiefPrintWindow(title,inner){
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>${LIEF_PDF_CSS}</style></head><body>${inner}<script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
   const w=window.open('','_blank');
@@ -6305,9 +6307,11 @@ function printLieferantenPDF(liefKey,liefName){
   const printItems=collectLiefPrintItems(liefKey);
   if(printItems.length===0){toast('Keine druckbaren Positionen (alle abgewählt)','err');return;}
   const stand=new Date().toLocaleString('de-DE');
+  const gesamt=printItems.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
   openLiefPrintWindow(e(liefName),`<h1>🏭 ${e(liefName)}</h1>
     <div class="head-sub">Preisliste (Einkauf) · Stand: ${e(stand)}</div>
-    ${liefPdfSections(liefKey,printItems,e)}`);
+    ${liefPdfSections(liefKey,printItems,e)}
+    <div class="gesamt"><span>GESAMT EK · ${printItems.length} Positionen</span><span>${fmtEur(gesamt)}</span></div>`);
 }
 // Sammel-PDF über die per Haken ausgewählten Lieferanten
 function printLieferantenPDFMulti(){
@@ -6315,16 +6319,20 @@ function printLieferantenPDFMulti(){
   if(PR_SEL.size===0){toast('Bitte erst Lieferanten auswählen (Haken im Kopf)','err',3000);return;}
   const e=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const keys=[...PR_SEL].sort((a,b)=>liefNameForKey(a).localeCompare(liefNameForKey(b)));
-  let inner='',count=0;
+  let inner='',count=0,gesamt=0,posGesamt=0;
   keys.forEach(k=>{
     const its=collectLiefPrintItems(k);
     if(its.length===0)return;
     count++;
-    inner+=`<div class="liefblock"><h1>🏭 ${e(liefNameForKey(k))}</h1>${liefPdfSections(k,its,e)}</div>`;
+    const liefSum=its.reduce((s,it)=>s+(it.ek||0)*(it.menge||1),0);
+    gesamt+=liefSum;posGesamt+=its.length;
+    inner+=`<div class="liefblock"><h1>🏭 ${e(liefNameForKey(k))}</h1>${liefPdfSections(k,its,e)}
+      <div class="liefsum"><span>Summe ${e(liefNameForKey(k))} (${its.length} Pos.)</span><span>${fmtEur(liefSum)}</span></div></div>`;
   });
   if(!count){toast('Keine druckbaren Positionen in der Auswahl','err');return;}
   const stand=new Date().toLocaleString('de-DE');
-  openLiefPrintWindow('Preisliste Sammel-Liste',`<div class="head-sub" style="font-size:14px;font-weight:700;color:#3d2d22">Preisliste (Einkauf) · ${count} Lieferant(en) · Stand: ${e(stand)}</div>${inner}`);
+  openLiefPrintWindow('Preisliste Sammel-Liste',`<div class="head-sub" style="font-size:14px;font-weight:700;color:#3d2d22">Preisliste (Einkauf) · ${count} Lieferant(en) · Stand: ${e(stand)}</div>${inner}
+    <div class="gesamt"><span>GESAMT EK · ${count} Lieferant(en) · ${posGesamt} Positionen</span><span>${fmtEur(gesamt)}</span></div>`);
 }
 // Excel-Export der Auswahl – gleiche Daten wie das PDF, aber editierbar
 function exportPreiseExcel(){
@@ -6333,7 +6341,7 @@ function exportPreiseExcel(){
   if(PR_SEL.size===0){toast('Bitte erst Lieferanten auswählen (Haken im Kopf)','err',3000);return;}
   const keys=[...PR_SEL].sort((a,b)=>liefNameForKey(a).localeCompare(liefNameForKey(b)));
   const aoa=[['Lieferant','Projekt','Angebots-Nr','Liefertermin','Pos','Bezeichnung','Typ','Menge','EK / Stk','EK gesamt']];
-  let any=false;
+  let any=false,gesamtSum=0;
   keys.forEach(k=>{
     const name=liefNameForKey(k);
     const its=collectLiefPrintItems(k);
@@ -6356,8 +6364,10 @@ function exportPreiseExcel(){
     });
     aoa.push(['','','','','','Summe '+name,'','','',liefSum]);
     aoa.push([]);
+    gesamtSum+=liefSum;
   });
   if(!any){toast('Keine druckbaren Positionen in der Auswahl','err');return;}
+  aoa.push(['','','','','','GESAMT (alle Lieferanten)','','','',gesamtSum]);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:18},{wch:26},{wch:16},{wch:12},{wch:10},{wch:38},{wch:24},{wch:7},{wch:10},{wch:11}];
   const wb=XLSX.utils.book_new();
