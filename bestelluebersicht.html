@@ -2016,7 +2016,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-20 · v83';
+const APP_VERSION='2026-08-21 · v84';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -5792,8 +5792,10 @@ function buildPreiseLive(showAll,projFilter){
       else if(istNichtBestellbar(p))status='nicht bestellbar';
       else if(p.quelle==='lager')status='lager';
       else if(ek===0 && vk===0)status='ohne preis';
-      // Im Normalbetrieb: filtern. Im Diagnose-Modus: alles zeigen.
-      if(!showAll && status)return;
+      // Im Normalbetrieb: bestellte/nicht bestellbare/Lager-Positionen filtern.
+      // Positionen OHNE Preis bleiben sichtbar – EK/VK werden seit v82 direkt
+      // in der Liste eingetragen (sonst erscheinen neue Positionen nie).
+      if(!showAll && status && status!=='ohne preis')return;
       out.push({
         proj:proj.name,
         pos:p.pos,
@@ -5807,7 +5809,7 @@ function buildPreiseLive(showAll,projFilter){
         termin:proj.liefertermin||'',
         anm:'',
         bindung:'',
-        _status:status   // nur fuer Diagnose-Anzeige
+        _status:showAll?status:''   // Badge nur im Diagnose-Modus
       });
     });
   });
