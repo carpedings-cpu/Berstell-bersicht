@@ -95,6 +95,13 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard.s-green::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#1e8a4a;}
 /* Projekt-Akzentfarben: automatisch aus dem Namen, dezent (kein Corporate-Look) */
 .pcard .adot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;flex:0 0 auto;}
+#gruss{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-14px);z-index:1200;
+  max-width:min(92vw,520px);padding:13px 20px;border-radius:14px;
+  background:linear-gradient(135deg,#3d2d22,#6b5040);color:#fff;
+  font-size:14.5px;font-weight:600;line-height:1.35;text-align:center;
+  box-shadow:0 10px 30px rgba(61,45,34,.35);opacity:0;pointer-events:none;
+  transition:opacity .35s ease,transform .35s ease;}
+#gruss.on{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;cursor:pointer;}
 .kwtag{display:inline-block;margin-left:6px;margin-top:3px;padding:2px 8px;border-radius:7px;background:rgba(107,80,64,.1);color:#6b5040;font-size:10.5px;font-weight:800;letter-spacing:.3px;white-space:nowrap;vertical-align:middle;}
 .pcard.pa1{border-top:4px solid #7a9e7e;background:linear-gradient(rgba(122,158,126,.055),rgba(122,158,126,.055)),rgba(255,255,255,.7);} .pcard.pa1 .adot{background:#7a9e7e;}
 .pcard.pa2{border-top:4px solid #7e93ad;background:linear-gradient(rgba(126,147,173,.055),rgba(126,147,173,.055)),rgba(255,255,255,.7);} .pcard.pa2 .adot{background:#7e93ad;}
@@ -991,6 +998,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 </div>
 
 <!-- Schwebender Zurück-Button, wenn aus einer Liste (Preise/Zu bestellen/Abruf/Suche) in eine Position gesprungen wurde -->
+<!-- Taegliche Begruessung mit Namen -->
+<div id="gruss" onclick="this.classList.remove('on')"></div>
+
 <button id="jumpBackBtn" onclick="goJumpBack()" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:900;padding:12px 22px;border:none;border-radius:14px;background:linear-gradient(135deg,#3d2d22,#6b5040);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 6px 20px rgba(61,45,34,.4)">← Zurück</button>
 
 <!-- Login: Auswahl der Bearbeiterin -->
@@ -1823,12 +1833,149 @@ async function init(){
 
 // ── BEARBEITER-LOGIN + AUDIT-TRAIL ──────────────────────────────────────
 let EDITOR=null;
+// ── BEGRUESSUNG: taeglich wechselnder Spruch, je Bearbeiterin ein anderer ──
+// Regeln fuer neue Sprueche: KEINE Apostrophe (Strings stehen in einfachen Quotes)
+// und KEINE Klammern (die Test-Extraktion zaehlt Klammern mit).
+const GRUSS_ALLGEMEIN=[
+  'Moin {name}! Die Spülmaschinen laufen noch ohne dich – aber nicht mehr lange. 🍽️',
+  'Hallo {name}! Kaffee ist gekocht, die Positionen sind ungeduldig. ☕',
+  '{name} ist da – alle Lieferanten stillgestanden! 🫡',
+  'Willkommen zurück, {name}! Die Kühlzellen haben dich vermisst. ❄️',
+  'Hey {name}! Heute schon eine Auftragsbestätigung eingesammelt? 📄',
+  'Guten Morgen {name}! Irgendwo wartet ein Konvektomat auf seinen Abruf. 🔥',
+  '{name}, du siehst heute besonders termintreu aus. 📅',
+  'Hallo {name}! Ohne dich wäre diese Liste nur eine Liste. 📋',
+  'Schön dass du da bist, {name} – die Mischbatterien sind schon aufgeregt. 🚿',
+  'Moin {name}! Heute ist ein guter Tag, um einen Preis nachzuverhandeln. 💶',
+  '{name} im Haus! Die GN-Behälter stapeln sich vor Freude. 🥘',
+  'Hallo {name}! Dein Einsatz rettet heute mindestens drei Liefertermine. 🦸',
+  'Guten Morgen {name}! Die Kaffeemaschine im Projekt hat schon Vorfreude. ☕',
+  '{name}! Zwischen dir und dem Feierabend stehen nur ein paar Häkchen. ✅',
+  'Hallo {name}, hier ist deine tägliche Dosis Edelstahl. ✨',
+  'Willkommen {name}! Heute mit 100 Prozent mehr Übersicht als im Papierordner. 📚',
+  '{name} ist online – die Wahrscheinlichkeit für pünktliche Lieferung steigt. 📈',
+  'Hey {name}! Erst der Abruf, dann der Kaffee. Oder umgekehrt. ☕',
+  'Moin {name}! Die Lüftungshauben grüßen zurück. 🌬️',
+  'Hallo {name}! Falls jemand fragt: Du hast alles im Griff. 💪',
+  '{name}, die Bestellübersicht war ohne dich nur halb so sortiert. 🗂️',
+  'Schön dich zu sehen, {name}! Heute schon jemanden an einen Termin erinnert? ⏰',
+  'Guten Tag {name}! Deine Positionen sind alle wohlauf. 🩺',
+  'Hallo {name}! Ein Klick weiter und die Küche wird echt. 🏗️',
+  '{name} übernimmt. Die Tiefkühlzellen können beruhigt weiterfrieren. 🧊',
+  'Hey {name}! Motto des Tages: erst prüfen, dann bestellen. 🔍',
+  'Moin {name}! Irgendwo da draußen wartet ein Lieferschein auf dich. 📦',
+  'Hallo {name}! Heute schon Danke gehört? Hiermit: Danke! 🙏',
+  '{name}! Die Angebote sortieren sich nicht von allein. Oder doch? 🤔',
+  'Willkommen, {name}. Die Preisliste hat auf dich gewartet. 💶',
+  'Hey {name}! Kleine Erinnerung: Du bist der Grund, warum hier nichts untergeht. 🛟',
+  'Moin {name}! Heute ohne Zettelwirtschaft – wie immer eigentlich. 📝',
+  'Hallo {name}! Die Geschirrbrause sagt Hallo zurück. 🚿',
+  '{name} ist da! Ab jetzt wird abgehakt. ✔️',
+  'Guten Morgen {name}! Der Frühstückskaffee zählt auch als Inbetriebnahme. ☕',
+  'Hallo {name}! Statistisch gesehen wird heute alles gut. 📊',
+  '{name}, deine Lieferanten haben Glück, dass sie dich haben. 🍀',
+  'Moin {name}! Ein Häkchen am Morgen vertreibt Kummer und Sorgen. ✅',
+  'Hey {name}! Die Küche von morgen entsteht heute in dieser Liste. 🔧',
+  'Hallo {name}! Vergiss nicht: Auch Edelstahl braucht mal Pause. Du auch. 😊',
+  '{name} betritt die Bestellübersicht. Die Positionen machen sich lang. 🧍',
+  'Moin {name}! Der Spülmaschinen-Anschluss ist heute dein Freund. 🔌',
+  'Hallo {name}! Wer ordentlich plant, muss abends nicht suchen. 🔦',
+  'Hey {name}! Zwei Klicks, drei Häkchen, ein glücklicher Kunde. 😄',
+  'Guten Morgen {name}! Die Kombidämpfer sind schon warmgelaufen. ♨️'
+];
+const GRUSS_MONTAG=[
+  'Montag, {name}. Wir schaffen das – eine Position nach der anderen. 💪',
+  'Moin {name}! Montag ist nur ein Dienstag mit Anlaufzeit. ☕',
+  '{name}, Montagsregel: erst Kaffee, dann Kühlzellen. ☕',
+  'Neue Woche, {name}! Die Lieferanten sind auch noch müde. 😴',
+  'Hallo {name}! Montags sind alle Termine noch angenehm weit weg. 📅',
+  'Montag, {name} – heute reicht ein einziges Häkchen für ein Erfolgsgefühl. ✅',
+  'Moin {name}! Die Woche ist neu, die Liste ist bereit. 🗂️'
+];
+const GRUSS_FREITAG=[
+  'Freitag, {name}! Nur noch ein paar Häkchen bis zum Wochenende. 🎉',
+  'Moin {name}! Heute schon an den Feierabend gedacht? Wir auch. 🍻',
+  '{name}, Freitagsweisheit: Was heute nicht bestellt wird, wartet bis Montag. 😌',
+  'Hallo {name}! Die Kühlzellen machen auch bald Wochenende. ❄️',
+  'Freitag, {name}! Die Lieferanten zählen auch schon die Stunden. ⏳',
+  'Hey {name}! Noch einmal kurz durchstarten, dann ist Wochenende. 🚀',
+  'Moin {name}! Freitags schmeckt der Kaffee am besten. ☕'
+];
+const GRUSS_ADVENT=[
+  'Adventliche Grüße, {name}! Die Lebkuchen sind bestellt, der Rest auch? 🎄',
+  'Hallo {name}! In der Weihnachtsbäckerei... äh, Großküche. 🍪',
+  '{name}, die Lieferanten liefern auch im Advent. Versprochen. 🎅',
+  'Moin {name}! Zwischen Plätzchen und Positionen liegt nur ein Klick. 🎄',
+  'Hey {name}! Heute schon jemandem einen Liefertermin geschenkt? 🎁',
+  'Hallo {name}! Der Kombidämpfer wünscht frohe Vorweihnachtszeit. ✨',
+  '{name}, im Advent sind sogar die Kühlzellen festlich gestimmt. ⛄',
+  'Moin {name}! Nur noch ein paar Häkchen bis zur Weihnachtsfeier. 🎄'
+];
+const GRUSS_FRUEH=[
+  'Schon wach, {name}? Respekt – der Kaffee ist unterwegs. ☕',
+  'Guten Morgen {name}! Selbst die Kühlzellen schlafen noch. 🌅',
+  '{name}, so früh? Die Lieferanten kommen erst in zwei Stunden aus dem Bett. 😴',
+  'Moin {name}! Der frühe Vogel hakt die erste Position ab. 🐦',
+  'Hallo {name}! Um diese Zeit gehört die Liste ganz allein dir. 🌄',
+  '{name} ist früh dran – die Positionen reiben sich noch die Augen. 😪'
+];
+const GRUSS_ABEND=[
+  'Feierabend naht, {name}! Die letzten Häkchen laufen nicht weg. 🌙',
+  'Noch da, {name}? Die Kühlzellen laufen auch ohne Aufsicht. 🌙',
+  'Hallo {name}! Was jetzt nicht mehr klappt, klappt morgen früh. ✨',
+  '{name}, langsam wird es Zeit für den Feierabend. Die Liste wartet gern. 🌆',
+  'Guten Abend {name}! Ein letzter Blick, dann Füße hoch. 🛋️',
+  'Guten Abend {name}! Auch spät ist die Übersicht schön sortiert. 🌜'
+];
+// Vorname aus dem Bearbeiternamen; leerer Name faellt neutral auf 'Team' zurueck
+function grussVorname(name){
+  const s=String(name||'').trim();
+  if(!s)return 'Team';
+  return s.split(/\s+/)[0];
+}
+// Deterministisch aus Datum + Name: ganzen Tag derselbe Spruch, morgen ein anderer,
+// und beide Bearbeiterinnen bekommen am selben Tag verschiedene Sprueche.
+function grussIndex(name,datum){
+  const s=String(datum||'')+'|'+String(name||'');
+  let h=0;
+  for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%99991;
+  return h;
+}
+function begruessung(name,datum,stunde){
+  const d=datum||today();
+  const h=typeof stunde==='number'?stunde:new Date().getHours();
+  const dt=new Date(d+'T12:00:00');
+  const wt=dt.getDay(), monat=dt.getMonth()+1, tag=dt.getDate();
+  let pool=GRUSS_ALLGEMEIN;
+  if(monat===12&&tag<=24)pool=GRUSS_ADVENT;   // Advent schlaegt alles
+  else if(h<7)pool=GRUSS_FRUEH;               // schmale Zeitfenster, damit
+  else if(h>=18)pool=GRUSS_ABEND;             // die Vielfalt tagsueber bleibt
+  else if(wt===1)pool=GRUSS_MONTAG;
+  else if(wt===5)pool=GRUSS_FREITAG;
+  return pool[grussIndex(name,d)%pool.length].split('{name}').join(grussVorname(name));
+}
+// Anzeige: einmal pro Tag und Person, beim Login-Wechsel immer
+function zeigeGruss(name,immer){
+  if(!name)return;
+  const key=today()+'|'+name;
+  try{
+    if(!immer&&localStorage.getItem('kpc_gruss')===key)return;
+    localStorage.setItem('kpc_gruss',key);
+  }catch(e){}
+  const el=document.getElementById('gruss');
+  if(!el)return;
+  el.textContent=begruessung(name);
+  el.classList.add('on');
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('on'),6000);
+}
 function initEditor(){
   const stored=localStorage.getItem('kpc_editor');
   const names=SETTINGS.editors||[];
   if(stored&&names.includes(stored)){
     EDITOR=stored;
     updateEditorBadge();
+    zeigeGruss(stored);
     return;
   }
   // Kein gueltiger Login → Login-Modal oeffnen (zeigt automatisch Setup, falls noch keine Namen)
@@ -1855,7 +2002,7 @@ function loginAs(name){
   localStorage.setItem('kpc_editor',name);
   updateEditorBadge();
   closeLogin();
-  toast('Angemeldet als '+name,'ok');
+  zeigeGruss(name,true);
 }
 function openEditorSetup(){
   closeLogin();
@@ -2026,7 +2173,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-27 · v94';
+const APP_VERSION='2026-08-28 · v95';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;

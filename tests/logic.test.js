@@ -47,10 +47,22 @@ const code=[
   extractFn('posZeit'),
   extractFn('mergeProjekt'),
   extractFn('isoKW'),
+  extractConst('GRUSS_ALLGEMEIN'),
+  extractConst('GRUSS_MONTAG'),
+  extractConst('GRUSS_FREITAG'),
+  extractConst('GRUSS_ADVENT'),
+  extractConst('GRUSS_FRUEH'),
+  extractConst('GRUSS_ABEND'),
+  extractFn('grussVorname'),
+  extractFn('grussIndex'),
+  extractFn('begruessung'),
 ].join('\n');
 const api=new Function(code+`
   return {istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
-    protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW};`)();
+    protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
+    begruessung,grussVorname,
+    pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
+      advent:GRUSS_ADVENT,frueh:GRUSS_FRUEH,abend:GRUSS_ABEND}};`)();
 
 // ── Test-Helfer ──────────────────────────────────────────────────────────
 let pass=0,fail=0;
@@ -140,5 +152,73 @@ is(api.posZeit({pos:'1'}),0,'posZeit leer = 0');
  ['2026-12-31',53],['2027-01-04',1],['2024-12-30',1],
 ].forEach(([d,want])=>is(api.isoKW(d),want,'KW: '+d));
 
+// ── Begrüßung (täglich wechselnd, je Person unterschiedlich) ─────────────
+// Wochentage der Testdaten via Python datetime verifiziert:
+// 2026-08-31 = Montag, 2026-08-28 = Freitag, 2026-09-01 = Dienstag,
+// 2026-12-05 = Advent-Samstag, 2026-08-27 = Donnerstag
+function ausPool(text,pool,name){
+  const vor=String(name||'').trim().split(/\s+/)[0]||'Team';
+  return pool.some(t=>t.split('{name}').join(vor)===text);
+}
+const P=api.pools;
+
+// Platzhalter wird immer ersetzt – über zwei Wochen, beide Namen, mehrere Uhrzeiten
+let ohnePlatzhalter=true, alleGefuellt=true;
+for(let t=1;t<=14;t++){
+  const d='2026-09-'+String(t).padStart(2,'0');
+  ['Diana Ziegler','Franziska Lang'].forEach(n=>{
+    [6,9,14,19].forEach(h=>{
+      const s=api.begruessung(n,d,h);
+      if(s.includes('{name}'))ohnePlatzhalter=false;
+      if(!s||s.length<10)alleGefuellt=false;
+    });
+  });
+}
+is(ohnePlatzhalter,true,'Begrüßung: nie ein offener {name}-Platzhalter');
+is(alleGefuellt,true,'Begrüßung: nie leer');
+
+// Vorname statt vollem Namen
+{
+  const s=api.begruessung('Diana Ziegler','2026-09-01',9);
+  is(s.includes('Diana'),true,'Begrüßung nutzt den Vornamen');
+  is(s.includes('Ziegler'),false,'Begrüßung ohne Nachnamen');
+}
+is(api.grussVorname(''),'Team','Leerer Name fällt auf Team zurück');
+is(api.begruessung('','2026-09-01',9).includes('Team'),true,'Leerer Name bricht nicht');
+
+// Gleicher Tag + Name = gleicher Spruch (den ganzen Tag stabil)
+is(api.begruessung('Diana','2026-09-01',9),api.begruessung('Diana','2026-09-01',9),
+   'Begrüßung ist pro Tag stabil');
+
+// Über 14 Tage viele verschiedene Sprüche
+{
+  const set=new Set();
+  for(let t=1;t<=14;t++)set.add(api.begruessung('Diana','2026-09-'+String(t).padStart(2,'0'),9));
+  is(set.size>=8,true,'Begrüßung wechselt täglich (>=8 verschiedene in 14 Tagen), war: '+set.size);
+}
+
+// Beide Bearbeiterinnen bekommen am selben Tag verschiedene Sprüche
+{
+  let verschieden=0;
+  for(let t=1;t<=14;t++){
+    const d='2026-09-'+String(t).padStart(2,'0');
+    if(api.begruessung('Diana',d,9)!==api.begruessung('Franziska',d,9))verschieden++;
+  }
+  is(verschieden>=12,true,'Zwei Namen: fast immer verschiedene Sprüche, war: '+verschieden+'/14');
+}
+
+// Sonder-Pools greifen
+is(ausPool(api.begruessung('Diana','2026-08-31',9),P.montag,'Diana'),true,'Montag → Montags-Spruch');
+is(ausPool(api.begruessung('Diana','2026-08-28',9),P.freitag,'Diana'),true,'Freitag → Freitags-Spruch');
+is(ausPool(api.begruessung('Diana','2026-12-05',9),P.advent,'Diana'),true,'Advent → Advents-Spruch');
+is(ausPool(api.begruessung('Diana','2026-09-01',6),P.frueh,'Diana'),true,'Vor 7 Uhr → Früh-Spruch');
+is(ausPool(api.begruessung('Diana','2026-09-01',19),P.abend,'Diana'),true,'Ab 18 Uhr → Abend-Spruch');
+is(ausPool(api.begruessung('Diana','2026-09-01',9),P.allgemein,'Diana'),true,'Dienstag tagsüber → allgemeiner Spruch');
+// Advent schlägt Wochentag und Uhrzeit
+is(ausPool(api.begruessung('Diana','2026-12-07',19),P.advent,'Diana'),true,'Advent hat Vorrang vor Abend');
+// Nach dem 24.12. wieder normal
+is(ausPool(api.begruessung('Diana','2026-12-28',9),P.montag,'Diana'),true,'28.12. ist Montag → kein Advent mehr');
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
+
 process.exit(fail?1:0);
