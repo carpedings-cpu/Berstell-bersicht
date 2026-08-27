@@ -2024,7 +2024,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-24 · v89';
+const APP_VERSION='2026-08-24 · v90';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2094,7 +2094,14 @@ function renderHome(){
   const g=document.getElementById('pgrid');
   g.innerHTML='';
   renderArchiv();
-  aktiveProjekte().forEach(proj=>{
+  // Sortierung: naechster Liefertermin zuerst, Projekte ohne Termin ans Ende (alphabetisch)
+  const sortiert=aktiveProjekte().slice().sort((a,b)=>{
+    if(!a.liefertermin&&!b.liefertermin)return String(a.name).localeCompare(String(b.name));
+    if(!a.liefertermin)return 1;
+    if(!b.liefertermin)return -1;
+    return String(a.liefertermin).localeCompare(String(b.liefertermin));
+  });
+  sortiert.forEach(proj=>{
     const tot=proj.positionen.length;
     const gel=proj.positionen.filter(istGeliefert).length;
     // 'Bestellt'-Zaehlung = quelle==='bestellt' (siehe istBestellt). Exakt das, was im
