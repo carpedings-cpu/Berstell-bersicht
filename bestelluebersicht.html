@@ -2026,7 +2026,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-27 · v93';
+const APP_VERSION='2026-08-27 · v94';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2950,16 +2950,21 @@ function jumpToProjPos(projNameOrId,pos){
 function renderTermine(){
   const box=document.getElementById('dTermine');
   if(!box||!CUR)return;
-  const liste=(CUR.termine||[]).slice().sort((a,b)=>String(a.datum||'').localeCompare(String(b.datum||'')));
+  const liste=(CUR.termine||[]).slice().sort((a,b)=>{
+    if(!!a.done!==!!b.done)return a.done?1:-1; // offene zuerst, erledigte ans Ende
+    return String(a.datum||'').localeCompare(String(b.datum||''));
+  });
   const chips=liste.map(t=>{
     const i=(CUR.termine||[]).indexOf(t);
     const d=t.datum?daysBtw(today(),t.datum):null;
-    const farbe=d===null?'background:rgba(255,255,255,.7);color:rgba(28,28,30,.7);border:.5px solid rgba(0,0,0,.12)'
+    // Erledigte Termine: gruen, Haken, keine Dringlichkeits-Warnung mehr
+    const farbe=t.done?'background:rgba(30,138,74,.13);color:#0f6332;border:.5px solid rgba(30,138,74,.35)'
+      :d===null?'background:rgba(255,255,255,.7);color:rgba(28,28,30,.7);border:.5px solid rgba(0,0,0,.12)'
       :d<0?'background:rgba(217,32,32,.12);color:#a01515;border:.5px solid rgba(217,32,32,.3)'
       :d<=14?'background:rgba(196,119,0,.13);color:#7d4d00;border:.5px solid rgba(196,119,0,.3)'
       :'background:rgba(255,255,255,.7);color:rgba(28,28,30,.75);border:.5px solid rgba(0,0,0,.12)';
-    const hint=d===null?'':d<0?' · '+Math.abs(d)+' Tage vorbei':d===0?' · HEUTE':d<=14?' · in '+d+' Tagen':'';
-    return `<button onclick="openTerminModal(${i})" title="Termin bearbeiten – klicken" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;${farbe}">📅 ${esc(t.name)}${t.datum?' · '+fmtD(t.datum):''}${hint}<span onclick="event.stopPropagation();delTermin(${i})" title="Termin entfernen" style="opacity:.6;margin-left:2px">✕</span></button>`;
+    const hint=t.done?'':d===null?'':d<0?' · '+Math.abs(d)+' Tage vorbei':d===0?' · HEUTE':d<=14?' · in '+d+' Tagen':'';
+    return `<button onclick="toggleTerminDone(${i})" title="${t.done?'Erledigt – klicken macht es wieder offen':'Klicken = erledigt (wird grün)'}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;${farbe}">${t.done?'✅':'📅'} ${esc(t.name)}${t.datum?' · '+fmtD(t.datum):''}${hint}<span onclick="event.stopPropagation();openTerminModal(${i})" title="Termin bearbeiten" style="opacity:.6;margin-left:2px">✎</span><span onclick="event.stopPropagation();delTermin(${i})" title="Termin entfernen" style="opacity:.6">✕</span></button>`;
   }).join('');
   box.innerHTML=`<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
     ${liste.length?`<span style="font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#6b5040">Termine:</span>`:''}
@@ -2992,6 +2997,15 @@ async function saveTermin(){
   closeTerminModal();
   renderDetail();
   toast('Termin gespeichert','ok');
+}
+async function toggleTerminDone(i){
+  if(!requireLogin())return;
+  const t=(CUR.termine||[])[i];if(!t)return;
+  t.done=!t.done;
+  touchProject(CUR);
+  await saveCur();
+  renderDetail();
+  toast(t.done?'"'+t.name+'" erledigt ✓':'"'+t.name+'" wieder offen','ok',1800);
 }
 async function delTermin(i){
   if(!requireLogin())return;
