@@ -2024,7 +2024,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-24 · v90';
+const APP_VERSION='2026-08-27 · v91';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2864,9 +2864,6 @@ function openProject(id,scrollToPos,filter){
   SEL.clear();SEL_MODE=false;
   document.getElementById('dTitle').textContent=CUR.name;
   document.getElementById('dTermin').value=CUR.liefertermin||'';
-  renderTermine();
-  const abv=document.getElementById('archivBtn');
-  if(abv)abv.textContent=CUR.archiviert?'↩ Reaktivieren':'📦 Abschließen';
   showView('vDetail');
   // Direkt mit gesetztem Filter oeffnen (z.B. von der Startseiten-Warnung 'AB fehlt' / 'Abruf nötig')
   if(filter!==undefined)DFILTER=filter;
@@ -3083,6 +3080,9 @@ async function copyTvMail(which){
 
 function renderDetail(){
   if(!CUR)return;
+  renderTermine(); // Termin-Chips bei jedem Re-Render frisch (sofort sichtbar nach Speichern/Sync)
+  const _abv=document.getElementById('archivBtn');
+  if(_abv)_abv.textContent=CUR.archiviert?'↩ Reaktivieren':'📦 Abschließen';
   // Zuletzt-bearbeitet-Anzeige
   const le=CUR.lastEdit;
   const leEl=document.getElementById('dLastEdit');
