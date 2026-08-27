@@ -95,6 +95,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard.s-green::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#1e8a4a;}
 /* Projekt-Akzentfarben: automatisch aus dem Namen, dezent (kein Corporate-Look) */
 .pcard .adot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;flex:0 0 auto;}
+.kwtag{display:inline-block;margin-left:6px;margin-top:3px;padding:2px 8px;border-radius:7px;background:rgba(107,80,64,.1);color:#6b5040;font-size:10.5px;font-weight:800;letter-spacing:.3px;white-space:nowrap;vertical-align:middle;}
 .pcard.pa1{border-top:4px solid #7a9e7e;background:linear-gradient(rgba(122,158,126,.055),rgba(122,158,126,.055)),rgba(255,255,255,.7);} .pcard.pa1 .adot{background:#7a9e7e;}
 .pcard.pa2{border-top:4px solid #7e93ad;background:linear-gradient(rgba(126,147,173,.055),rgba(126,147,173,.055)),rgba(255,255,255,.7);} .pcard.pa2 .adot{background:#7e93ad;}
 .pcard.pa3{border-top:4px solid #a8827e;background:linear-gradient(rgba(168,130,126,.055),rgba(168,130,126,.055)),rgba(255,255,255,.7);} .pcard.pa3 .adot{background:#a8827e;}
@@ -2025,7 +2026,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-27 · v92';
+const APP_VERSION='2026-08-27 · v93';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2157,6 +2158,28 @@ function renderHome(){
 
 function fmtD(s){if(!s)return '';const d=new Date(s);return d.toLocaleDateString('de-DE');}
 // ISO-Kalenderwoche (KW) eines Datums – Montag als Wochenstart, KW 1 = Woche mit dem 4. Januar
+// KW-Plakette neben jedem Datumsfeld (Apples Kalender-Popup selbst ist nicht anpassbar,
+// deshalb steht die Kalenderwoche des gewaehlten Datums direkt am Feld)
+function refreshKwTag(inp){
+  if(!inp||inp.type!=='date')return;
+  let tag=inp.nextElementSibling;
+  if(!(tag&&tag.classList&&tag.classList.contains('kwtag'))){
+    tag=document.createElement('span');
+    tag.className='kwtag';
+    inp.insertAdjacentElement('afterend',tag);
+  }
+  const txt=inp.value?('KW '+isoKW(inp.value)):'';
+  if(tag.textContent!==txt)tag.textContent=txt;
+  const disp=inp.value?'':'none';
+  if(tag.style.display!==disp)tag.style.display=disp;
+}
+function refreshAllKwTags(){document.querySelectorAll('input[type="date"]').forEach(refreshKwTag);}
+document.addEventListener('input',e=>{if(e.target&&e.target.type==='date')refreshKwTag(e.target);});
+document.addEventListener('change',e=>{if(e.target&&e.target.type==='date')refreshKwTag(e.target);});
+// Beobachter: nach jedem Render/Modal-Oeffnen Plaketten nachziehen (schreibt nur bei
+// echten Aenderungen, dadurch keine Endlosschleife)
+const _kwObs=new MutationObserver(()=>{clearTimeout(_kwObs._t);_kwObs._t=setTimeout(refreshAllKwTags,80);});
+_kwObs.observe(document.body,{childList:true,subtree:true});
 function isoKW(s){
   const d=new Date(s);
   const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
