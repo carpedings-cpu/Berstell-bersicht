@@ -93,6 +93,23 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pcard.s-red::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#d92020;}
 .pcard.s-amber::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#c47700;}
 .pcard.s-green::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#1e8a4a;}
+/* Projekt-Akzentfarben: automatisch aus dem Namen, dezent (kein Corporate-Look) */
+.pcard .adot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;flex:0 0 auto;}
+.pcard.pa1{border-top:4px solid #7a9e7e;background:linear-gradient(rgba(122,158,126,.055),rgba(122,158,126,.055)),rgba(255,255,255,.7);} .pcard.pa1 .adot{background:#7a9e7e;}
+.pcard.pa2{border-top:4px solid #7e93ad;background:linear-gradient(rgba(126,147,173,.055),rgba(126,147,173,.055)),rgba(255,255,255,.7);} .pcard.pa2 .adot{background:#7e93ad;}
+.pcard.pa3{border-top:4px solid #a8827e;background:linear-gradient(rgba(168,130,126,.055),rgba(168,130,126,.055)),rgba(255,255,255,.7);} .pcard.pa3 .adot{background:#a8827e;}
+.pcard.pa4{border-top:4px solid #9b85a8;background:linear-gradient(rgba(155,133,168,.055),rgba(155,133,168,.055)),rgba(255,255,255,.7);} .pcard.pa4 .adot{background:#9b85a8;}
+.pcard.pa5{border-top:4px solid #5f9ea0;background:linear-gradient(rgba(95,158,160,.055),rgba(95,158,160,.055)),rgba(255,255,255,.7);} .pcard.pa5 .adot{background:#5f9ea0;}
+.pcard.pa6{border-top:4px solid #8f9a6e;background:linear-gradient(rgba(143,154,110,.055),rgba(143,154,110,.055)),rgba(255,255,255,.7);} .pcard.pa6 .adot{background:#8f9a6e;}
+.pcard.pa7{border-top:4px solid #a88a95;background:linear-gradient(rgba(168,138,149,.055),rgba(168,138,149,.055)),rgba(255,255,255,.7);} .pcard.pa7 .adot{background:#a88a95;}
+.pcard.pa8{border-top:4px solid #7d8fa3;background:linear-gradient(rgba(125,143,163,.055),rgba(125,143,163,.055)),rgba(255,255,255,.7);} .pcard.pa8 .adot{background:#7d8fa3;}
+/* Zart getoente Pills fuer Ok-Zustaende (statt grau) */
+.pcard .pwarn-g{background:rgba(30,138,74,.11);color:#0f6332;}
+.pcard .pwarn-g:hover{background:rgba(30,138,74,.2);}
+.pcard .pwarn-t{background:rgba(15,123,138,.11);color:#0f6b7a;}
+.pcard .pwarn-t:hover{background:rgba(15,123,138,.2);}
+.pcard .pwarn-v{background:rgba(91,76,138,.11);color:#4a3d80;}
+.pcard .pwarn-v:hover{background:rgba(91,76,138,.2);}
 .pcard h3{font-size:16px;font-weight:700;color:#1c1c1e;letter-spacing:-.2px;margin-bottom:4px;}
 .pcard .psub{font-size:11.5px;color:rgba(28,28,30,.55);font-weight:500;}
 .pcard .plast{font-size:10.5px;color:rgba(28,28,30,.5);font-weight:500;margin-top:2px;display:flex;align-items:center;gap:4px;}
@@ -2007,7 +2024,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-24 · v88';
+const APP_VERSION='2026-08-24 · v89';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2067,6 +2084,12 @@ async function reaktiviereProjekt(id){
   updateGlobalCounters();
   toast('Projekt "'+p.name+'" reaktiviert','ok');
 }
+// Stabile Akzentfarbe je Projekt: gleicher Name → gleiche Farbe, auf allen Geraeten
+function projAkzent(name){
+  let h=0;const s=String(name||'');
+  for(let i=0;i<s.length;i++)h=(h+s.charCodeAt(i)*(i+1))%997;
+  return 'pa'+((h%8)+1);
+}
 function renderHome(){
   const g=document.getElementById('pgrid');
   g.innerHTML='';
@@ -2092,11 +2115,11 @@ function renderHome(){
     const wartRed=wartOffen.some(g=>wartungAmpel(proj,g.lk)==='red');
     const protOff=protokollOffen(proj);
     const cls=(red>0||abrufUeberf>0)?'s-red':amb>0?'s-amber':gel===tot&&tot>0?'s-green':'';
-    const d=document.createElement('div');d.className='pcard '+cls;
+    const d=document.createElement('div');d.className='pcard '+cls+' '+projAkzent(proj.name);
     d.onclick=()=>openProject(proj.id);
     const le=proj.lastEdit;
     const leTxt=le?`<div class="plast" title="${escA('Zuletzt bearbeitet von '+le.user+' am '+fmtAuditTime(le.at))}">✎ ${esc(editorShort(le.user))} · ${esc(fmtAuditTime(le.at))}</div>`:'';
-    d.innerHTML=`<h3>${esc(proj.name)}</h3>
+    d.innerHTML=`<h3><span class="adot"></span>${esc(proj.name)}</h3>
       <div class="psub">${tot} Positionen${proj.liefertermin?' · Liefertermin: '+fmtD(proj.liefertermin):''}</div>
       ${leTxt}
       <div class="pwarn">
@@ -2104,9 +2127,9 @@ function renderHome(){
         ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
         ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
         ${amb?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'amber')" title="Bald fällige Positionen anzeigen">⏳ ${amb} bald fällig</button>`:''}
-        <button class="pwarn-b pwarn-n" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?">${best}/${tot} bestellt</button>
-        <button class="pwarn-b ${wartOffen.length?(wartRed?'pwarn-r':'pwarn-a'):'pwarn-n'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="${wartOffen.length?'Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht':'Wartungsangebote ansehen und bearbeiten'}">⚙ ${wartOffen.length?wartOffen.length+' ':''}Wartung</button>
-        <button class="pwarn-b ${protOff?'pwarn-r':'pwarn-n'}" onclick="event.stopPropagation();openProtokolleVonHome('${proj.id}')" title="${protOff?'Protokolle fehlen (IBN/Einweisung) – tippen öffnet die Liste':'Protokolle ansehen und abhaken'}">📋 ${protOff?protOff+' ':''}Protokolle</button>
+        <button class="pwarn-b pwarn-g" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?">${best}/${tot} bestellt</button>
+        <button class="pwarn-b ${wartOffen.length?(wartRed?'pwarn-r':'pwarn-a'):'pwarn-t'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="${wartOffen.length?'Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht':'Wartungsangebote ansehen und bearbeiten'}">⚙ ${wartOffen.length?wartOffen.length+' ':''}Wartung</button>
+        <button class="pwarn-b ${protOff?'pwarn-r':'pwarn-v'}" onclick="event.stopPropagation();openProtokolleVonHome('${proj.id}')" title="${protOff?'Protokolle fehlen (IBN/Einweisung) – tippen öffnet die Liste':'Protokolle ansehen und abhaken'}">📋 ${protOff?protOff+' ':''}Protokolle</button>
       </div>
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
