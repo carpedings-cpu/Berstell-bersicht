@@ -393,6 +393,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .ab-item.ab-clickable{cursor:pointer;-webkit-tap-highlight-color:rgba(26,95,122,.18);touch-action:manipulation;transition:background .12s ease,transform .12s ease;}
 .ab-item.ab-clickable:hover,.ab-item.ab-clickable:active{background:rgba(255,255,255,.92);transform:translateY(-1px);}
 .ab-date{flex-shrink:0;text-align:center;min-width:62px;}
+.ab-date .ad-kw{font-size:8.5px;font-weight:800;letter-spacing:.4px;color:rgba(107,80,64,.65);text-transform:uppercase;margin-bottom:2px;}
 .ab-date .ad-d{font-size:18px;font-weight:800;line-height:1;color:#1c1c1e;font-variant-numeric:tabular-nums;}
 .ab-date .ad-m{font-size:10px;font-weight:600;color:rgba(28,28,30,.5);text-transform:uppercase;margin-top:2px;}
 .ab-date .ad-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;margin-top:3px;display:inline-block;}
@@ -2024,7 +2025,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-27 · v91';
+const APP_VERSION='2026-08-27 · v92';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2155,6 +2156,17 @@ function renderHome(){
 }
 
 function fmtD(s){if(!s)return '';const d=new Date(s);return d.toLocaleDateString('de-DE');}
+// ISO-Kalenderwoche (KW) eines Datums – Montag als Wochenstart, KW 1 = Woche mit dem 4. Januar
+function isoKW(s){
+  const d=new Date(s);
+  const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=(t.getUTCDay()+6)%7;
+  t.setUTCDate(t.getUTCDate()-day+3);
+  const firstThu=new Date(Date.UTC(t.getUTCFullYear(),0,4));
+  const fday=(firstThu.getUTCDay()+6)%7;
+  firstThu.setUTCDate(firstThu.getUTCDate()-fday+3);
+  return 1+Math.round((t-firstThu)/(7*864e5));
+}
 
 let _npFile=null;
 
@@ -6493,8 +6505,8 @@ function renderAbrufAnsicht(){
     if(d<0)group='Überfällig';
     else if(d===0)group='Heute';
     else if(d===1)group='Morgen';
-    else if(d<=7)group='Diese Woche';
-    else if(d<=14)group='Nächste Woche';
+    else if(d<=7)group='Diese Woche (KW '+isoKW(today())+')';
+    else if(d<=14)group='Nächste Woche (KW '+(isoKW(it.abrufBis))+')';
     else group='Später';
     if(group!==lastGroup){html+=`<div class="ab-daygroup">${group}</div>`;lastGroup=group;}
     const dt=new Date(it.abrufBis);
@@ -6504,6 +6516,7 @@ function renderAbrufAnsicht(){
     const jump=`jumpToProjPos('${escA(it.projId)}','${escA(it.p.pos)}')`;
     html+=`<div class="ab-item ab-clickable ${cls}" onclick="${jump}" title="${escA('Zu Position '+it.p.pos+' in '+it.projName+' springen')}">
       <div class="ab-date">
+        <div class="ad-kw">KW ${isoKW(it.abrufBis)}</div>
         <div class="ad-d">${dt.getDate()}</div>
         <div class="ad-m">${dt.toLocaleDateString('de-DE',{month:'short'})}</div>
         ${badge}

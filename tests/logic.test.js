@@ -46,10 +46,11 @@ const code=[
   extractFn('zubPreis'),
   extractFn('posZeit'),
   extractFn('mergeProjekt'),
+  extractFn('isoKW'),
 ].join('\n');
 const api=new Function(code+`
   return {istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
-    protokolleVollstaendig,zubPreis,posZeit,mergeProjekt};`)();
+    protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW};`)();
 
 // ── Test-Helfer ──────────────────────────────────────────────────────────
 let pass=0,fail=0;
@@ -133,6 +134,11 @@ is(api.posZeit({pos:'1'}),0,'posZeit leer = 0');
   const theirs={id:'p',positionen:[{pos:'1',status:'alt',audit:[{at:T1}]}]};
   is(api.mergeProjekt(mine,theirs).positionen[0].status,'haken','Merge: checkMeta zählt als Bearbeitung');
 }
+
+// ── ISO-Kalenderwoche (Referenzwerte via Python datetime.isocalendar) ────
+[['2026-01-01',1],['2025-12-28',52],['2026-08-27',35],
+ ['2026-12-31',53],['2027-01-04',1],['2024-12-30',1],
+].forEach(([d,want])=>is(api.isoKW(d),want,'KW: '+d));
 
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
 process.exit(fail?1:0);
