@@ -55,12 +55,20 @@ const code=[
   extractConst('GRUSS_ABEND'),
   extractFn('grussVorname'),
   extractFn('grussIndex'),
+  extractConst('daysBtw'),
+  extractConst('URLAUB'),
+  extractConst('URLAUB_COUNTDOWN'),
+  extractConst('URLAUB_WEG'),
+  extractConst('URLAUB_ZURUECK_WER'),
+  extractConst('URLAUB_ZURUECK_WEG'),
+  extractFn('urlaubText'),
+  extractFn('urlaubsGruss'),
   extractFn('begruessung'),
 ].join('\n');
 const api=new Function(code+`
   return {istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
     protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
-    begruessung,grussVorname,
+    begruessung,grussVorname,URLAUB,URLAUB_WEG,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
       advent:GRUSS_ADVENT,frueh:GRUSS_FRUEH,abend:GRUSS_ABEND}};`)();
 
@@ -219,6 +227,52 @@ is(ausPool(api.begruessung('Diana','2026-12-07',19),P.advent,'Diana'),true,'Adve
 // Nach dem 24.12. wieder normal
 is(ausPool(api.begruessung('Diana','2026-12-28',9),P.montag,'Diana'),true,'28.12. ist Montag → kein Advent mehr');
 
+// ── Urlaubs-Countdown für die Vertretung ────────────────────────────────
+// Urlaub: Mo 31.08.2026 bis So 13.09.2026, zurück am Mo 14.09.2026
+const WER=api.URLAUB.wer, WEG=api.URLAUB.weg;
+
+// Erster Urlaubstag: 14 Tage bis zur Rückkehr
+{
+  const s=api.begruessung(WER,'2026-08-31',9);
+  is(s.includes('14 Tagen'),true,'Urlaub Tag 1: nennt 14 Tage');
+  is(s.includes('Felicia'),true,'Urlaub: spricht Felicia mit Vornamen an');
+  is(s.includes('Diana'),true,'Urlaub: nennt Diana als Rückkehrerin');
+}
+// Halbzeit und letzter Tag
+is(api.begruessung(WER,'2026-09-07',9).includes('Halbzeit'),true,'Urlaub: Halbzeit nach 7 Tagen');
+is(api.begruessung(WER,'2026-09-13',9).includes('Letzter Tag'),true,'Urlaub: letzter Tag erkannt');
+// Rückkehrtag: Dank statt Countdown
+{
+  const s=api.begruessung(WER,'2026-09-14',9);
+  is(s.includes('zurück'),true,'Rückkehrtag: Diana ist zurück');
+  is(s.includes('Danke'),true,'Rückkehrtag: Dank an die Vertretung');
+}
+// Alle 14 Tage verschieden und mit korrekt absteigender Zahl
+{
+  const set=new Set(); let zahlenOk=true;
+  for(let i=0;i<14;i++){
+    const d=new Date(Date.UTC(2026,7,31)+i*864e5).toISOString().slice(0,10);
+    const s=api.begruessung(WER,d,9);
+    set.add(s);
+    const rest=14-i;
+    if(rest>1&&!s.includes(String(rest)))zahlenOk=false;
+  }
+  is(set.size,14,'Urlaub: 14 verschiedene Sprüche an 14 Tagen');
+  is(zahlenOk,true,'Urlaub: Countdown-Zahl stimmt an jedem Tag');
+}
+// Vor und nach dem Urlaub wieder normale Sprüche
+is(api.begruessung(WER,'2026-08-30',9).includes('Tage'),false,'Vor dem Urlaub kein Countdown');
+is(ausPool(api.begruessung(WER,'2026-09-15',9),P.allgemein,WER),true,'Nach dem Urlaub wieder normal');
+// Die Urlauberin selbst bekommt einen Strand-Spruch
+is(api.URLAUB_WEG.some(t=>t.split('{name}').join('Diana')===api.begruessung(WEG,'2026-09-02',9)),
+   true,'Urlauberin bekommt Urlaubs-Spruch');
+is(api.begruessung(WEG,'2026-09-14',9).includes('Willkommen zurück'),true,'Urlauberin: Rückkehr-Gruß');
+is(ausPool(api.begruessung(WEG,'2026-09-15',9),P.allgemein,WEG),true,'Urlauberin danach wieder normal');
+// Alle anderen bleiben unberührt
+is(ausPool(api.begruessung('Max Mustermann','2026-09-02',9),P.allgemein,'Max'),true,
+   'Dritte Person vom Urlaubsmodus unberührt');
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
+
 
 process.exit(fail?1:0);

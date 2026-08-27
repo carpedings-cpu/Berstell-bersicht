@@ -1941,8 +1941,69 @@ function grussIndex(name,datum){
   for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%99991;
   return h;
 }
+// ── URLAUBS-MODUS: taeglicher Countdown fuer die Vertretung ──────────────
+// Zeitlich begrenzt – ausserhalb des Zeitraums greifen automatisch wieder die
+// normalen Sprueche. Fuer den naechsten Urlaub einfach die vier Werte anpassen.
+const URLAUB={
+  wer:'Felicia Leyendecker',   // haelt die Stellung
+  weg:'Diana Ziegler',         // ist im Urlaub
+  von:'2026-08-31',            // erster Urlaubstag
+  zurueck:'2026-09-14'         // erster Arbeitstag zurueck
+};
+// Countdown nach verbleibenden Tagen bis zur Rueckkehr
+const URLAUB_COUNTDOWN={
+  14:'Zwei Wochen Stellung halten, {name}! In 14 Tagen ist {weg} zurück. Du schaffst das. 💪',
+  13:'Noch 13 Tage, {name}. Die Kühlzellen und du – ein unschlagbares Team. ❄️',
+  12:'12 Tage noch, {name}! Du hältst hier gerade alles zusammen. 🛟',
+  11:'Noch 11 Tage, {name}. Kleiner Tipp für heute: Kaffee hilft immer. ☕',
+  10:'Nur noch 10 Tage, {name}! Zweistellig – aber ab jetzt geht es bergab. 📉',
+  9:'9 Tage noch, {name}. Die Lieferanten merken gar nicht, dass du gerade allein regierst. 😎',
+  8:'Noch 8 Tage, {name}! Das Schwerste liegt schon hinter dir. 🎯',
+  7:'Halbzeit, {name}! Noch 7 Tage, dann ist {weg} wieder da. 🥳',
+  6:'Nur noch 6 Tage, {name}. Die zweite Hälfte läuft erfahrungsgemäß schneller. ⏩',
+  5:'5 Tage noch, {name}! Die Zielgerade ist in Sicht. 🏁',
+  4:'Noch 4 Tage, {name}. Was du hier gerade leistest, ist bemerkenswert. 🌟',
+  3:'Nur noch 3 Tage, {name}! Langsam darfst du anfangen zu feiern. 🎉',
+  2:'Noch 2 Tage, {name}. Übermorgen ist {weg} zurück – durchhalten! 💪',
+  1:'Letzter Tag, {name}! Morgen ist {weg} wieder da. Du hast es geschafft! 🏆'
+};
+// Sprueche fuer die Urlauberin selbst, falls sie doch in die App schaut
+const URLAUB_WEG=[
+  '{name}! Du bist im Urlaub. Finger weg vom iPad. 🏖️',
+  '{name}, die Kühlzellen laufen auch ohne dich. Sonnencreme statt Spülmaschinen! ☀️',
+  'Urlaub, {name}! Hier ist alles in besten Händen. Wirklich. 🌴',
+  '{name}, hier gibt es heute nichts zu tun. Geh wieder an den Strand. 🐚',
+  'Erwischt, {name}! Urlaub heißt Urlaub. Die Liste läuft nicht weg. 😎'
+];
+const URLAUB_ZURUECK_WER='{weg} ist zurück, {name}! Danke, dass du den Laden am Laufen gehalten hast. 🙏';
+const URLAUB_ZURUECK_WEG='Willkommen zurück, {name}! {wer} hat alles im Griff gehabt – jetzt erstmal Kaffee. ☕';
+function urlaubText(t,name){
+  return String(t).split('{name}').join(grussVorname(name))
+    .split('{weg}').join(grussVorname(URLAUB.weg))
+    .split('{wer}').join(grussVorname(URLAUB.wer));
+}
+// Liefert den Urlaubs-Spruch oder '' wenn der Urlaubsmodus nicht greift
+function urlaubsGruss(name,d){
+  if(!URLAUB||!name)return '';
+  if(name!==URLAUB.wer&&name!==URLAUB.weg)return '';
+  const tage=daysBtw(d,URLAUB.zurueck);       // Tage bis zur Rueckkehr
+  const laeuft=d>=URLAUB.von&&tage>0;
+  if(name===URLAUB.wer){
+    if(laeuft){
+      const t=URLAUB_COUNTDOWN[tage]||'Noch {tage} Tage, {name}! {weg} ist bald zurück. Durchhalten! 💪';
+      return urlaubText(t,name).split('{tage}').join(tage);
+    }
+    if(tage===0)return urlaubText(URLAUB_ZURUECK_WER,name);
+    return '';
+  }
+  if(laeuft)return urlaubText(URLAUB_WEG[grussIndex(name,d)%URLAUB_WEG.length],name);
+  if(tage===0)return urlaubText(URLAUB_ZURUECK_WEG,name);
+  return '';
+}
 function begruessung(name,datum,stunde){
   const d=datum||today();
+  const u=urlaubsGruss(name,d);
+  if(u)return u;                              // Urlaubs-Countdown hat Vorrang
   const h=typeof stunde==='number'?stunde:new Date().getHours();
   const dt=new Date(d+'T12:00:00');
   const wt=dt.getDay(), monat=dt.getMonth()+1, tag=dt.getDate();
@@ -2173,7 +2234,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-28 · v95';
+const APP_VERSION='2026-08-28 · v96';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
