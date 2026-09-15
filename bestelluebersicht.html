@@ -1598,7 +1598,23 @@ function protokolleVollstaendig(p){
 const escA=s=>String(s||'').replace(/"/g,'&quot;');
 const today=()=>new Date().toISOString().slice(0,10);
 const daysBtw=(a,b)=>Math.floor((new Date(b)-new Date(a))/864e5);
-const toI=v=>{const n=parseInt(String(v).replace(/[^0-9-]/g,''),10);return isNaN(n)?0:n;};
+// Mengen-Parser: versteht deutsche UND englische Schreibweise.
+// '2,5'->2.5  '1.234,5'->1234.5  '2.5'->2.5  '3 Stk'->3
+// (Der alte toI strich das Komma weg und machte aus 2,5 eine 25 – Mengen-Fehler.)
+const toNum=v=>{
+  if(typeof v==='number')return isFinite(v)?v:0;
+  let s=String(v==null?'':v).replace(/[^0-9,.\-]/g,'').trim();
+  if(!s)return 0;
+  if(s.indexOf(',')>=0)s=s.indexOf('.')>=0?s.replace(/\./g,'').replace(',','.'):s.replace(',','.');
+  const n=parseFloat(s);
+  return isNaN(n)?0:n;
+};
+// Menge fuer Anzeige/Eingabefeld: deutsch mit Komma, ohne Tausenderpunkt,
+// ganze Zahlen ohne Nachkommastellen ('2,5' bleibt '2,5', '3' bleibt '3')
+const fmtMenge=v=>{
+  const n=toNum(v);
+  return n.toLocaleString('de-DE',{maximumFractionDigits:3,useGrouping:false});
+};
 
 // Abruftermin berechnen: explizit gesetzt, sonst Liefertermin minus Vorlauf
 function abrufTermin(p,proj){
@@ -2220,7 +2236,7 @@ async function syncPreiseFromProject(proj){
     if(!((p.ek||0)>0||(p.vk||0)>0))return;
     const lief=p.lieferant||p.fabrikat||'(ohne Lieferant)';
     const entry={proj:proj.name,pos:p.pos,bez:p.bez,typ:p.typ||'',lief,
-      menge:toI(p.menge)||1,ek:p.ek||0,vk:p.vk||0,termin:proj.liefertermin||'',anm:'',bindung:''};
+      menge:toNum(p.menge)||1,ek:p.ek||0,vk:p.vk||0,termin:proj.liefertermin||'',anm:'',bindung:''};
     const i=PREISE_DATA.findIndex(e=>e.proj===entry.proj&&e.pos===entry.pos&&e.lief===entry.lief);
     if(i>=0)PREISE_DATA[i]=entry; else PREISE_DATA.push(entry);
     count++;
@@ -2260,7 +2276,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-08-28 · v97';
+const APP_VERSION='2026-09-15 · v98';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -6087,7 +6103,7 @@ function buildPreiseLive(showAll,projFilter){
         lief:p.lieferant||p.fabrikat||'(ohne Lieferant)',
         _liefRaw:p.lieferant||'',         // Diagnose: was steht im Feld 'lieferant'?
         _fabRaw:p.fabrikat||'',           // Diagnose: was steht im Feld 'fabrikat'?
-        menge:toI(p.menge)||1,
+        menge:toNum(p.menge)||1,
         ek, vk,
         termin:proj.liefertermin||'',
         anm:'',
@@ -6105,7 +6121,7 @@ function buildPreiseLive(showAll,projFilter){
     out.push({
       proj:z.proj||'(ohne Projekt)', pos:z.pos||'—', bez:z.bez||'', typ:'',
       lief:z.lief||'(ohne Lieferant)', _liefRaw:z.lief||'', _fabRaw:'',
-      menge:toI(z.menge)||1, ek:z.ek||0, vk:z.vk||0,
+      menge:toNum(z.menge)||1, ek:z.ek||0, vk:z.vk||0,
       termin:appProj?(appProj.liefertermin||''):(((pm.termine||{})[z.proj])||''), anm:'', bindung:'',
       _status:'', _zusatz:true, _zIdx:zIdx, _projName:z.proj, _extern:!appProj
     });
@@ -6278,7 +6294,7 @@ function renderPreise(){
         ${printCell}
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
         <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}${diag}</td>
-        <td style="text-align:center"><input type="number" min="1" step="1" class="pr-inp" style="width:58px;text-align:center" value="${it.menge}" title="Menge ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setMengeInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}',this.value)"></td>
+        <td style="text-align:center"><input type="text" inputmode="decimal" class="pr-inp" style="width:58px;text-align:center" value="${escA(fmtMenge(it.menge))}" title="Menge ändern – Komma erlaubt, speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setMengeInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}',this.value)"></td>
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
         <td class="pr-ek"><input type="number" step="0.01" class="pr-inp" value="${it.ek||''}" placeholder="–" title="EK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','ek',this.value)"></td>
         <td class="pr-vk"><input type="number" step="0.01" class="pr-inp" value="${it.vk||''}" placeholder="–" title="VK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','vk',this.value)"></td>
@@ -6397,15 +6413,16 @@ async function setPreisInline(projName,pos,lief,feld,val){
 // Menge direkt in der Preisliste aendern (App-Position: mit Audit; Excel-Zeile: Preisspeicher)
 async function setMengeInline(projName,pos,lief,val){
   if(!requireLogin()){renderPreise();return;}
-  const neu=parseInt(val)||1;
+  const neu=toNum(val);
+  if(!(neu>0)){toast('Bitte eine Menge größer als 0 eingeben','err');renderPreise();return;}
   const proj=PROJECTS.find(p=>p.name===projName);
   if(proj){
     const p=(proj.positionen||[]).find(x=>String(x.pos).trim()===String(pos).trim());
     if(p){
-      const alt=toI(p.menge)||1;
+      const alt=toNum(p.menge);
       if(neu===alt)return;
-      p.menge=neu;
-      logAction(p,'Menge geändert: '+alt+' → '+neu+' (Preisliste)');
+      p.menge=fmtMenge(neu);   // Positionen speichern die Menge als Text – deutsch mit Komma
+      logAction(p,'Menge geändert: '+fmtMenge(alt)+' → '+fmtMenge(neu)+' (Preisliste)');
       touchProject(proj);
       await dbPut('projects',proj);
       renderPreise();
@@ -6544,11 +6561,11 @@ function collectLiefPrintItems(liefKey){
   aktiveProjekte().forEach(proj=>(proj.positionen||[]).forEach(p=>{
     if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
     if(normLief(p.lieferant||p.fabrikat)!==liefKey)return;
-    items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',proj:proj.name,menge:toI(p.menge)||1,ek:p.ek||0});
+    items.push({pos:p.pos,bez:p.bez,typ:p.typ||'',proj:proj.name,menge:toNum(p.menge)||1,ek:p.ek||0});
   }));
   (SETTINGS.preisMeta.zusatz||[]).forEach(z=>{
     if(normLief(z.lief)!==liefKey)return;
-    items.push({pos:z.pos||'—',bez:z.bez,typ:'',proj:z.proj,menge:toI(z.menge)||1,ek:z.ek||0,zusatz:true});
+    items.push({pos:z.pos||'—',bez:z.bez,typ:'',proj:z.proj,menge:toNum(z.menge)||1,ek:z.ek||0,zusatz:true});
   });
   // Externe Excel-Zeilen (Projektname ist KEIN App-Projekt) gehoeren ebenfalls dazu –
   // sie stehen in der App-Ansicht und muessen in PDF/Excel mitzaehlen
@@ -6556,7 +6573,7 @@ function collectLiefPrintItems(liefKey){
   (PREISE_DATA||[]).forEach(e2=>{
     if(projNamesSet.has(e2.proj))return;
     if(normLief(e2.lief||'')!==liefKey)return;
-    items.push({pos:e2.pos||'—',bez:e2.bez,typ:e2.typ||'',proj:e2.proj,menge:toI(e2.menge)||1,ek:e2.ek||0});
+    items.push({pos:e2.pos||'—',bez:e2.bez,typ:e2.typ||'',proj:e2.proj,menge:toNum(e2.menge)||1,ek:e2.ek||0});
   });
   // Vom Druck ausgeschlossene Positionen weglassen (bleiben in der Liste erhalten)
   return items.filter(it=>!isExcl(excludeKey(it)));

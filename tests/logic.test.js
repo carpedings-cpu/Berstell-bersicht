@@ -56,6 +56,8 @@ const code=[
   extractFn('grussVorname'),
   extractFn('grussIndex'),
   extractConst('daysBtw'),
+  extractConst('toNum'),
+  extractConst('fmtMenge'),
   extractConst('URLAUB'),
   extractConst('URLAUB_COUNTDOWN'),
   extractConst('URLAUB_WEG'),
@@ -68,7 +70,7 @@ const code=[
 const api=new Function(code+`
   return {istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
     protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
-    begruessung,grussVorname,URLAUB,URLAUB_WEG,
+    begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
       advent:GRUSS_ADVENT,frueh:GRUSS_FRUEH,abend:GRUSS_ABEND}};`)();
 
@@ -272,7 +274,30 @@ is(ausPool(api.begruessung(WEG,'2026-09-15',9),P.allgemein,WEG),true,'Urlauberin
 is(ausPool(api.begruessung('Max Mustermann','2026-09-02',9),P.allgemein,'Max'),true,
    'Dritte Person vom Urlaubsmodus unberührt');
 
+// ── Mengen mit Komma (Regression: toI machte aus 2,5 eine 25) ───────────
+[['2,5',2.5],['0,5',0.5],['10,25',10.25],['1,75',1.75],
+ ['1.234,5',1234.5],['2.5',2.5],['3',3],[3,3],[2.5,2.5],
+ ['3 Stk',3],['',0],[null,0],[undefined,0],
+].forEach(([roh,want])=>is(api.toNum(roh),want,'Menge lesen: '+JSON.stringify(roh)));
+
+// Die konkreten Fehlwerte aus dem Bug-Bericht dürfen NICHT mehr entstehen
+is(api.toNum('2,5')===25,false,'2,5 wird nicht mehr zu 25');
+is(api.toNum('0,5')===5,false,'0,5 wird nicht mehr zu 5');
+is(api.toNum('10,25')===1025,false,'10,25 wird nicht mehr zu 1025');
+
+// Anzeige bleibt deutsch mit Komma, ganze Zahlen ohne Nachkommastellen
+[['2,5','2,5'],[2.5,'2,5'],['3','3'],[3,'3'],[1234.5,'1234,5'],['0,5','0,5'],
+].forEach(([roh,want])=>is(api.fmtMenge(roh),want,'Menge anzeigen: '+JSON.stringify(roh)));
+
+// Hin und zurück verändert die Menge nicht
+['2,5','0,5','10,25','3','12'].forEach(m=>
+  is(api.fmtMenge(api.toNum(m)),m,'Menge unverändert nach Speichern: '+m));
+
+// Rechnen stimmt: 2,5 Stück à 100 € sind 250 €, nicht 2500 €
+is(api.toNum('2,5')*100,250,'Summe mit Komma-Menge korrekt');
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
+
 
 
 process.exit(fail?1:0);
