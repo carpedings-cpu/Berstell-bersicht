@@ -39,7 +39,11 @@ const code=[
   extractFn('istBauseits'),
   extractFn('istDienstleistung'),
   extractFn('istEntfallen'),
+  extractFn('istEventual'),
   extractFn('istNichtBestellbar'),
+  extractFn('nichtBestellbarLabel'),
+  extractFn('istZuBestellen'),
+  extractFn('rowsToProject'),
   extractFn('istWartungsrelevant'),
   extractFn('istProtokollpflichtig'),
   extractFn('protokolleVollstaendig'),
@@ -67,8 +71,8 @@ const code=[
   extractFn('urlaubsGruss'),
   extractFn('begruessung'),
 ].join('\n');
-const api=new Function(code+`
-  return {istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
+const api=new Function('const window={_parseDebug:{}};'+code+`
+  return {istEventual,nichtBestellbarLabel,istZuBestellen,rowsToProject,istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
     protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
     begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
@@ -296,7 +300,51 @@ is(api.toNum('10,25')===1025,false,'10,25 wird nicht mehr zu 1025');
 // Rechnen stimmt: 2,5 Stück à 100 € sind 250 €, nicht 2500 €
 is(api.toNum('2,5')*100,250,'Summe mit Komma-Menge korrekt');
 
+// ── Eventualpositionen ──────────────────────────────────────────────────
+is(api.istEventual({eventual:true}),true,'Eventual erkannt');
+is(api.istEventual({bez:'Spültisch'}),false,'Normale Position ist nicht eventual');
+is(api.nichtBestellbarLabel({eventual:true}),'Eventualposition','Label Eventualposition');
+// Wirkung: raus aus Zu bestellen und aus den Preisvergleichen
+is(api.istNichtBestellbar({bez:'Kühlzelle',eventual:true}),true,'Eventual zählt als nicht bestellbar');
+is(api.istZuBestellen({bez:'Kühlzelle',eventual:true,quelle:''}),false,'Eventual nicht in Zu bestellen');
+is(api.istZuBestellen({bez:'Kühlzelle',quelle:''}),true,'Ohne Kennzeichen normal in Zu bestellen');
+// Kennzeichen entfernt: Position läuft wieder überall mit
+is(api.istNichtBestellbar({bez:'Kühlzelle'}),false,'Nach Aufheben wieder bestellbar');
+is(api.istZuBestellen({bez:'Kühlzelle',quelle:''}),true,'Nach Aufheben wieder in Zu bestellen');
+
+// Excel-Erkennung: 'a' in eigener Spalte JA, 'a' am Ende der Pos.-Nr NEIN
+{
+  const rows=[
+    ['Pos.','LV','Stück','Einh.','Bezeichnung','Fabrikat','Typ'],
+    ['01.',null,null,null,'Küche',null,null],
+    ['01.01.0010.',null,'1','St','Spültisch','Duelks','X1'],
+    ['01.01.0020.','a','2','St','Kühlvitrine','Nordcap','X2'],
+    ['01.01.0030.a',null,'1','St','Türanschlag links','',''],
+    ['01.01.0040.','A','1','St','Wärmeplatte','',''],
+  ];
+  const items=api.rowsToProject(rows).cats.flatMap(c=>c.subsections.flatMap(s=>s.items));
+  const byPos=Object.fromEntries(items.map(i=>[i.pos,i]));
+  is(items.length,4,'Vier Positionen erkannt');
+  is(!!byPos['01.01.0010.'].eventual,false,'Normale Position nicht markiert');
+  is(!!byPos['01.01.0020.'].eventual,true,'a in eigener Spalte → Eventualposition');
+  is(!!byPos['01.01.0030.a'].eventual,false,'a am Ende der Pos.-Nr ist KEINE Eventualposition');
+  is(!!byPos['01.01.0040.'].eventual,true,'Großes A zählt ebenfalls');
+}
+// Spalte mit eigener Überschrift
+{
+  const rows=[
+    ['Pos.','Eventual','Stück','Einh.','Bezeichnung','Fabrikat','Typ'],
+    ['01.',null,null,null,'Küche',null,null],
+    ['01.01.0010.',null,'1','St','Spültisch','',''],
+    ['01.01.0020.','x','1','St','Kühlvitrine','',''],
+  ];
+  const items=api.rowsToProject(rows).cats.flatMap(c=>c.subsections.flatMap(s=>s.items));
+  is(!!items[0].eventual,false,'Überschriften-Spalte: leer = normal');
+  is(!!items[1].eventual,true,'Überschriften-Spalte: gefüllt = Eventualposition');
+}
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
+
 
 
 

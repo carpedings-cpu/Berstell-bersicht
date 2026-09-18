@@ -223,6 +223,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .nb-badge:hover{background:rgba(120,120,128,.28);}
 .nb-badge .nb-fix{opacity:.65;margin-left:3px;font-size:9px;}
 .nb-badge.nb-ok{background:rgba(30,138,74,.14);color:#0f6332;}
+.nb-badge.ev-badge{background:rgba(155,133,168,.18);color:#5b4a73;}
+.nb-badge.ev-badge:hover{background:rgba(155,133,168,.32);}
+.posev{background:none;border:none;font-size:13px;cursor:pointer;opacity:.3;padding:0 4px;transition:opacity .12s ease;}
+.posev:hover{opacity:.7;}
+.posev.on{opacity:1;color:#5b4a73;}
 .nb-badge.nb-ok:hover{background:rgba(30,138,74,.24);}
 /* Wartungs-Chip: teal-Variante des nb-badge */
 .nb-badge.wart-badge{background:rgba(26,95,122,.13);color:#1a5f7a;}
@@ -758,7 +763,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     </label>
   </div>
   <div id="prKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px"></div>
-  <div id="prProjOhne"></div>
   <div id="prList"></div>
 </div>
 
@@ -1087,15 +1091,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 <!-- Parse-Diagnose Modal (zeigt was im Excel gelesen wurde, wenn 0 Positionen) -->
 <!-- Projekt-Status Modal -->
 <!-- Preislücken pro Projekt: Positionen ohne EK/VK direkt nachtragen (nur in der Preisansicht) -->
-<div class="modal" id="preisLueckenModal" onclick="if(event.target===this)closePreisLuecken()">
-  <div class="modal-box flex-scroll" style="max-width:680px;max-height:90vh">
-    <button class="modal-x" onclick="closePreisLuecken()" title="Schließen (Esc)">✕</button>
-    <div id="preisLueckenBody" class="modal-scroll"></div>
-    <div class="modal-act">
-      <button class="mcancel" onclick="closePreisLuecken()">Schließen</button>
-    </div>
-  </div>
-</div>
 
 <!-- In-App PDF/Bild-Viewer (statt neuem Tab – mit Schließen-Button zurück zur App) -->
 <div id="docViewer" class="docviewer">
@@ -1553,13 +1548,18 @@ function istEntfallen(p){
   const hay=[p.bez,p.typ,p.notiz].filter(Boolean).join(' ').toLowerCase();
   return /\bentf(ae|ä)ll|\bentfall/.test(hay);
 }
+// Eventualposition: vom Kunden noch nicht beauftragt. Kommt aus der Excel-Liste
+// (Kennzeichen 'a' in einer eigenen Spalte) oder wird von Hand gesetzt. Zaehlt weder
+// zu 'Zu bestellen' noch in die Preisvergleiche – bis das Kennzeichen entfernt wird.
+function istEventual(p){return !!(p&&p.eventual);}
 function istNichtBestellbar(p){
   // Manueller Override hat Vorrang vor der automatischen Heuristik
   if(p&&p.nbOverride==='ja')return false;   // Bearbeiter sagt: ist doch bestellbar
   if(p&&p.nbOverride==='nein')return true;  // Bearbeiter sagt: ist nicht bestellbar
-  return istBauseits(p)||istDienstleistung(p)||istEntfallen(p);
+  return istEventual(p)||istBauseits(p)||istDienstleistung(p)||istEntfallen(p);
 }
 function nichtBestellbarLabel(p){
+  if(istEventual(p))return 'Eventualposition';
   if(istEntfallen(p))return 'Entfällt';
   if(istBauseits(p))return 'Bauseits';
   if(istDienstleistung(p))return 'Dienstleistung';
@@ -2220,7 +2220,8 @@ function makeProjFromData(name,data,termin=''){
           quelle:'',lieferant:'',kommNrs:[],lieferort:'',
           abrufTermin:'',status:'offen',geliefertDatum:'',notiz:'',
           bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:'',
-          zubehoer:zub
+          zubehoer:zub,
+          ...(it.eventual?{eventual:true}:{})
         });
       });
     });
@@ -2276,7 +2277,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-15 · v98';
+const APP_VERSION='2026-09-18 · v99';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2490,7 +2491,8 @@ async function saveNewProj(){
     PROJECTS.push(proj);markChanged();
     const np=await syncPreiseFromProject(proj);
     renderHome();hideLoader();
-    toast('Projekt "'+name+'" angelegt: '+proj.positionen.length+' Positionen'+(np?' · '+np+' Preise übernommen':''),'ok',3500);
+    const evN=proj.positionen.filter(istEventual).length;
+    toast('Projekt "'+name+'" angelegt: '+proj.positionen.length+' Positionen'+(np?' · '+np+' Preise übernommen':'')+(evN?' · '+evN+' Eventualpositionen erkannt':''),'ok',4000);
   }catch(e){hideLoader();console.error(e);toast('Import fehlgeschlagen: '+e.message,'err',4000);}
   _npFile=null;
 }
@@ -2520,7 +2522,7 @@ function parseExcel(ab){
 
 // Gemeinsamer Kern: aus einer Zeilen-Matrix (Excel ODER PDF) Bereiche + Positionen + Projektname ableiten
 function rowsToProject(rows){
-  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6,ek:-1,vk:-1};
+  let headerRow=-1,col={pos:0,menge:1,einh:2,bez:3,fab:5,typ:6,ek:-1,vk:-1,event:-1};
   // Zelle normalisieren: trim, NBSP→Space, Mehrfach-Leerzeichen kollabieren; leere Strings → null
   const n=v=>{if(v==null)return null;const s=String(v).replace(/ /g,' ').trim().replace(/\s+/g,' ');return s===''?null:s;};
   const isEmpty=v=>v==null||(typeof v==='string'&&v.replace(/ /g,'').trim()==='');
@@ -2559,7 +2561,9 @@ function rowsToProject(rows){
         fab:findInRow(r,/fabrikat|hersteller|marke/i),
         typ:findInRow(r,/^typ$|modell|artikel.?nr/i),
         ek:ekCol,
-        vk:vkCol
+        vk:vkCol,
+        // Eventualpositionen: eigene Spalte, falls sie eine Ueberschrift traegt
+        event:findInRow(r,/eventual|bedarfspos|^ev\.?$|^opt\.?$/i)
       };
       break;
     }
@@ -2620,6 +2624,20 @@ function rowsToProject(rows){
     }
   }
   window._parseDebug.projName=projName;
+  // Eventualpositionen: entweder eine eigene Spalte mit Ueberschrift, oder – so machen es
+  // die meisten Listen – ein einzelnes kleines 'a' in einer sonst unbelegten Spalte.
+  // Wichtig: ein 'a' am Ende der Pos.-Nummer zaehlt NICHT, das sind Unterpositionen.
+  const belegt=new Set([col.pos,col.menge,col.einh,col.bez,col.fab,col.typ,col.ek,col.vk,col.event].filter(x=>x>=0));
+  const istEventualZeile=r=>{
+    if(col.event>=0)return !isEmpty(r[col.event]);
+    for(let j=0;j<r.length;j++){
+      if(belegt.has(j))continue;
+      const s=n(r[j]);
+      if(s&&/^a[.)]?$/i.test(s))return true;
+    }
+    return false;
+  };
+  let evCount=0;
   const cats=[];let cur=null;
   const ensureCur=()=>{if(!cur){cur={pos:'00.',bez:'',label:'',subsections:[{pos:'00.',bez:'',items:[]}],items:[]};cats.push(cur);}};
   for(let i=headerRow+1;i<rows.length;i++){
@@ -2639,11 +2657,15 @@ function rowsToProject(rows){
     // Item: Bezeichnung + Menge vorhanden
     if(!isEmpty(stkRaw)&&bez){
       ensureCur();
+      const ev=istEventualZeile(r);
+      if(ev)evCount++;
       cur.subsections[0].items.push({pos,menge:String(stkRaw).trim(),einh:einh||'St',bez,fabrikat:fab||'',typ:typ||'',
-        ek:col.ek>=0?num(r[col.ek]):0, vk:col.vk>=0?num(r[col.vk]):0});
+        ek:col.ek>=0?num(r[col.ek]):0, vk:col.vk>=0?num(r[col.vk]):0,
+        ...(ev?{eventual:true}:{})});
     }
   }
-  return {cats, projName};
+  window._parseDebug.eventual=evCount;
+  return {cats, projName, evCount};
 }
 
 // ── PDF-IMPORT ──────────────────────────────────────────────────────────
@@ -2896,8 +2918,6 @@ document.addEventListener('keydown',e=>{
   if(dv&&dv.classList.contains('on')){closeDocViewer();e.preventDefault();return;}
   const am=document.getElementById('auditModal');
   if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
-  const plm=document.getElementById('preisLueckenModal');
-  if(plm&&plm.classList.contains('on')){closePreisLuecken();e.preventDefault();return;}
   const zlm=document.getElementById('zubListModal');
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
   const wm=document.getElementById('wartungModal');
@@ -3481,7 +3501,9 @@ function renderDetail(){
     const nbAuto=istBauseits(p)||istDienstleistung(p)||istEntfallen(p);
     const nbActive=istNichtBestellbar(p);
     let nbBadge='';
-    if(nbActive){
+    if(istEventual(p)){
+      nbBadge=` <span class="nb-badge ev-badge" title="Eventualposition – noch nicht beauftragt, zählt nicht zu 'Zu bestellen' und nicht in die Preisvergleiche. Klicken, sobald der Kunde sie beauftragt hat." onclick="setEventual(${idx},false)">◇ Eventualposition <span class="nb-fix">✎</span></span>`;
+    } else if(nbActive){
       const label=p.nbOverride==='nein'?'Nicht bestellbar (manuell)':nichtBestellbarLabel(p);
       nbBadge=` <span class="nb-badge" title="Klicken zum Korrigieren: ist doch bestellbar" onclick="setNbOverride(${idx},'ja')">🚫 ${esc(label)} <span class="nb-fix">✎</span></span>`;
     } else if(p.nbOverride==='ja' && nbAuto){
@@ -3504,6 +3526,7 @@ function renderDetail(){
       <div class="ii"><div class="ibez">${esc(p.bez)}${nbBadge}${wartBadge}</div>
         <div class="imet">${p.fabrikat?'🏭 '+esc(p.fabrikat):''}${p.typ?' · '+esc(p.typ):''}</div></div>
       <div class="img">${esc(p.menge)} ${esc(p.einh)}</div>
+      <button class="posev${istEventual(p)?' on':''}" onclick="setEventual(${idx},${istEventual(p)?'false':'true'})" title="${istEventual(p)?'Eventualposition aufheben – Position zählt dann wieder normal mit':'Als Eventualposition markieren – zählt dann nicht zu Zu bestellen und nicht in die Preisvergleiche'}">◇</button>
       <button class="poshist" onclick="openAuditModal(${idx})" title="Verlauf anzeigen">🕓${(p.audit&&p.audit.length)?'<span class="histcnt">'+p.audit.length+'</span>':''}</button>
       <button class="posdel" onclick="delPos(${idx})" title="Position löschen">✕</button>
     </div>${wt}`;
@@ -3775,6 +3798,17 @@ async function toggleAB(idx){
 // val='ja'  → ist doch bestellbar (Auto-Erkennung wird ignoriert)
 // val='nein'→ ist nicht bestellbar (auch wenn Auto-Erkennung nichts findet)
 // val=''    → Override zuruecksetzen, wieder Automatik
+// Eventual-Kennzeichen setzen/aufheben. Beim Aufheben laeuft die Position sofort
+// wieder ueberall mit (Zu bestellen, Preise, Abruf, Wartung, Protokolle).
+async function setEventual(idx,val){
+  if(!requireLogin())return;
+  const p=CUR.positionen[idx];
+  if(val)p.eventual=true; else delete p.eventual;
+  logAction(p,val?'Als Eventualposition markiert':'Eventualposition aufgehoben – zählt wieder normal mit');
+  touchProject(CUR);
+  await saveCur();renderDetail();updateGlobalCounters();
+  toast(val?'Als Eventualposition markiert':'Eventualposition aufgehoben','ok');
+}
 async function setNbOverride(idx,val){
   if(!requireLogin())return;
   const p=CUR.positionen[idx];
@@ -6005,73 +6039,6 @@ function parsePreiseExcel(ab,fname){
 
 function fmtEur(n){return n.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
 
-// ── Preislücken: Positionen ohne Preis pro Projekt anzeigen + direkt eintragen ──
-// Nur in der Preisansicht erreichbar (Klick auf das 'X ohne Preis'-Projekt im Banner).
-let _preisLueckenProj=null;
-function openPreisLuecken(projName){
-  const proj=PROJECTS.find(p=>p.name===projName); if(!proj)return;
-  _preisLueckenProj=projName;
-  renderPreisLuecken();
-  document.getElementById('preisLueckenModal').classList.add('on');
-}
-function closePreisLuecken(){document.getElementById('preisLueckenModal').classList.remove('on');_preisLueckenProj=null;}
-function renderPreisLuecken(){
-  const proj=PROJECTS.find(p=>p.name===_preisLueckenProj); if(!proj)return;
-  const body=document.getElementById('preisLueckenBody');
-  // Positionen ohne Preis (aktive, bestellbare, noch nicht bestellte)
-  const luecken=[];
-  proj.positionen.forEach((p,idx)=>{
-    if(istNichtBestellbar(p)||istBestellt(p)||p.quelle==='lager')return;
-    if((p.ek||0)>0||(p.vk||0)>0)return;
-    luecken.push({p,idx});
-  });
-  const mitPreis=proj.positionen.filter(p=>!istNichtBestellbar(p)&&!istBestellt(p)&&p.quelle!=='lager'&&((p.ek||0)>0||(p.vk||0)>0)).length;
-  let html=`<h3 style="margin-bottom:4px">💶 Preise nachtragen</h3>
-    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${esc(proj.name)} · <strong style="color:#a01515">${luecken.length}</strong> ohne Preis · ${mitPreis} mit Preis</div>`;
-  if(luecken.length===0){
-    html+=`<div style="padding:30px;text-align:center;color:#0f6332;font-size:13px;font-weight:600">✓ Alle Positionen dieses Projekts haben jetzt einen Preis</div>`;
-  } else {
-    html+=`<div style="display:flex;flex-direction:column;gap:8px">`;
-    luecken.forEach(({p,idx})=>{
-      html+=`<div style="padding:10px 12px;border:.5px solid rgba(0,0,0,.1);border-radius:10px;background:rgba(255,255,255,.6)">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:12.5px;color:#2d2926">${esc(p.pos)} · ${esc(p.bez)}</div>
-            <div style="font-size:10.5px;color:rgba(28,28,30,.55);margin-top:2px">${p.fabrikat?'🏭 '+esc(p.fabrikat):''}${p.typ?' · '+esc(p.typ):''} · ${esc(p.menge)} ${esc(p.einh)}</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
-          <div><label style="font-size:9.5px;font-weight:700;color:rgba(45,41,38,.6);display:block;margin-bottom:2px">EK €</label>
-            <input type="number" step="0.01" placeholder="0" value="${p.ek||''}" onchange="setPreisLuecke(${idx},'ek',this.value)" style="width:100px;padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right;outline:none"></div>
-          <div><label style="font-size:9.5px;font-weight:700;color:rgba(45,41,38,.6);display:block;margin-bottom:2px">VK €</label>
-            <input type="number" step="0.01" placeholder="0" value="${p.vk||''}" onchange="setPreisLuecke(${idx},'vk',this.value)" style="width:100px;padding:7px 9px;border-radius:8px;border:.5px solid rgba(0,0,0,.12);font-size:13px;font-family:inherit;text-align:right;outline:none"></div>
-          <button onclick="jumpFromPreisLuecke('${escA(proj.id)}','${escA(p.pos)}')" style="margin-left:auto;align-self:flex-end;padding:7px 11px;border-radius:8px;border:.5px solid rgba(26,95,122,.3);background:rgba(26,95,122,.08);color:#0f4655;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">→ Zur Position</button>
-        </div>
-      </div>`;
-    });
-    html+=`</div>`;
-  }
-  body.innerHTML=html;
-}
-async function setPreisLuecke(idx,k,val){
-  if(!requireLogin())return;
-  const proj=PROJECTS.find(p=>p.name===_preisLueckenProj); if(!proj)return;
-  const p=proj.positionen[idx]; if(!p)return;
-  const n=parseFloat(String(val||'').replace(/\./g,'').replace(',','.'))||0;
-  const prev=p[k]||0;
-  if(prev===n)return;
-  p[k]=n;
-  logAction(p,`${k.toUpperCase()}: ${prev||'-'} € → ${n||'-'} € (Preisansicht)`);
-  touchProject(proj);
-  await dbPut('projects',proj);markChanged();
-  // Liste neu rendern (Position verschwindet sobald EK oder VK > 0) + Preisansicht im Hintergrund
-  renderPreisLuecken();
-  renderPreise();
-}
-function jumpFromPreisLuecke(projId,pos){
-  closePreisLuecken();
-  jumpToProjPos(projId,pos);
-}
 function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 
 // Preisdaten LIVE aus PROJECTS aufbauen – statt verstaubtem Snapshot.
@@ -6224,28 +6191,12 @@ function renderPreise(){
     });
     if(mit+ohne>0)projStats[proj.name]={mit,ohne,total:mit+ohne};
   });
-  const projOhnePreis=Object.entries(projStats).filter(([,s])=>s.ohne>0);
   const gesOhne=Object.values(projStats).reduce((s,p)=>s+p.ohne,0);
   document.getElementById('prKpis').innerHTML=`
     <div class="pr-kpi"><div class="kn">${groupList.length}</div><div class="kl">Lieferanten</div></div>
     <div class="pr-kpi"><div class="kn">${items.length}</div><div class="kl">Positionen mit Preis</div></div>
     <div class="pr-kpi"><div class="kn" style="color:${gesOhne>0?'#a01515':'#0f6332'}">${gesOhne}</div><div class="kl">Ohne Preis</div></div>
     <div class="pr-kpi"><div class="kn" style="color:#1e8a4a">${Math.round(margeTot)}%</div><div class="kl">Ø Marge</div></div>`;
-  // Pro-Projekt-Übersicht: nur sichtbar wenn Projekte ohne Preis existieren
-  const projOhneEl=document.getElementById('prProjOhne');
-  if(projOhneEl){
-    if(projOhnePreis.length>0){
-      projOhneEl.innerHTML=`<div style="padding:10px 14px;background:rgba(217,32,32,.08);border:.5px solid rgba(217,32,32,.25);border-radius:11px;margin-bottom:14px;font-size:12px">
-        <strong style="color:#a01515">⚠ Preise unvollständig in ${projOhnePreis.length} Projekt(en):</strong>
-        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">
-          ${projOhnePreis.sort((a,b)=>b[1].ohne-a[1].ohne).map(([name,s])=>`<button onclick="openPreisLuecken('${escA(name)}')" title="Anklicken: Positionen ohne Preis anzeigen und ergänzen" style="padding:4px 10px;border-radius:7px;border:none;background:rgba(217,32,32,.14);color:#a01515;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">${esc(name)}: ${s.ohne}/${s.total} ohne Preis ›</button>`).join('')}
-        </div>
-        <div style="margin-top:6px;font-size:10.5px;color:rgba(28,28,30,.5)">Auf ein Projekt tippen → Positionen ohne Preis anzeigen und direkt eintragen.</div>
-      </div>`;
-    } else {
-      projOhneEl.innerHTML=`<div style="padding:8px 14px;background:rgba(30,138,74,.08);border:.5px solid rgba(30,138,74,.25);border-radius:11px;margin-bottom:14px;font-size:12px;color:#0f6332;font-weight:600">✓ Alle aktiven Positionen haben Preise hinterlegt</div>`;
-    }
-  }
   const wrap=document.getElementById('prList');
   if(groupList.length===0){
     wrap.innerHTML=hasData?'<div class="empty">Keine Treffer.</div>':'<div class="empty">Noch keine Preisdaten.<br>Beim Hochladen eines Projekts werden EK/VK automatisch übernommen – oder lade oben gezielt eine EK/VK-Excel hoch.</div>';
