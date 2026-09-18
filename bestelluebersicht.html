@@ -1243,6 +1243,24 @@ function scrollTopSmooth(){window.scrollTo({top:0,behavior:'smooth'});}
 <input type="file" id="fiLs" accept="application/pdf,image/*" style="display:none">
 <input type="file" id="fiAb" accept="application/pdf,image/*" style="display:none">
 <input type="file" id="fiPreise" accept=".xlsx,.xlsm,.xls" style="display:none">
+<!-- Abruf: zugesagtes Lieferdatum erfassen -->
+<div class="modal" id="abrufZusageModal" onclick="if(event.target===this)closeAbrufZusage()">
+  <div class="modal-box" style="max-width:430px;position:relative">
+    <button class="modal-x" onclick="closeAbrufZusage()" title="Schließen">✕</button>
+    <h3 style="margin-bottom:6px">📞 Position abrufen</h3>
+    <div id="azInfo" style="font-size:12.5px;color:rgba(28,28,30,.7);line-height:1.5;margin-bottom:14px"></div>
+    <div class="frm-row"><div class="frm-fld" style="flex:0 0 200px">
+      <label style="font-size:10.5px;font-weight:700;color:rgba(45,41,38,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;display:block">Lieferung zugesagt für</label>
+      <input id="azDatum" type="date" style="padding:9px 12px;border-radius:9px;border:.5px solid rgba(0,0,0,.12);background:#fff;font-size:13px;font-family:inherit">
+    </div></div>
+    <div class="hint" style="margin-top:8px">Was der Lieferant am Telefon zusagt. Leer lassen, wenn er noch kein Datum nennen kann – du kannst es später an der Position nachtragen.</div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closeAbrufZusage()">Abbrechen</button>
+      <button class="mok" onclick="confirmAbrufZusage()">✓ Abgerufen</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="fiEventual" accept=".xlsx,.xlsm,.xls,.pdf,application/pdf" style="display:none">
 
 <script>
@@ -2282,7 +2300,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-18 · v100';
+const APP_VERSION='2026-09-18 · v101';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -2887,7 +2905,7 @@ function showBestelltList(projId){
     .filter(o=>istBestellt(o.p));
   const statusBadge=p=>{
     if(p.status==='geliefert')return '<span style="color:#0f6332;font-weight:700">Geliefert'+(p.geliefertDatum?' · '+fd(p.geliefertDatum):'')+'</span>';
-    if(p.status==='abgerufen')return '<span style="color:#b85a00;font-weight:700">Abgerufen</span>';
+    if(p.status==='abgerufen')return '<span style="color:#b85a00;font-weight:700">Abgerufen'+(p.lieferzusage?' · Lieferung '+fd(p.lieferzusage):'')+'</span>';
     if(p.abBestaetigt)return '<span style="color:#b8860b;font-weight:700">Bestellt · AB ✓</span>';
     return '<span style="color:#b8860b;font-weight:700">Bestellt · AB offen</span>';
   };
@@ -2931,6 +2949,8 @@ document.addEventListener('keydown',e=>{
   if(prm&&prm.classList.contains('on')){closeProtokolleModal();e.preventDefault();return;}
   const tm=document.getElementById('terminModal');
   if(tm&&tm.classList.contains('on')){closeTerminModal();e.preventDefault();return;}
+  const azm=document.getElementById('abrufZusageModal');
+  if(azm&&azm.classList.contains('on')){closeAbrufZusage();e.preventDefault();return;}
   const pzm=document.getElementById('preisZusatzModal');
   if(pzm&&pzm.classList.contains('on')){closePreisZusatz();e.preventDefault();return;}
   const blm=document.getElementById('bestelltListModal');
@@ -3016,7 +3036,7 @@ function buildProjReportHTML(proj){
     if(p.quelle==='lager')return '<span class="lbl lbl-blue">Lager</span>';
     if(istBestellt(p)){
       if(p.status==='geliefert')return '<span class="lbl lbl-green">Geliefert</span>';
-      if(p.status==='abgerufen')return '<span class="lbl lbl-amber">Abgerufen</span>';
+      if(p.status==='abgerufen')return '<span class="lbl lbl-amber">Abgerufen'+(p.lieferzusage?' · '+fmtD(p.lieferzusage):'')+'</span>';
       if(p.abBestaetigt)return '<span class="lbl lbl-amber">Bestellt · AB ✓</span>';
       const t=p.bestelltAm?daysBtw(p.bestelltAm,today()):0;
       const frist=SETTINGS.abFrist||7;
@@ -3494,10 +3514,15 @@ function renderDetail(){
       else if(da<=1)wt=`<div class="warn amber">⏰ Abruf ${da===0?'heute':'morgen'} fällig</div>`;
       else if(da<=3)wt=`<div class="warn amber">⏰ Abruf in ${da} Tagen</div>`;
     } else if(p.status==='abgerufen'){
-      const lt=CUR.liefertermin;
-      if(lt){const dl=daysBtw(today(),lt);
-        if(dl<0)wt=`<div class="warn red">⚠ Liefertermin überfällig: ${-dl} Tag${dl===-1?'':'e'}</div>`;
-        else if(dl<=SETTINGS.warnDays)wt=`<div class="warn amber">📦 Lieferung in ${dl===0?'heute':dl+' Tag'+(dl===1?'':'en')}</div>`;
+      // Zugesagtes Lieferdatum schlaegt den Projekt-Liefertermin: haelt der Lieferant
+      // sein Wort nicht, faellt das hier sofort auf.
+      const lz=p.lieferzusage||'';
+      const ziel=lz||CUR.liefertermin;
+      if(ziel){const dl=daysBtw(today(),ziel);
+        if(dl<0)wt=`<div class="warn red">⚠ ${lz?'Zugesagte Lieferung überfällig':'Liefertermin überfällig'}: ${-dl} Tag${dl===-1?'':'e'}${lz?' · zugesagt war '+fmtD(lz):''}</div>`;
+        else if(dl<=SETTINGS.warnDays)wt=`<div class="warn amber">📦 Lieferung ${lz?'zugesagt für '+fmtD(lz)+' – ':''}${dl===0?'heute':'in '+dl+' Tag'+(dl===1?'':'en')}</div>`;
+      } else {
+        wt=`<div class="warn amber">📦 Abgerufen – noch kein Lieferdatum zugesagt</div>`;
       }
     }
     
@@ -3614,6 +3639,14 @@ function renderDetail(){
       // Abruf bis nur solange relevant, wie noch nicht geliefert – bei gelieferten Positionen ausblenden
       if(p.status!=='geliefert')
         html+=`<div style="min-width:130px"><label>📤 Abruf bis${atAuto?' (auto)':''}</label><input type="date" value="${escA(atVal)}" onchange="updF(${idx},'abrufTermin',this.value)" style="${atBorder}" title="${atAuto?'Automatisch '+(SETTINGS.warnDays||14)+' Tage vor Liefertermin':'Manuell gesetzt'}"></div>`;
+      // Zugesagtes Lieferdatum: erscheint, sobald die Position abgerufen ist
+      if(p.status==='abgerufen'||p.status==='geliefert'){
+        const lz=p.lieferzusage||'';
+        const lzD=(p.status==='abgerufen'&&lz)?daysBtw(today(),lz):null;
+        const lzBorder=lzD===null?'':lzD<0?'border-color:#d92020;background:rgba(217,32,32,.06)'
+          :lzD<=(SETTINGS.warnDays||14)?'border-color:#c47700;background:rgba(196,119,0,.06)':'';
+        html+=`<div style="min-width:130px"><label>📅 Lieferung zugesagt</label><input type="date" value="${escA(lz)}" onchange="updF(${idx},'lieferzusage',this.value)" style="${lzBorder}" title="Vom Lieferanten beim Abruf zugesagtes Lieferdatum"></div>`;
+      }
       html+=`</div>`;
     } else if(p.quelle==='lager'){
       // Lagerware: nur Komm-Nr, sonst nichts (Lager-Abruf läuft über Button oben)
@@ -4007,7 +4040,7 @@ async function updF(idx,k,v){
   if(k==='fabrikat' && (!p.lieferant || p.lieferant===prev)) p.lieferant=v;
   if(prev!==v&&EDITOR)logAction(p,`${k}: ${prev||'-'} → ${v||'-'}`);
   touchProject(CUR);
-  await saveCur();if(k==='lieferant'||k==='typ'||k==='fabrikat'||k==='abrufTermin'||k==='sollLiefertermin')renderDetail();
+  await saveCur();if(k==='lieferant'||k==='typ'||k==='fabrikat'||k==='abrufTermin'||k==='sollLiefertermin'||k==='lieferzusage')renderDetail();
 }
 async function saveCur(){if(CUR){await dbPut('projects',CUR);markChanged();}}
 
@@ -6778,11 +6811,30 @@ function renderAbrufAnsicht(){
   filtered.sort((a,b)=>new Date(a.abrufBis)-new Date(b.abrufBis));
   const ueberf=filtered.filter(it=>daysBtw(today(),it.abrufBis)<0).length;
   const dieseWoche=filtered.filter(it=>{const d=daysBtw(today(),it.abrufBis);return d>=0&&d<=7;}).length;
-  document.getElementById('abrufInfo').innerHTML=`<strong>${filtered.length}</strong> offene Abrufe${ueberf?` · <span style="color:#d92020;font-weight:700">${ueberf} überfällig</span>`:''}${dieseWoche?` · <span style="color:#c47700;font-weight:700">${dieseWoche} diese Woche</span>`:''}`;
+  // Zweiter Abschnitt: bereits abgerufen – was ist unterwegs und wann kommt es?
+  const zugesagt=[];
+  aktiveProjekte().forEach(proj=>{
+    proj.positionen.forEach((p,idx)=>{
+      if(p.status!=='abgerufen')return;
+      if(q&&![proj.name,p.pos,p.bez,p.lieferant,p.fabrikat].join(' ').toLowerCase().includes(q))return;
+      zugesagt.push({projId:proj.id,projName:proj.name,p,idx,
+        lieferant:p.lieferant||p.fabrikat||'(ohne Lieferant)',zusage:p.lieferzusage||''});
+    });
+  });
+  // Nach zugesagtem Datum, Positionen ohne Zusage ans Ende
+  zugesagt.sort((a,b)=>{
+    if(!a.zusage&&!b.zusage)return 0;
+    if(!a.zusage)return 1;
+    if(!b.zusage)return -1;
+    return new Date(a.zusage)-new Date(b.zusage);
+  });
+  const zuUeberf=zugesagt.filter(it=>it.zusage&&daysBtw(today(),it.zusage)<0).length;
+  const ohneZusage=zugesagt.filter(it=>!it.zusage).length;
+  document.getElementById('abrufInfo').innerHTML=`<strong>${filtered.length}</strong> offene Abrufe${ueberf?` · <span style="color:#d92020;font-weight:700">${ueberf} überfällig</span>`:''}${dieseWoche?` · <span style="color:#c47700;font-weight:700">${dieseWoche} diese Woche</span>`:''}`
+    +(zugesagt.length?` &nbsp;|&nbsp; <strong>${zugesagt.length}</strong> abgerufen${zuUeberf?` · <span style="color:#d92020;font-weight:700">${zuUeberf} Zusage überfällig</span>`:''}${ohneZusage?` · <span style="color:rgba(28,28,30,.5)">${ohneZusage} ohne Datum</span>`:''}`:'');
   const wrap=document.getElementById('abrufList');
-  if(filtered.length===0){wrap.innerHTML='<div class="empty">Keine offenen Abrufe. ✓</div>';return;}
-  // Tagesgruppen
   let html='';let lastGroup='';
+  if(filtered.length===0)html+='<div class="empty">Keine offenen Abrufe. ✓</div>';
   filtered.forEach(it=>{
     const d=daysBtw(today(),it.abrufBis);
     let group;
@@ -6809,15 +6861,62 @@ function renderAbrufAnsicht(){
         <div class="ab-bez">${esc(it.p.pos)} · ${esc(it.p.bez)}</div>
         <div class="ab-meta"><span class="ab-lief">🏭 ${esc(it.lieferant)}</span> · 📁 ${esc(it.projName)} · ${esc(it.p.menge)} ${esc(it.p.einh)}${it.liefertermin?' · Liefer: '+fmtD(it.liefertermin):''}</div>
       </div>
-      <button class="ab-mark" onclick="event.stopPropagation();markAbgerufen('${it.projId}',${it.idx})" title="Diese Position als abgerufen markieren">📞 Jetzt abrufen</button>
+      <button class="ab-mark" onclick="event.stopPropagation();openAbrufZusage('${it.projId}',${it.idx})" title="Abrufen und zugesagtes Lieferdatum festhalten">📞 Jetzt abrufen</button>
     </div>`;
   });
+  // ── Abgerufen – Lieferung zugesagt ──
+  if(zugesagt.length){
+    html+=`<div class="ab-daygroup" style="margin-top:20px">📦 Abgerufen – Lieferung zugesagt (${zugesagt.length})</div>`;
+    zugesagt.forEach(it=>{
+      const lz=it.zusage;
+      const d=lz?daysBtw(today(),lz):null;
+      const cls=d===null?'':d<0?'ab-red':d<=1?'ab-amber':d<=7?'ab-soon':'';
+      const dt=lz?new Date(lz):null;
+      const badge=d===null?'':d<0?`<div class="ad-badge red">${-d}T über</div>`:d<=1?`<div class="ad-badge amber">${d===0?'heute':'morgen'}</div>`:'';
+      const jump=`jumpToProjPos('${escA(it.projId)}','${escA(it.p.pos)}')`;
+      html+=`<div class="ab-item ab-clickable ${cls}" onclick="${jump}" title="${escA('Zu Position '+it.p.pos+' in '+it.projName+' springen')}">
+        <div class="ab-date">
+          ${dt?`<div class="ad-kw">KW ${isoKW(lz)}</div><div class="ad-d">${dt.getDate()}</div><div class="ad-m">${dt.toLocaleDateString('de-DE',{month:'short'})}</div>`
+              :`<div class="ad-kw">Datum</div><div class="ad-d" style="font-size:16px">?</div><div class="ad-m">offen</div>`}
+          ${badge}
+        </div>
+        <div class="ab-info">
+          <div class="ab-bez">${esc(it.p.pos)} · ${esc(it.p.bez)}</div>
+          <div class="ab-meta"><span class="ab-lief">🏭 ${esc(it.lieferant)}</span> · 📁 ${esc(it.projName)} · ${esc(it.p.menge)} ${esc(it.p.einh)}${lz?' · zugesagt '+fmtD(lz):' · <span style="color:#b85a00;font-weight:700">noch kein Datum zugesagt</span>'}</div>
+        </div>
+        <button class="ab-mark" onclick="event.stopPropagation();openAbrufZusage('${it.projId}',${it.idx})" title="Zugesagtes Lieferdatum eintragen oder ändern" style="background:rgba(120,120,128,.16);color:rgba(28,28,30,.72)">📅 ${lz?'Datum ändern':'Datum eintragen'}</button>
+      </div>`;
+    });
+  }
   wrap.innerHTML=html;
   // Counter: faellige/ueberfaellige Abrufe (konsistent mit Startseite)
   const cnt=document.getElementById('abrufCnt');
   if(cnt)cnt.textContent=countAbrufFaellig();
 }
-async function markAbgerufen(projId,idx){
+// Abruf mit Liefer-Zusage: beim Abrufen hat man den Lieferanten am Telefon –
+// genau dann wird das zugesagte Lieferdatum festgehalten.
+let _azTarget=null;
+function openAbrufZusage(projId,idx){
+  if(!requireLogin())return;
+  const proj=PROJECTS.find(p=>p.id===projId); if(!proj)return;
+  const p=proj.positionen[idx]; if(!p)return;
+  _azTarget={projId,idx};
+  document.getElementById('azInfo').innerHTML='<strong>'+esc(p.pos)+' · '+esc(p.bez)+'</strong><br>🏭 '
+    +esc(p.lieferant||p.fabrikat||'(ohne Lieferant)')+' · 📁 '+esc(proj.name)
+    +(proj.liefertermin?' · Liefertermin '+fmtD(proj.liefertermin):'');
+  document.getElementById('azDatum').value=p.lieferzusage||proj.liefertermin||'';
+  document.getElementById('abrufZusageModal').classList.add('on');
+  setTimeout(()=>refreshKwTag(document.getElementById('azDatum')),60);
+}
+function closeAbrufZusage(){document.getElementById('abrufZusageModal').classList.remove('on');_azTarget=null;}
+async function confirmAbrufZusage(){
+  if(!_azTarget)return;
+  const {projId,idx}=_azTarget;
+  const datum=document.getElementById('azDatum').value||'';
+  closeAbrufZusage();
+  await markAbgerufen(projId,idx,datum);
+}
+async function markAbgerufen(projId,idx,zusage){
   if(!requireLogin())return;
   const proj=PROJECTS.find(p=>p.id===projId);
   if(!proj||!proj.positionen[idx])return;
@@ -6825,6 +6924,11 @@ async function markAbgerufen(projId,idx){
   const prevStatus=p.status;
   if(!p.quelle)p.quelle='bestellt';
   p.status='abgerufen';
+  if(zusage!==undefined){
+    const alt=p.lieferzusage||'';
+    if(zusage)p.lieferzusage=zusage; else delete p.lieferzusage;
+    if((p.lieferzusage||'')!==alt)logAction(p,zusage?('Lieferung zugesagt für '+fmtD(zusage)):'Zugesagtes Lieferdatum entfernt');
+  }
   if(!p.lieferant&&p.fabrikat)p.lieferant=p.fabrikat;
   if(prevStatus!=='abgerufen')logAction(p,'Status: '+(prevStatus||'offen')+' → Abgerufen');
   recordCheck(p,'status:abgerufen');
