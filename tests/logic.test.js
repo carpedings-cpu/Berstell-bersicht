@@ -330,6 +330,33 @@ is(api.istZuBestellen({bez:'Kühlzelle',quelle:''}),true,'Nach Aufheben wieder i
   is(!!byPos['01.01.0030.a'].eventual,false,'a am Ende der Pos.-Nr ist KEINE Eventualposition');
   is(!!byPos['01.01.0040.'].eventual,true,'Großes A zählt ebenfalls');
 }
+// Echter Aufbau der KPC-Auftragsstücklisten (an 'Oberursel GAZ April 2026' verifiziert):
+// Pos.|LV|Stück|Einh.|Bezeichnung|Spec no.|Fabrikat|Fabrikat intern|Typ|Typ intern|…|EK…|VK…
+// Das Kennzeichen steht in der LV-Spalte; EK/VK liegen weit rechts und dürfen die
+// Erkennung nicht stören.
+{
+  const h=['Pos.','LV','Stück','Einh.','Bezeichnung','Spec no.','Fabrikat','Fabrikat intern','Typ','Typ intern'];
+  while(h.length<22)h.push(null);
+  h[21]='EK à';
+  const zeile=(pos,lv,bez,ek)=>{const r=[pos,lv,'1','Stk',bez,null,'kpc',null,'Typ',null];while(r.length<22)r.push(null);r[21]=ek;return r;};
+  const rows=[
+    [null],[null],h,
+    [' 6.62.',null,null,null,'Küchentechnik'],
+    zeile(' 6.62.10. 1.  10',null,'Arbeitsplatte aus CNS',1200),
+    zeile(' 6.62.10. 4. 210','a','Combidämpfer 10 x 1/1 GN',9800),
+    zeile(' 6.62.10. 4. 220','a','Chromnickelstahl-Untergestell',450),
+    zeile(' 6.62.10. 6.  10',null,'Spülmaschine',3400),
+  ];
+  const items=api.rowsToProject(rows).cats.flatMap(c=>c.subsections.flatMap(s=>s.items));
+  is(items.length,4,'Echter Aufbau: alle Positionen erkannt');
+  is(items.filter(i=>i.eventual).length,2,'Echter Aufbau: genau die LV-"a" markiert');
+  is(items.filter(i=>i.eventual).map(i=>i.bez),
+     ['Combidämpfer 10 x 1/1 GN','Chromnickelstahl-Untergestell'],
+     'Echter Aufbau: die richtigen Positionen markiert');
+  is(!!items[0].eventual,false,'Echter Aufbau: Position ohne LV-Kennzeichen bleibt normal');
+  is(items[1].ek,9800,'Echter Aufbau: EK-Spalte weit rechts wird trotzdem gelesen');
+}
+
 // Spalte mit eigener Überschrift
 {
   const rows=[
