@@ -60,6 +60,7 @@ const code=[
   extractFn('grussVorname'),
   extractFn('grussIndex'),
   extractConst('daysBtw'),
+  extractConst('posKey'),
   extractConst('toNum'),
   extractConst('fmtMenge'),
   extractConst('URLAUB'),
@@ -74,7 +75,7 @@ const code=[
 const api=new Function('const window={_parseDebug:{}};'+code+`
   return {istEventual,nichtBestellbarLabel,istZuBestellen,rowsToProject,istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
     protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
-    begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,
+    begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,posKey,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
       advent:GRUSS_ADVENT,frueh:GRUSS_FRUEH,abend:GRUSS_ABEND}};`)();
 
@@ -370,7 +371,30 @@ is(api.istZuBestellen({bez:'Kühlzelle',quelle:''}),true,'Nach Aufheben wieder i
   is(!!items[1].eventual,true,'Überschriften-Spalte: gefüllt = Eventualposition');
 }
 
+// ── Nachträgliches Markieren: Abgleich Liste ↔ laufendes Projekt ────────
+// Pos.-Nummern stehen in Excel mit Leerzeichen, im Projekt teils ohne.
+[[' 6.62.10. 4. 210.','6.62.10.4.210.'],
+ ['6.62.10.4.210.','6.62.10.4.210.'],
+ ['  6.62.10. 6.  10. ','6.62.10.6.10.'],
+ ['01.01.0010.A','01.01.0010.a'],
+ [null,''],[undefined,''],
+].forEach(([roh,want])=>is(api.posKey(roh),want,'Pos.-Schlüssel: '+JSON.stringify(roh)));
+is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise egal beim Abgleich');
+
+// Der Abgleich markiert nur exakt passende Positionen – Unterpositionen bleiben aussen vor
+// (an 'Oberursel GAZ-OB April 2026' gegen das laufende Projekt verifiziert: 6 von 7 getroffen,
+//  1 Position gar nicht im Projekt, 0 Unterpositionen versehentlich markiert)
+{
+  const ausListe=[' 6.62.10. 4. 310.',' 6.62.10. 6.  10.'].map(api.posKey);
+  const imProjekt=['6.62.10.4.310.','6.62.10.4.310.a','6.62.10.4.320.'];
+  const evKeys=new Set(ausListe);
+  const getroffen=imProjekt.filter(k=>evKeys.has(api.posKey(k)));
+  is(getroffen,['6.62.10.4.310.'],'Abgleich trifft nur die Hauptposition, nicht die .a-Unterposition');
+  is(ausListe.filter(k=>!imProjekt.includes(k)).length,1,'Nicht gefundene Position wird gezählt');
+}
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
+
 
 
 

@@ -225,8 +225,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .nb-badge.nb-ok{background:rgba(30,138,74,.14);color:#0f6332;}
 .nb-badge.ev-badge{background:rgba(155,133,168,.18);color:#5b4a73;}
 .nb-badge.ev-badge:hover{background:rgba(155,133,168,.32);}
-.posev{background:none;border:none;font-size:13px;cursor:pointer;opacity:.3;padding:0 4px;transition:opacity .12s ease;}
-.posev:hover{opacity:.7;}
+.posev{background:none;border:none;font-size:14px;cursor:pointer;opacity:.55;padding:0 4px;color:rgba(91,74,115,.8);transition:opacity .12s ease;}
+.posev:hover{opacity:1;}
 .posev.on{opacity:1;color:#5b4a73;}
 .nb-badge.nb-ok:hover{background:rgba(30,138,74,.24);}
 /* Wartungs-Chip: teal-Variante des nb-badge */
@@ -785,7 +785,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <button class="ptbtn" onclick="openTermininfo()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;border-color:transparent">📧 Lieferanten zu Termin</button>
     <button class="ptbtn" onclick="openZubehoerListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border-color:transparent">🔧 Zubehör-Liste</button>
     <button class="ptbtn" id="wartungBtn" onclick="openWartungModal()">🛠 Wartung</button>
-    <button class="ptbtn" id="archivBtn" onclick="toggleArchivProjekt()" style="margin-left:auto;background:rgba(120,120,128,.1);color:rgba(28,28,30,.55);border-color:transparent;font-size:11.5px">📦 Abschließen</button>
+    <button class="ptbtn" onclick="trigEventualExcel()" title="Auftragsstückliste hochladen: Positionen mit dem kleinen 'a' werden im laufenden Projekt als Eventualpositionen markiert" style="margin-left:auto;background:rgba(155,133,168,.14);color:#5b4a73;border-color:transparent;font-size:11.5px">◇ Eventual aus Liste</button>
+    <button class="ptbtn" id="archivBtn" onclick="toggleArchivProjekt()" style=background:rgba(120,120,128,.1);color:rgba(28,28,30,.55);border-color:transparent;font-size:11.5px">📦 Abschließen</button>
   </div>
   <div class="fbar">
     <div class="sw"><span class="si">⌕</span>
@@ -1242,6 +1243,7 @@ function scrollTopSmooth(){window.scrollTo({top:0,behavior:'smooth'});}
 <input type="file" id="fiLs" accept="application/pdf,image/*" style="display:none">
 <input type="file" id="fiAb" accept="application/pdf,image/*" style="display:none">
 <input type="file" id="fiPreise" accept=".xlsx,.xlsm,.xls" style="display:none">
+<input type="file" id="fiEventual" accept=".xlsx,.xlsm,.xls,.pdf,application/pdf" style="display:none">
 
 <script>
 // pdf.js optional – wenn nicht geladen, wird Lieferschein-Datum manuell eingegeben
@@ -1601,6 +1603,9 @@ const daysBtw=(a,b)=>Math.floor((new Date(b)-new Date(a))/864e5);
 // Mengen-Parser: versteht deutsche UND englische Schreibweise.
 // '2,5'->2.5  '1.234,5'->1234.5  '2.5'->2.5  '3 Stk'->3
 // (Der alte toI strich das Komma weg und machte aus 2,5 eine 25 – Mengen-Fehler.)
+// Pos.-Nummern vergleichbar machen: Leerzeichen raus, Kleinschreibung
+// (' 6.62.10. 4. 210.' und '6.62.10.4.210.' sind dieselbe Position)
+const posKey=v=>String(v==null?'':v).replace(/\s+/g,'').toLowerCase();
 const toNum=v=>{
   if(typeof v==='number')return isFinite(v)?v:0;
   let s=String(v==null?'':v).replace(/[^0-9,.\-]/g,'').trim();
@@ -2277,7 +2282,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-18 · v99';
+const APP_VERSION='2026-09-18 · v100';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3425,7 +3430,8 @@ function renderDetail(){
   const cntZB=CUR.positionen.filter(istZuBestellen).length;
   const cntABoffen=CUR.positionen.filter(istABUeberfaellig).length;
   const cntInLief=CUR.positionen.filter(p=>p.quelle==='bestellt'&&p.abBestaetigt&&p.status!=='geliefert'&&!istNichtBestellbar(p)).length;
-  const cntBauseits=CUR.positionen.filter(istNichtBestellbar).length;
+  const cntBauseits=CUR.positionen.filter(p=>istNichtBestellbar(p)&&!istEventual(p)).length;
+  const cntEventual=CUR.positionen.filter(istEventual).length;
   const cntZubehoer=CUR.positionen.filter(p=>Array.isArray(p.zubehoer)&&p.zubehoer.length>0).length;
   const totalP=CUR.positionen.length;
   document.getElementById('dChips').innerHTML=
@@ -3434,7 +3440,8 @@ function renderDetail(){
     `<button class="chip${DFILTER==='aboffen'?' on':''}" onclick="setDFilter('aboffen')">AB offen <span class="cn">${cntABoffen}</span></button>`+
     `<button class="chip${DFILTER==='lieferung'?' on':''}" onclick="setDFilter('lieferung')">In Lieferung <span class="cn">${cntInLief}</span></button>`+
     (cntZubehoer?`<button class="chip${DFILTER==='zubehoer'?' on':''}" onclick="setDFilter('zubehoer')" title="Nur Positionen mit Zubehör-Eintrag (Mischbatterien, Spender, GN-Behälter)">🔧 Mit Zubehör <span class="cn">${cntZubehoer}</span></button>`:'')+
-    (cntBauseits?`<button class="chip${DFILTER==='bauseits'?' on':''}" onclick="setDFilter('bauseits')" title="Bauseits, Dienstleistungen (Stundenlohn, Anschluesse, Reinigung, Montage, Anfahrt, Entsorgung) und entfallene Positionen">Nicht bestellbar <span class="cn">${cntBauseits}</span></button>`:'')+
+    (cntEventual?`<button class="chip${DFILTER==='eventual'?' on':''}" onclick="setDFilter('eventual')" title="Eventualpositionen – vom Kunden noch nicht beauftragt">◇ Eventual <span class="cn">${cntEventual}</span></button>`:'')+
+    (cntBauseits?`<button class="chip${DFILTER==='bauseits'?' on':''}"" onclick="setDFilter('bauseits')" title="Bauseits, Dienstleistungen (Stundenlohn, Anschluesse, Reinigung, Montage, Anfahrt, Entsorgung) und entfallene Positionen">Nicht bestellbar <span class="cn">${cntBauseits}</span></button>`:'')+
     `<button class="chip" onclick="toggleAllBereiche(true)" title="Alle Bereiche zuklappen" style="margin-left:auto;opacity:.75">▶ Alle zu</button>`+
     `<button class="chip" onclick="toggleAllBereiche(false)" title="Alle Bereiche aufklappen" style="opacity:.75">▼ Alle auf</button>`;
   updateWartungBtn();
@@ -3688,7 +3695,8 @@ function passesDFilter(p){
   if(DFILTER==='zubest')return istZuBestellen(p);
   if(DFILTER==='aboffen')return istABUeberfaellig(p);   // identisch mit Karten-Warnung 'AB fehlt'
   if(DFILTER==='lieferung')return p.quelle==='bestellt' && p.abBestaetigt && p.status!=='geliefert' && !istNichtBestellbar(p);
-  if(DFILTER==='bauseits')return istNichtBestellbar(p);
+  if(DFILTER==='eventual')return istEventual(p);
+  if(DFILTER==='bauseits')return istNichtBestellbar(p)&&!istEventual(p);
   if(DFILTER==='zubehoer')return Array.isArray(p.zubehoer) && p.zubehoer.length>0;
   return severity(p,CUR)===DFILTER;
 }
@@ -3798,6 +3806,43 @@ async function toggleAB(idx){
 // val='ja'  → ist doch bestellbar (Auto-Erkennung wird ignoriert)
 // val='nein'→ ist nicht bestellbar (auch wenn Auto-Erkennung nichts findet)
 // val=''    → Override zuruecksetzen, wieder Automatik
+// Auftragsstueckliste gegen das LAUFENDE Projekt abgleichen und die dort mit 'a'
+// gekennzeichneten Positionen nachtraeglich markieren. Setzt nur Kennzeichen,
+// nimmt keine weg – von Hand gesetzte Markierungen bleiben also erhalten.
+async function trigEventualExcel(){
+  if(!requireLogin()||!CUR)return;
+  const fi=document.getElementById('fiEventual');
+  fi.onchange=async ev=>{
+    const f=ev.target.files[0];
+    fi.onchange=null;fi.value='';
+    if(!f)return;
+    showLoader('Liste wird gelesen …');
+    try{
+      const parsed=await parseProjectFile(f);
+      const items=(parsed.cats||[]).flatMap(c=>(c.subsections||[]).flatMap(s=>s.items||[]));
+      const evKeys=new Set(items.filter(i=>i.eventual).map(i=>posKey(i.pos)));
+      hideLoader();
+      if(evKeys.size===0){
+        toast('In dieser Liste ist keine Position als Eventualposition gekennzeichnet (kleines a in eigener Spalte)','err',5000);
+        return;
+      }
+      let neu=0,schon=0;
+      CUR.positionen.forEach(p=>{
+        if(!evKeys.has(posKey(p.pos)))return;
+        if(p.eventual){schon++;return;}
+        p.eventual=true;neu++;
+        logAction(p,'Als Eventualposition markiert (aus Liste '+f.name+')');
+      });
+      const projKeys=new Set(CUR.positionen.map(p=>posKey(p.pos)));
+      const fehlend=[...evKeys].filter(k=>!projKeys.has(k)).length;
+      if(neu){touchProject(CUR);await saveCur();}
+      renderDetail();updateGlobalCounters();
+      toast(neu+' als Eventualposition markiert'+(schon?' · '+schon+' schon markiert':'')
+        +(fehlend?' · '+fehlend+' aus der Liste nicht im Projekt gefunden':''),'ok',5000);
+    }catch(e){hideLoader();console.error(e);toast('Liste konnte nicht gelesen werden: '+e.message,'err',4500);}
+  };
+  fi.click();
+}
 // Eventual-Kennzeichen setzen/aufheben. Beim Aufheben laeuft die Position sofort
 // wieder ueberall mit (Zu bestellen, Preise, Abruf, Wartung, Protokolle).
 async function setEventual(idx,val){
