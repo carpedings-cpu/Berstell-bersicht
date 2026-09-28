@@ -393,6 +393,91 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   is(ausListe.filter(k=>!imProjekt.includes(k)).length,1,'Nicht gefundene Position wird gezählt');
 }
 
+// ── Drucken / PDF: der zentrale Weg ─────────────────────────────────────
+// Die Vorlagen brachten ihr eigenes <script>window.onload=…print()</script> mit.
+// Im per document.write() gefuellten Fenster feuert onload nicht zuverlaessig –
+// dann ging kein Druckdialog auf und es gab keinen Button zum Nachhelfen.
+{
+  // DRUCK_BAR ist ein Template-Literal mit CSS: die Semikolons darin wuerden
+  // extractConst() vorzeitig abbrechen lassen – daher bis zum schliessenden ` lesen.
+  const extractTemplateConst=name=>{
+    const sig='const '+name+'=`';
+    const i=src.indexOf(sig);
+    if(i<0)throw new Error('Template-Konstante nicht gefunden: '+name);
+    let k=i+sig.length;
+    for(;k<src.length;k++){if(src[k]==='\\'){k++;continue;}if(src[k]==='`')break;}
+    if(k>=src.length)throw new Error('Template-Literal nicht abgeschlossen: '+name);
+    return src.slice(i,k+1)+';';
+  };
+  const druckCode=[extractTemplateConst('DRUCK_BAR'),extractFn('druckDokument'),
+                   extractFn('druckOverlay'),extractFn('mailOeffnen')].join('\n');
+  // Minimale DOM-Attrappe: nur was die beiden Funktionen wirklich anfassen.
+  function stubEl(tag,reg){
+    const el={tag,style:{cssText:''},innerHTML:'',textContent:'',_q:{},_kids:[],
+      appendChild(c){el._kids.push(c);return c;},
+      remove(){el._removed=true;},
+      setAttribute(){},addEventListener(){},removeEventListener(){},
+      querySelector(sel){return el._q[sel]||(el._q[sel]=stubEl(sel,reg));},
+      click(){el._clicked=true;},
+      get contentWindow(){return {document:{open(){},write(h){el._geschrieben=h;},close(){}},
+        focus(){},print(){el._gedruckt=true;}};}};
+    if(reg)reg.push(el);
+    return el;
+  }
+  function lauf(popupErlaubt,html){
+    const fenster=[],erzeugt=[],toasts=[],alle=[];
+    const fakeWin={open(){
+      if(!popupErlaubt)return null;
+      const f={document:{open(){},write(h){f._geschrieben=h;},close(){}},focus(){},print(){f._gedruckt=true;},close(){}};
+      fenster.push(f);return f;}};
+    const fakeDoc={getElementById:()=>null,addEventListener(){},removeEventListener(){},
+      body:{appendChild(el){return el;}},
+      createElement(tag){const el=stubEl(tag,alle);erzeugt.push(el);return el;}};
+    const api2=new Function('window','document','toast',druckCode+
+      ';return {druckDokument,mailOeffnen};')(fakeWin,fakeDoc,(m,c)=>toasts.push(m));
+    const ok=api2.druckDokument(html,'Test-Titel');
+    return {ok,fenster,erzeugt,toasts,mailOeffnen:api2.mailOeffnen,fakeDoc,
+      doc:popupErlaubt?(fenster[0]||{})._geschrieben:(alle.find(e=>e._geschrieben)||{})._geschrieben};
+  }
+  const vorlage=`<!DOCTYPE html><html><head><title>X</title></head><body>`+
+    `<h1>Zubehör-Liste</h1><table><tr><td>KWC Sensor Netz</td></tr></table>`+
+    `<script>window.onload=()=>setTimeout(()=>window.print(),300);</scr`+`ipt></body></html>`;
+
+  const p=lauf(true,vorlage);
+  is(p.ok,true,'Druck mit erlaubtem Pop-up: erfolgreich');
+  is(/window\.onload/.test(p.doc),false,'Auto-Print-Skript der Vorlage wird entfernt');
+  is(p.doc.includes('class="kpc-pb"'),true,'Sichtbare Druckleiste ist im Dokument');
+  is(/<body[^>]*><div class="kpc-pb"/.test(p.doc),true,'Druckleiste steht direkt nach <body>');
+  is(p.doc.includes('KWC Sensor Netz'),true,'Inhalt der Liste bleibt vollständig erhalten');
+  is(p.doc.includes('onclick="window.print()"'),true,'Druckleiste hat einen funktionierenden Button');
+  is(/@media print\{\.kpc-pb\{display:none/.test(p.doc),true,'Druckleiste wird im Ausdruck ausgeblendet');
+
+  // Pop-up blockiert (Safari/iPad ab Werk) → Vollbild-Ansicht in der App
+  const b=lauf(false,vorlage);
+  is(b.ok,true,'Druck bei blockiertem Pop-up: trotzdem erfolgreich');
+  is(b.erzeugt.some(e=>e.tag==='div'),true,'Overlay wird in der App aufgebaut');
+  is(typeof b.doc,'string','Dokument landet im eingebetteten Rahmen');
+  is((b.doc||'').includes('KWC Sensor Netz'),true,'Rückfall zeigt denselben Inhalt');
+  is(b.toasts.some(t=>/Pop-?up/i.test(t)),true,'Nutzer wird über den Rückfall informiert');
+
+  // Vorlage ohne <body> (Teil-HTML) darf nicht die Leiste verlieren
+  const t=lauf(true,'<h1>nur ein Fragment</h1>');
+  is(t.doc.startsWith('<div class="kpc-pb"'),true,'Fragment ohne <body>: Leiste wird vorangestellt');
+
+  // ── Versenden: mailto-Entwurf ──────────────────────────────────────────
+  const mailApi=lauf(true,vorlage);
+  const briefe=()=>mailApi.erzeugt.filter(e=>e.tag==='a');
+  mailApi.mailOeffnen('Zubehör-Liste · Mainz','Pos 01.0001.\n  KWC Sensor Netz  1 Stk');
+  const kurz=briefe().pop();
+  is(kurz.href.startsWith('mailto:?subject='),true,'Mail-Entwurf wird als mailto geöffnet');
+  is(decodeURIComponent(kurz.href.split('&body=')[1]).includes('KWC Sensor Netz'),true,'Kurze Liste steht komplett in der Mail');
+  is(kurz._clicked,true,'Mail-Entwurf wird tatsächlich ausgelöst');
+  mailApi.mailOeffnen('Zubehör-Liste · Alle Projekte',('Pos 01.0001.  KWC Sensor Netz  1 Stk\n').repeat(400));
+  const lang=briefe().pop();
+  is(lang.href.length<=1900,true,'Lange Liste wird auf mailto-Grenze gekürzt ('+lang.href.length+' Zeichen)');
+  is(decodeURIComponent(lang.href).includes('Zwischenablage'),true,'Bei Kürzung Hinweis auf die Zwischenablage');
+}
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
 
 

@@ -610,8 +610,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
   border-radius:18px;padding:20px;width:100%;
   box-shadow:0 24px 60px rgba(0,0,0,.3);}
 .modal-box h3{font-size:16px;font-weight:700;color:#2d2926;margin-bottom:14px;}
-.modal-act{display:flex;gap:8px;margin-top:16px;}
-.modal-act button{flex:1;padding:10px 14px;border-radius:11px;border:none;
+.modal-act{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+.modal-act button{flex:1;min-width:118px;padding:10px 14px;border-radius:11px;border:none;
   font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
 .modal-act .mok{background:linear-gradient(135deg,#1e8a4a,#34c759);color:#fff;}
 .modal-act .mcancel{background:rgba(0,0,0,.06);color:#1c1c1e;}
@@ -1153,7 +1153,8 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button class="mcancel" onclick="closeZubehoerListe()">Schließen</button>
       <button class="mok" onclick="exportKatalogExcel()" style="background:linear-gradient(135deg,#1e8a4a,#34c759)">📊 Katalog als Excel</button>
       <button class="mok" onclick="copyZubListe()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Liste kopieren</button>
-      <button class="mok" onclick="printZubListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🖨 PDF</button>
+      <button class="mok" onclick="mailZubListe()" style="background:linear-gradient(135deg,#8a5a1a,#b0791f)">📧 Per Mail</button>
+      <button class="mok" onclick="printZubListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🖨 Drucken / PDF</button>
     </div>
   </div>
 </div>
@@ -2300,7 +2301,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-18 · v101';
+const APP_VERSION='2026-09-28 · v102';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3137,7 +3138,6 @@ function buildProjReportHTML(proj){
   }
 </style>
 </head><body>
-<button class="print-btn" onclick="window.print()">🖨 PDF speichern / drucken</button>
 <div class="page">
 <header>
   <div class="brand">KPC GmbH · Statusbericht</div>
@@ -3170,16 +3170,11 @@ ${bereichBlocks}
   <span>${stand}</span>
 </footer>
 </div>
-<scr`+`ipt>setTimeout(function(){window.print();},350);</scr`+`ipt>
 </body></html>`;
 }
 function printProjReport(){
   const proj=PROJECTS.find(p=>p.id===_statusProjId); if(!proj)return;
-  const html=buildProjReportHTML(proj);
-  const w=window.open('','_blank');
-  if(!w){toast('Popup blockiert – bitte fuer diese Seite erlauben','err',4500);return;}
-  w.document.open();w.document.write(html);w.document.close();
-  toast('PDF-Vorschau geoeffnet – im Druckdialog "Als PDF speichern" waehlen','ok',4000);
+  druckDokument(buildProjReportHTML(proj),'Statusbericht · '+proj.name);
 }
 
 async function copyProjStatus(){
@@ -4311,7 +4306,7 @@ table{width:100%;border-collapse:collapse;}th{background:#2d2926;color:#c8a882;f
 td{border-bottom:1px solid #eee;padding:9px 8px;font-size:11px;vertical-align:top;min-height:32px;}tr:nth-child(even) td{background:#fafaf9;}
 .sigs{margin-top:30px;display:flex;gap:50px;page-break-inside:avoid;}.sigbox{flex:1;}
 .sigline{border-top:1px solid #2d2926;padding-top:5px;font-size:10px;color:#666;margin-top:45px;}
-@media print{.pb{display:none;}}</style></head><body>
+</style></head><body>
 <div class="kpc"><div class="logo">KPC <small>GMBH</small></div>
 <div class="meta"><strong>Lager-Abruf</strong>Projekt: ${esc(CUR.name)}<br>Datum: ${ds} · ${ts} Uhr</div></div>
 <h1 style="font-size:15px;color:#6b5040;margin:0 0 6px">Abruf an das eigene Lager</h1>
@@ -4319,11 +4314,9 @@ td{border-bottom:1px solid #eee;padding:9px 8px;font-size:11px;vertical-align:to
 <table><thead><tr><th style="width:24px">#</th><th style="width:75px">Pos.</th><th>Bezeichnung</th><th style="text-align:center;width:70px">Menge</th><th style="text-align:center;width:110px;background:#6b5040">Komm.-Nr<br><span style="font-weight:400;font-size:9px;color:rgba(255,255,255,.7);letter-spacing:0">vom Lager eintragen</span></th><th style="width:170px">Notiz</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="sigs"><div class="sigbox"><div class="sigline">Datum / Unterschrift abgerufen durch</div></div>
 <div class="sigbox"><div class="sigline">Datum / Unterschrift abgeholt durch</div></div></div>
-<div class="pb" style="margin-top:18px;text-align:center"><button onclick="window.print()" style="padding:10px 24px;background:#6b5040;color:#fff;border:none;border-radius:4px;font-size:13px;cursor:pointer">Drucken / Als PDF</button></div>
 </body></html>`;
   closeLagerAbruf();
-  const w=window.open('','_blank');if(!w){toast('Popup blockiert','err');return;}
-  w.document.write(html);w.document.close();
+  druckDokument(html,'Lager-Abruf · '+CUR.name);
 }
 
 // ── GLOBALE SUCHE ───────────────────────────────────────────────────────
@@ -4697,6 +4690,77 @@ function showLoader(m){document.getElementById('loaderTxt').textContent=m||'Läd
 function hideLoader(){document.getElementById('loader').style.display='none';}
 function toast(m,cls,dur){const t=document.getElementById('toast');t.className='toast '+(cls||'')+' on';t.textContent=m;
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),dur||2500);}
+
+// ── ZENTRALES DRUCKEN / PDF ─────────────────────────────────────────────
+// Ein Weg fuer ALLE Druckansichten (Zubehoer-Liste, Preise, Statusbericht, Lager-Abruf):
+//  1. Neues Fenster, wenn der Browser es zulaesst.
+//  2. Sonst Vollbild-Ansicht direkt in der App (iPad/Safari blockt Pop-ups standardmaessig).
+// In JEDEM Fall steht oben ein sichtbarer Button "Drucken / Als PDF speichern" – der Druck
+// funktioniert also auch dann, wenn der Dialog nicht von allein aufgeht.
+const DRUCK_BAR=`<div class="kpc-pb" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px;padding:12px 14px;background:#f6f1ea;border:1px solid #e5dcc9;border-radius:8px">
+  <button type="button" onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#6b5040;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;font-weight:700;cursor:pointer">🖨 Drucken / Als PDF speichern</button>
+  <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11.5px;color:#888;line-height:1.4">Im Druckdialog als Ziel „Als PDF speichern“ wählen – die PDF-Datei lässt sich danach per Mail verschicken.</span>
+</div>
+<style>@media print{.kpc-pb{display:none!important}}</style>`;
+function druckDokument(html,titel){
+  // Eigene Auto-Print-Skripte der Vorlagen entfernen – ausgeloest wird hier zentral.
+  let doc=String(html).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
+  doc=/<body[^>]*>/i.test(doc)?doc.replace(/<body[^>]*>/i,m=>m+DRUCK_BAR):DRUCK_BAR+doc;
+  let w=null;
+  try{w=window.open('','_blank');}catch(e){w=null;}
+  if(w&&w.document){
+    try{
+      w.document.open();w.document.write(doc);w.document.close();
+      // Nicht auf window.onload im neuen Fenster verlassen (feuert dort nicht zuverlaessig).
+      setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);
+      toast('Druckansicht geöffnet – im Dialog „Als PDF speichern“ wählen','ok',4000);
+      return true;
+    }catch(e){try{w.close();}catch(_){}}
+  }
+  return druckOverlay(doc,titel);
+}
+// Rueckfall ohne Pop-up: Dokument in einem Vollbild-Rahmen in der App selbst anzeigen.
+function druckOverlay(doc,titel){
+  const alt=document.getElementById('druckOverlay');if(alt)alt.remove();
+  const ov=document.createElement('div');
+  ov.id='druckOverlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:4000;background:#fff;display:flex;flex-direction:column';
+  ov.innerHTML=`<div style="display:flex;gap:8px;align-items:center;padding:9px 12px;background:#3d2d22;color:#fff;flex-shrink:0;font-family:inherit;font-size:12.5px;font-weight:700">
+      <span id="dovTitel" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <button type="button" id="dovPrint" style="padding:7px 14px;border:0;border-radius:7px;background:#c8a882;color:#2d2926;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">🖨 Drucken / PDF</button>
+      <button type="button" id="dovClose" style="padding:7px 12px;border:0;border-radius:7px;background:rgba(255,255,255,.18);color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">✕ Schließen</button>
+    </div>
+    <iframe id="dovFrame" title="Druckvorschau" style="flex:1;width:100%;border:0;background:#fff"></iframe>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#dovTitel').textContent='🖨 '+(titel||'Druckansicht');
+  const f=ov.querySelector('#dovFrame');
+  try{
+    const fd=f.contentWindow.document;
+    fd.open();fd.write(doc);fd.close();
+  }catch(e){ov.remove();toast('Druckansicht konnte nicht geöffnet werden','err',4000);return false;}
+  const drucken=()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){toast('Bitte über das Browser-Menü drucken','err',4000);}};
+  ov.querySelector('#dovPrint').onclick=drucken;
+  const zu=()=>{ov.remove();document.removeEventListener('keydown',esc);};
+  const esc=ev=>{if(ev.key==='Escape')zu();};
+  ov.querySelector('#dovClose').onclick=zu;
+  document.addEventListener('keydown',esc);
+  setTimeout(drucken,600);
+  toast('Pop-up blockiert – Druckansicht in der App geöffnet','ok',4500);
+  return true;
+}
+// Mail-Entwurf oeffnen. Zu lange Texte werden gekuerzt (mailto-Laengengrenze in Outlook).
+function mailOeffnen(subject,body){
+  const enc=t=>'mailto:?subject='+encodeURIComponent(subject||'')+'&body='+encodeURIComponent(t);
+  let b=String(body||'');
+  if(enc(b).length>1900){
+    const hinweis='\n…\n\n(Liste gekürzt – der vollständige Text liegt in der Zwischenablage, hier einfügen mit Strg+V)';
+    let n=b.length;
+    while(n>200&&enc(b.slice(0,n)+hinweis).length>1900)n-=200;
+    b=b.slice(0,Math.max(n,0)).replace(/\n[^\n]*$/,'')+hinweis;
+  }
+  const a=document.createElement('a');a.href=enc(b);a.style.display='none';
+  document.body.appendChild(a);a.click();setTimeout(()=>{try{a.remove();}catch(e){}},0);
+}
 
 
 // ── LIEFERSCHEIN DRAG & DROP ─────────────────────────────────────────────
@@ -5828,11 +5892,18 @@ function printZubListe(){
     <h1>🔧 Zubehör-Liste · ${e(scopeName)}</h1>
     <div class="stand">Stand: ${e(stand)} · ${items.length} Einträge bei ${groups.length} Lieferant(en)${ZUB_LISTE_NUROFFEN?' · nur offene':''}<br>Kategorien: ${e(aktiveKats)}</div>
     ${tablesHtml||'<p style="padding:30px;text-align:center;color:#888">Keine Einträge in der gewählten Kategorie-Auswahl.</p>'}
-    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
     </body></html>`;
-  const w=window.open('','_blank');
-  if(!w){toast('Bitte Pop-Ups erlauben','err');return;}
-  w.document.write(html);w.document.close();
+  druckDokument(html,'Zubehör-Liste · '+scopeName);
+}
+// Zubehoer-Liste als Mail-Entwurf (Volltext zusaetzlich in die Zwischenablage).
+async function mailZubListe(){
+  if(!CUR)return;
+  const scopeName=ZUB_LISTE_ALL?'Alle Projekte':CUR.name;
+  const txt=zubListeAsText(CUR);
+  let kopiert=false;
+  try{await navigator.clipboard.writeText(txt);kopiert=true;}catch(e){}
+  mailOeffnen('Zubehör-Liste · '+scopeName,txt);
+  toast(kopiert?'Mail-Entwurf geöffnet · Liste liegt auch in der Zwischenablage':'Mail-Entwurf geöffnet','ok',4000);
 }
 
 function toggleZbGroup(key){
@@ -6663,10 +6734,8 @@ const LIEF_PDF_CSS=`
   .gesamt{display:flex;justify-content:space-between;margin-top:22px;padding:13px 18px;background:#3d2d22;color:#fff;border-radius:10px;font-size:15.5px;font-weight:800}
   @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid} .termin-val,.gesamt{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
 function openLiefPrintWindow(title,inner){
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>${LIEF_PDF_CSS}</style></head><body>${inner}<script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
-  const w=window.open('','_blank');
-  if(!w){toast('Bitte Pop-Ups erlauben','err');return;}
-  w.document.write(html);w.document.close();
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>${LIEF_PDF_CSS}</style></head><body>${inner}</body></html>`;
+  druckDokument(html,String(title||'').replace(/<[^>]*>/g,''));
 }
 function printLieferantenPDF(liefKey,liefName){
   ensurePreisMeta();
