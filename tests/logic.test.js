@@ -410,7 +410,7 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
     return src.slice(i,k+1)+';';
   };
   const druckCode=[extractTemplateConst('DRUCK_BAR'),extractFn('druckDokument'),
-                   extractFn('druckOverlay'),extractFn('mailOeffnen')].join('\n');
+                   extractFn('druckOverlay')].join('\n');
   // Minimale DOM-Attrappe: nur was die beiden Funktionen wirklich anfassen.
   function stubEl(tag,reg){
     const el={tag,style:{cssText:''},innerHTML:'',textContent:'',_q:{},_kids:[],
@@ -436,10 +436,10 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
       body:{appendChild(el){return el;}},
       createElement(tag){const el=stubEl(tag,alle);erzeugt.push(el);return el;}};
     const api2=new Function('window','document','toast',druckCode+
-      ';return {druckDokument,mailOeffnen};')(fakeWin,fakeDoc,(m,c)=>toasts.push(m));
+      ';return {druckDokument};')(fakeWin,fakeDoc,(m,c)=>toasts.push(m));
     const ok=api2.druckDokument(html,'Test-Titel');
     const ov=erzeugt.find(e=>e.tag==='div');
-    return {ok,fenster,erzeugt,toasts,mailOeffnen:api2.mailOeffnen,fakeDoc,
+    return {ok,fenster,erzeugt,toasts,fakeDoc,
       zu:()=>{const b=ov&&ov._q['#dovClose'];if(b&&b.onclick)b.onclick();},
       doc:popupErlaubt?(fenster[0]||{})._geschrieben:(alle.find(e=>e._geschrieben)||{})._geschrieben};
   }
@@ -474,19 +474,6 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   is(b.fakeDoc.title,'Test-Titel','Overlay setzt den Seitentitel für den PDF-Dateinamen');
   b.zu();
   is(b.fakeDoc.title,'KPC Bestellübersicht','Nach dem Schließen ist der alte Titel zurück');
-
-  // ── Versenden: mailto-Entwurf ──────────────────────────────────────────
-  const mailApi=lauf(true,vorlage);
-  const briefe=()=>mailApi.erzeugt.filter(e=>e.tag==='a');
-  mailApi.mailOeffnen('Zubehör-Liste · Mainz','Pos 01.0001.\n  KWC Sensor Netz  1 Stk');
-  const kurz=briefe().pop();
-  is(kurz.href.startsWith('mailto:?subject='),true,'Mail-Entwurf wird als mailto geöffnet');
-  is(decodeURIComponent(kurz.href.split('&body=')[1]).includes('KWC Sensor Netz'),true,'Kurze Liste steht komplett in der Mail');
-  is(kurz._clicked,true,'Mail-Entwurf wird tatsächlich ausgelöst');
-  mailApi.mailOeffnen('Zubehör-Liste · Alle Projekte',('Pos 01.0001.  KWC Sensor Netz  1 Stk\n').repeat(400));
-  const lang=briefe().pop();
-  is(lang.href.length<=1900,true,'Lange Liste wird auf mailto-Grenze gekürzt ('+lang.href.length+' Zeichen)');
-  is(decodeURIComponent(lang.href).includes('Zwischenablage'),true,'Bei Kürzung Hinweis auf die Zwischenablage');
 }
 
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);

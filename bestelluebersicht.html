@@ -1153,7 +1153,6 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
       <button class="mcancel" onclick="closeZubehoerListe()">Schließen</button>
       <button class="mok" onclick="exportKatalogExcel()" style="background:linear-gradient(135deg,#1e8a4a,#34c759)">📊 Katalog als Excel</button>
       <button class="mok" onclick="copyZubListe()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c)">📋 Liste kopieren</button>
-      <button class="mok" onclick="mailZubListe()" style="background:linear-gradient(135deg,#8a5a1a,#b0791f)">📧 Per Mail</button>
       <button class="mok" onclick="printZubListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52)">🖨 Drucken / PDF</button>
     </div>
   </div>
@@ -2301,7 +2300,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-28 · v103';
+const APP_VERSION='2026-09-28 · v104';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4756,19 +4755,6 @@ function druckOverlay(doc,titel){
   toast('Pop-up blockiert – Druckansicht in der App geöffnet','ok',4500);
   return true;
 }
-// Mail-Entwurf oeffnen. Zu lange Texte werden gekuerzt (mailto-Laengengrenze in Outlook).
-function mailOeffnen(subject,body){
-  const enc=t=>'mailto:?subject='+encodeURIComponent(subject||'')+'&body='+encodeURIComponent(t);
-  let b=String(body||'');
-  if(enc(b).length>1900){
-    const hinweis='\n…\n\n(Liste gekürzt – der vollständige Text liegt in der Zwischenablage, hier einfügen mit Strg+V)';
-    let n=b.length;
-    while(n>200&&enc(b.slice(0,n)+hinweis).length>1900)n-=200;
-    b=b.slice(0,Math.max(n,0)).replace(/\n[^\n]*$/,'')+hinweis;
-  }
-  const a=document.createElement('a');a.href=enc(b);a.style.display='none';
-  document.body.appendChild(a);a.click();setTimeout(()=>{try{a.remove();}catch(e){}},0);
-}
 
 
 // ── LIEFERSCHEIN DRAG & DROP ─────────────────────────────────────────────
@@ -5902,16 +5888,6 @@ function printZubListe(){
     ${tablesHtml||'<p style="padding:30px;text-align:center;color:#888">Keine Einträge in der gewählten Kategorie-Auswahl.</p>'}
     </body></html>`;
   druckDokument(html,'Zubehör-Liste · '+scopeName);
-}
-// Zubehoer-Liste als Mail-Entwurf (Volltext zusaetzlich in die Zwischenablage).
-async function mailZubListe(){
-  if(!CUR)return;
-  const scopeName=ZUB_LISTE_ALL?'Alle Projekte':CUR.name;
-  const txt=zubListeAsText(CUR);
-  let kopiert=false;
-  try{await navigator.clipboard.writeText(txt);kopiert=true;}catch(e){}
-  mailOeffnen('Zubehör-Liste · '+scopeName,txt);
-  toast(kopiert?'Mail-Entwurf geöffnet · Liste liegt auch in der Zwischenablage':'Mail-Entwurf geöffnet','ok',4000);
 }
 
 function toggleZbGroup(key){
