@@ -292,6 +292,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .fbtn{flex:1;min-width:120px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 10px;border-radius:8px;border:.5px dashed rgba(107,80,64,.35);background:rgba(255,255,255,.55);color:rgba(45,41,38,.7);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.1;transition:all .15s ease;}
 .fbtn:hover{background:rgba(255,255,255,.85);border-color:#6b5040;color:#6b5040;}
 .fbtn.dragover{background:rgba(200,168,130,.25);border-color:#6b5040;border-style:solid;}
+/* Ganze Karte ist Ziel fuer den Lieferschein – deutlich sichtbar beim Ziehen */
+.card.dragziel{outline:2px dashed #6b5040;outline-offset:2px;background:rgba(200,168,130,.12);}
+.card.dragziel *{pointer-events:none;}
 .fbtn.hasFile{background:rgba(30,138,74,.10);border:.5px solid rgba(30,138,74,.35);color:#0f6332;}
 .fbtn.hasFile:hover{background:rgba(30,138,74,.16);}
 .fbtn .fbtn-ic{font-size:13px;line-height:1;}
@@ -2300,7 +2303,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-28 · v104';
+const APP_VERSION='2026-09-28 · v105';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -3610,7 +3613,7 @@ function renderDetail(){
         const lsDrag=`id="LS${idx}" ondragenter="_enterDrop(event)" ondragover="lsDragOver(event,${idx})" ondragleave="lsDragLeave(event,${idx})" ondrop="lsDrop(event,${idx})"`;
         const lsBtn=p.lieferschein
           ? `<button class="fbtn hasFile" ${lsDrag} onclick="openLs(${idx})" title="${escA(p.lieferschein.name)} – klicken zum Anzeigen, neue Datei per Drag&Drop ersetzen"><span class="fbtn-ic">📦</span> LS${p.lieferschein.datum?' '+fmtD(p.lieferschein.datum):''}<span class="fbtn-x" onclick="event.stopPropagation();delLs(${idx})" title="Lieferschein entfernen">✕</span></button>`
-          : `<button class="fbtn" ${lsDrag} onclick="pickLs(${idx})" title="PDF per Datei-Auswahl oder Drag&Drop – optional"><span class="fbtn-ic">📦</span> Lieferschein anhängen (optional)</button>`;
+          : `<button class="fbtn" ${lsDrag} onclick="pickLs(${idx})" title="PDF anklicken und auswählen – oder die Datei irgendwo auf diese Positionskarte ziehen (optional)"><span class="fbtn-ic">📦</span> Lieferschein anhängen (optional)</button>`;
         html+=`<div class="fbtn-row">${lsBtn}</div>`;
       }
     }
@@ -3677,6 +3680,14 @@ function renderDetail(){
     html+=`<button class="inspos" onclick="openAddPos(${idx+1})">➕ Position darunter einfügen</button>`;
 
     card.innerHTML=html;
+    // Lieferschein: die GANZE Karte nimmt die Datei an, nicht nur der schmale Button.
+    // Vorher musste man den 30 Pixel hohen Streifen treffen – daneben passierte still nichts.
+    if(p.status==='geliefert'){
+      card.ondragenter=ev=>lsCardOver(ev,idx);
+      card.ondragover=ev=>lsCardOver(ev,idx);
+      card.ondragleave=ev=>lsCardLeave(ev,idx);
+      card.ondrop=ev=>lsDrop(ev,idx);
+    }
     return card;
   };
   // Bereiche rendern – Header (klickbar) + sichtbare Karten dieses Bereichs
@@ -4779,11 +4790,32 @@ function lsDragLeave(ev,idx){
   const el=document.getElementById('LS'+idx);
   if(el&&(!ev.relatedTarget||!el.contains(ev.relatedTarget)))el.classList.remove('dragover');
 }
+// Ganze Positionskarte als Ziel: markiert Karte UND Button, damit klar ist wo es landet.
+function lsCardOver(ev,idx){
+  ev.preventDefault();ev.stopPropagation();
+  if(ev.dataTransfer)ev.dataTransfer.dropEffect='copy';
+  const c=document.getElementById('C'+idx);if(c)c.classList.add('dragziel');
+  const el=document.getElementById('LS'+idx);if(el)el.classList.add('dragover');
+}
+function lsCardLeave(ev,idx){
+  const c=document.getElementById('C'+idx);
+  if(c&&(!ev.relatedTarget||!c.contains(ev.relatedTarget))){
+    c.classList.remove('dragziel');
+    const el=document.getElementById('LS'+idx);if(el)el.classList.remove('dragover');
+  }
+}
 async function lsDrop(ev,idx){
   ev.preventDefault();ev.stopPropagation();
   const el=document.getElementById('LS'+idx);if(el)el.classList.remove('dragover');
+  const c=document.getElementById('C'+idx);if(c)c.classList.remove('dragziel');
+  if(!requireLogin())return;
   const f=ev.dataTransfer&&ev.dataTransfer.files&&ev.dataTransfer.files[0];
-  if(!f){toast('Keine Datei erkannt – bitte direkt auf den Button tippen','err');return;}
+  if(!f){
+    // Aus Outlook heraus gezogene Anhaenge liefern keine echte Datei – der Browser
+    // kann sie nicht lesen. Das muss man sagen, sonst sucht man den Fehler in der App.
+    toast('Der Browser bekommt hier keine Datei – aus Outlook direkt gezogene Anhänge gehen nicht. Erst speichern oder auf den Button klicken.','err',6500);
+    return;
+  }
   await handleLsFile(idx,f);
 }
 async function handleLsFile(idx,file){
@@ -4976,10 +5008,22 @@ async function abDrop(ev,idx){
 // die PDF einfach in einem neuen Tab oeffnet (das wirkt wie 'App reagiert nicht').
 window.addEventListener('dragover',e=>{e.preventDefault();},false);
 window.addEventListener('drop',e=>{
-  // Wenn das Ziel keiner unserer Drop-Buttons war, einfach unterdruecken.
-  const tgt=e.target&&e.target.closest&&e.target.closest('#LS, [id^="LS"], #AB, [id^="AB"]');
-  if(!tgt){e.preventDefault();}
+  // Wer den Drop verarbeitet, ruft stopPropagation – kommt er hier an, hat ihn niemand
+  // genommen. Dann nicht nur stillschweigend unterdruecken, sondern sagen warum.
+  e.preventDefault();
+  const dateien=e.dataTransfer&&e.dataTransfer.files?e.dataTransfer.files.length:0;
+  const inModal=e.target&&e.target.closest&&e.target.closest('.modal.on');
+  if(dateien&&!inModal)toast('Lieferschein bitte auf die gelieferte Position ziehen (Karte oder 📦-Button)','err',5000);
 },false);
+// Sicherheitsnetz: Markierungen immer aufraeumen, auch wenn der Drop woanders landet
+// oder die Datei wieder aus dem Fenster gezogen wird (sonst bliebe die Karte markiert).
+function clearDragMarks(){
+  document.querySelectorAll('.dragziel').forEach(el=>el.classList.remove('dragziel'));
+  document.querySelectorAll('.dragover').forEach(el=>el.classList.remove('dragover'));
+}
+window.addEventListener('drop',clearDragMarks,true);
+window.addEventListener('dragend',clearDragMarks,true);
+window.addEventListener('dragleave',e=>{if(!e.relatedTarget)clearDragMarks();},true);
 // dragenter braucht's auch, sonst feuert dragover bei manchen Browsern verzoegert
 function _enterDrop(ev){ev.preventDefault();ev.stopPropagation();if(ev.dataTransfer)ev.dataTransfer.dropEffect='copy';}
 async function handleAbFile(idx,file){

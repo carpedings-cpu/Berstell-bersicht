@@ -476,6 +476,89 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   is(b.fakeDoc.title,'KPC Bestellübersicht','Nach dem Schließen ist der alte Titel zurück');
 }
 
+// ── Lieferschein per Drag & Drop ────────────────────────────────────────
+// Vorher war nur der schmale Button Ziel: knapp daneben passierte still nichts.
+// Jetzt nimmt die ganze Positionskarte die Datei an, und jeder Fall sagt etwas.
+{
+  // async-Funktionen: extractFn() findet 'function lsDrop(' erst NACH dem 'async'
+  const extractFnA=name=>{
+    const i=src.indexOf('function '+name+'(');
+    return (src.slice(Math.max(0,i-6),i)==='async '?'async ':'')+extractFn(name);
+  };
+  const dndCode=[extractFnA('lsDrop'),extractFn('lsCardOver'),
+                 extractFn('lsCardLeave'),extractFn('clearDragMarks')].join('\n');
+  function bauen(opt){
+    opt=opt||{};
+    const klassen={};                  // id → Set von Klassen
+    const el=id=>({id,
+      classList:{add(c){(klassen[id]=klassen[id]||new Set()).add(c);},
+        remove(c){(klassen[id]||new Set()).delete(c);},
+        contains(c){return !!(klassen[id]&&klassen[id].has(c));}},
+      contains:knoten=>!!(knoten&&knoten._in===id)});
+    const cache={};
+    const fakeDoc={getElementById(id){return cache[id]||(cache[id]=el(id));},
+      querySelectorAll(){return [];}};
+    const dateien=[],toasts=[];let vorgebeugt=0,gestoppt=0;
+    const api=new Function('document','toast','requireLogin','handleLsFile',
+      dndCode+';return {lsDrop,lsCardOver,lsCardLeave};')(
+      fakeDoc,(m,c)=>toasts.push(m),()=>opt.login!==false,
+      async(idx,f)=>{dateien.push({idx,name:f&&f.name});});
+    const ev=extra=>Object.assign({preventDefault(){vorgebeugt++;},stopPropagation(){gestoppt++;}},extra);
+    return {api,ev,klassen,dateien,toasts,
+      zaehler:()=>({vorgebeugt,gestoppt}),
+      hat:(id,c)=>!!(klassen[id]&&klassen[id].has(c))};
+  }
+  const datei={name:'Lieferschein 4711.pdf',type:'application/pdf'};
+  // lsDrop ist async, der geprueefte Teil laeuft aber synchron ab (bis zum ersten await).
+  const los=p=>{if(p&&p.catch)p.catch(e=>{fail++;console.log('FAIL: Fehler in lsDrop: '+e.message);});};
+
+  // 1. Datei auf die Karte → Lieferschein wird übernommen
+  {
+    const t=bauen();
+    los(t.api.lsDrop(t.ev({dataTransfer:{files:[datei]}}),3));
+    is(t.dateien,[{idx:3,name:'Lieferschein 4711.pdf'}],'Drop mit Datei übergibt sie an die Position');
+    is(t.toasts,[],'Kein Fehlerhinweis wenn es geklappt hat');
+    is(t.zaehler().vorgebeugt>0,true,'preventDefault – der Browser öffnet die PDF nicht im neuen Tab');
+    is(t.zaehler().gestoppt>0,true,'stopPropagation – der globale Hinweis bleibt aus');
+  }
+  // 2. Drop ohne lesbare Datei (aus Outlook gezogen) → Erklärung statt Schweigen
+  {
+    const t=bauen();
+    los(t.api.lsDrop(t.ev({dataTransfer:{files:[]}}),0));
+    is(t.dateien,[],'Ohne Datei wird nichts angehängt');
+    is(t.toasts.length,1,'Es kommt genau eine Meldung');
+    is(/Outlook/.test(t.toasts[0]),true,'Die Meldung nennt den Outlook-Fall');
+  }
+  // 3. Nicht angemeldet → kein stiller Anhang
+  {
+    const t=bauen({login:false});
+    los(t.api.lsDrop(t.ev({dataTransfer:{files:[datei]}}),0));
+    is(t.dateien,[],'Ohne Anmeldung wird kein Lieferschein übernommen');
+  }
+  // 4. Markierung beim Ziehen über die Karte
+  {
+    const t=bauen();
+    t.api.lsCardOver(t.ev({dataTransfer:{}}),5);
+    is(t.hat('C5','dragziel'),true,'Karte wird als Ziel markiert');
+    is(t.hat('LS5','dragover'),true,'Der 📦-Button wird mitmarkiert');
+    // Wechsel in ein Kind-Element der Karte → Markierung bleibt
+    t.api.lsCardLeave(t.ev({relatedTarget:{_in:'C5'}}),5);
+    is(t.hat('C5','dragziel'),true,'Beim Wechsel in ein Element der Karte bleibt die Markierung');
+    // Raus aus der Karte → Markierung weg
+    t.api.lsCardLeave(t.ev({relatedTarget:null}),5);
+    is(t.hat('C5','dragziel'),false,'Verlässt man die Karte, verschwindet die Markierung');
+    is(t.hat('LS5','dragover'),false,'Auch der Button wird wieder normal');
+  }
+  // 5. Nach dem Drop ist die Markierung weg (sonst bliebe die Karte hängen)
+  {
+    const t=bauen();
+    t.api.lsCardOver(t.ev({dataTransfer:{}}),2);
+    los(t.api.lsDrop(t.ev({dataTransfer:{files:[datei]}}),2));
+    is(t.hat('C2','dragziel'),false,'Nach dem Drop ist die Karten-Markierung weg');
+    is(t.hat('LS2','dragover'),false,'Nach dem Drop ist die Button-Markierung weg');
+  }
+}
+
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
 
 
