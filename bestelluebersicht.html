@@ -2301,7 +2301,7 @@ async function goSearch(){
   PROJECTS=await dbAll('projects');
   document.getElementById('gResults').innerHTML='<div class="empty">Suchbegriff eingeben (Lieferant, Fabrikat, Bezeichnung oder Komm-Nr).</div>';
 }
-const APP_VERSION='2026-09-28 · v102';
+const APP_VERSION='2026-09-28 · v103';
 function goSettings(){
   showView('vSettings');
   document.getElementById('setWarnDays').value=SETTINGS.warnDays||14;
@@ -4711,6 +4711,9 @@ function druckDokument(html,titel){
   if(w&&w.document){
     try{
       w.document.open();w.document.write(doc);w.document.close();
+      // Titel setzen: davon haengt der Dateiname bei "Als PDF speichern" ab.
+      // Ohne das hiess die Datei nach der App-Datei (bestelluebersicht.html).
+      if(titel)try{w.document.title=titel;}catch(e){}
       // Nicht auf window.onload im neuen Fenster verlassen (feuert dort nicht zuverlaessig).
       setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);
       toast('Druckansicht geöffnet – im Dialog „Als PDF speichern“ wählen','ok',4000);
@@ -4738,9 +4741,14 @@ function druckOverlay(doc,titel){
     const fd=f.contentWindow.document;
     fd.open();fd.write(doc);fd.close();
   }catch(e){ov.remove();toast('Druckansicht konnte nicht geöffnet werden','err',4000);return false;}
+  // Beim Drucken eines eingebetteten Rahmens nimmt der Browser den Titel der
+  // Hauptseite als Dateinamen – solange die Druckansicht offen ist, also den
+  // Titel der Druckansicht verwenden und danach wieder zuruecksetzen.
+  const alterTitel=document.title;
+  if(titel)document.title=titel;
   const drucken=()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){toast('Bitte über das Browser-Menü drucken','err',4000);}};
   ov.querySelector('#dovPrint').onclick=drucken;
-  const zu=()=>{ov.remove();document.removeEventListener('keydown',esc);};
+  const zu=()=>{ov.remove();document.title=alterTitel;document.removeEventListener('keydown',esc);};
   const esc=ev=>{if(ev.key==='Escape')zu();};
   ov.querySelector('#dovClose').onclick=zu;
   document.addEventListener('keydown',esc);
@@ -6735,7 +6743,9 @@ const LIEF_PDF_CSS=`
   @media print{body{padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact} .sec{page-break-inside:avoid} .termin-val,.gesamt{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
 function openLiefPrintWindow(title,inner){
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>${LIEF_PDF_CSS}</style></head><body>${inner}</body></html>`;
-  druckDokument(html,String(title||'').replace(/<[^>]*>/g,''));
+  // title kommt HTML-escaped herein – fuer den Fenster-/Dateinamen zurueckwandeln
+  const klar=String(title||'').replace(/<[^>]*>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  druckDokument(html,klar||'Preisliste');
 }
 function printLieferantenPDF(liefKey,liefName){
   ensurePreisMeta();

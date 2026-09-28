@@ -428,15 +428,19 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
     const fenster=[],erzeugt=[],toasts=[],alle=[];
     const fakeWin={open(){
       if(!popupErlaubt)return null;
-      const f={document:{open(){},write(h){f._geschrieben=h;},close(){}},focus(){},print(){f._gedruckt=true;},close(){}};
+      const f={document:{open(){},write(h){f._geschrieben=h;},close(){},title:''},
+        focus(){},print(){f._gedruckt=true;},close(){}};
       fenster.push(f);return f;}};
     const fakeDoc={getElementById:()=>null,addEventListener(){},removeEventListener(){},
+      title:'KPC Bestellübersicht',
       body:{appendChild(el){return el;}},
       createElement(tag){const el=stubEl(tag,alle);erzeugt.push(el);return el;}};
     const api2=new Function('window','document','toast',druckCode+
       ';return {druckDokument,mailOeffnen};')(fakeWin,fakeDoc,(m,c)=>toasts.push(m));
     const ok=api2.druckDokument(html,'Test-Titel');
+    const ov=erzeugt.find(e=>e.tag==='div');
     return {ok,fenster,erzeugt,toasts,mailOeffnen:api2.mailOeffnen,fakeDoc,
+      zu:()=>{const b=ov&&ov._q['#dovClose'];if(b&&b.onclick)b.onclick();},
       doc:popupErlaubt?(fenster[0]||{})._geschrieben:(alle.find(e=>e._geschrieben)||{})._geschrieben};
   }
   const vorlage=`<!DOCTYPE html><html><head><title>X</title></head><body>`+
@@ -463,6 +467,13 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   // Vorlage ohne <body> (Teil-HTML) darf nicht die Leiste verlieren
   const t=lauf(true,'<h1>nur ein Fragment</h1>');
   is(t.doc.startsWith('<div class="kpc-pb"'),true,'Fragment ohne <body>: Leiste wird vorangestellt');
+
+  // Dateiname beim "Als PDF speichern" haengt am Dokumenttitel – vorher hiess
+  // die Datei nach der App (bestelluebersicht.html) statt nach der Liste.
+  is(p.fenster[0].document.title,'Test-Titel','Neues Fenster bekommt den Titel der Druckansicht');
+  is(b.fakeDoc.title,'Test-Titel','Overlay setzt den Seitentitel für den PDF-Dateinamen');
+  b.zu();
+  is(b.fakeDoc.title,'KPC Bestellübersicht','Nach dem Schließen ist der alte Titel zurück');
 
   // ── Versenden: mailto-Entwurf ──────────────────────────────────────────
   const mailApi=lauf(true,vorlage);
