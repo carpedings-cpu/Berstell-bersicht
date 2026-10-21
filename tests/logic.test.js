@@ -38,6 +38,14 @@ const code=[
   extractConst('ZUB_PREISE'),
   extractFn('istBauseits'),
   extractFn('istDienstleistung'),
+  extractFn('naEintraege'),
+  extractFn('istNaNeuOffen'),
+  extractFn('istNaEntfallen'),
+  extractConst('NA_BEREICH'),
+  extractFn('naListe'),
+  extractFn('naImport'),
+  extractFn('naStatusSetzen'),
+  extractFn('naLoeschen'),
   extractFn('istEntfallen'),
   extractFn('istEventual'),
   extractFn('istNichtBestellbar'),
@@ -75,6 +83,7 @@ const code=[
 const api=new Function('const window={_parseDebug:{}};'+code+`
   return {istEventual,nichtBestellbarLabel,istZuBestellen,rowsToProject,istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
     protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
+    naListe,naImport,naStatusSetzen,naLoeschen,istNaNeuOffen,istEntfallen,
     begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,posKey,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
       advent:GRUSS_ADVENT,frueh:GRUSS_FRUEH,abend:GRUSS_ABEND}};`)();
@@ -557,6 +566,60 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
     is(t.hat('C2','dragziel'),false,'Nach dem Drop ist die Karten-Markierung weg');
     is(t.hat('LS2','dragover'),false,'Nach dem Drop ist die Button-Markierung weg');
   }
+}
+
+
+// ── Nachträge ────────────────────────────────────────────────────────────
+{
+  const mk=()=>({positionen:[
+    {pos:'03.00. 6.',bez:'Küchenablufthaube, Kastenform',quelle:'bestellt',status:'bestellt'},
+    {pos:'06.00. 2.',bez:'Haube UG (Vereinsküche)',quelle:'bestellt',status:'bestellt'},
+    {pos:'06.00. 1.',bez:'Rammschutz',quelle:'',status:'offen'}]});
+  const na1={nr:'1',titel:'Hauben',datum:'2026-10-21',items:[
+    {pos:'06.00.2.',art:'mehr',text:'Zweiteilig',menge:1,einh:'St',betrag:558},
+    {pos:'06.00. 2.',art:'mehr',text:'Verblendung',betrag:658},
+    {pos:'03.00. 6.',art:'entfall',text:'Entfall',betrag:-4446},
+    {art:'neu',bez:'Wandabschlussblech',menge:2,einh:'St',betrag:120}]};
+  const pr=mk();
+  const r=api.naImport(pr,na1);
+  is([r.ok,r.zugeordnet,r.neu],[true,3,1],'NA: Import ordnet zu (Pos.-Nr. ohne Leerzeichen-Unterschied) und legt neue an');
+  is(pr.positionen.length,4,'NA: neue Position angehängt');
+  const neuP=pr.positionen[3];
+  is([neuP.pos,neuP.bereich,neuP.bereichBez],['NA1-01','NA','Nachträge'],'NA: neue Position im Bereich Nachträge');
+  is(api.istZuBestellen(neuP),false,'NA: neue Position aus Angebot ist NICHT zu bestellen');
+  is(api.nichtBestellbarLabel(neuP),'Nachtrag – noch nicht freigegeben','NA: Label für offene neue Position');
+  is(api.istZuBestellen({...neuP,nbOverride:'ja'}),false,'NA: Override macht offene NA-Position nicht bestellbar');
+  is(api.istEntfallen(pr.positionen[0]),false,'NA: Entfall greift erst nach Freigabe');
+  const l=api.naListe(pr);
+  is([l.length,l[0].status,l[0].summe,l[0].neu,l[0].idxs.length],[1,'angebot',-3110,1,3],'NA: Liste fasst zusammen');
+  api.naStatusSetzen(pr,'1','freigegeben','2026-10-25');
+  is(api.istZuBestellen(neuP),true,'NA: nach Freigabe ist neue Position zu bestellen');
+  is(api.istEntfallen(pr.positionen[0]),true,'NA: nach Freigabe ist Entfall-Position entfallen');
+  is(api.naListe(pr)[0].freigabeAm,'2026-10-25','NA: Freigabedatum gesetzt');
+  api.naStatusSetzen(pr,'1','angebot');
+  is(api.istZuBestellen(neuP),false,'NA: zurück auf Angebot');
+  // Erneut einlesen = ersetzen, neue Position bleibt dieselbe (Zustand erhalten)
+  neuP.notiz='bleibt';
+  const r2=api.naImport(pr,{...na1,items:na1.items.slice(0,1).concat([na1.items[3]])});
+  is([r2.ok,pr.positionen.length,pr.positionen[1].na.length,pr.positionen[0].na],[true,4,1,undefined],'NA: Neu-Einlesen ersetzt alte Fassung');
+  is(pr.positionen[3].notiz,'bleibt','NA: neue Position wird beim Ersetzen wiederverwendet');
+  // Unbekannte Position → nichts ändern
+  const pr2=mk();
+  const r3=api.naImport(pr2,{nr:'2',items:[{pos:'06.00. 1.',art:'mehr'},{pos:'99.9',art:'minder'}]});
+  is([r3.ok,pr2.positionen.some(p=>p.na)],[false,false],'NA: unbekannte Pos.-Nr. → Import abgelehnt, nichts geändert');
+  is(api.naImport(pr2,{nr:'2',items:[{pos:'06.00. 1.',art:'quatsch'}]}).ok,false,'NA: unbekannte Art abgelehnt');
+  is(api.naImport(pr2,{nr:'3',items:[{art:'neu',pos:'06.00. 1.',bez:'x'}]}).ok,false,'NA: neue Position darf keine bestehende Nr. belegen');
+  // Ablehnen = löschen
+  const pr3=mk();api.naImport(pr3,na1);
+  const d=api.naLoeschen(pr3,'1');
+  is([d.entfernt,pr3.positionen.length,pr3.positionen.some(p=>p.na)],[1,3,false],'NA: Ablehnen löscht Einträge und neue Position');
+  const pr4=mk();api.naImport(pr4,na1);pr4.positionen[3].quelle='bestellt';
+  const d2=api.naLoeschen(pr4,'1');
+  is([d2.bestelltBehalten,pr4.positionen.length,pr4.positionen[3].na],[1,4,undefined],'NA: schon bestellte neue Position bleibt beim Löschen');
+  // Mehrere Nachträge an einer Position
+  const pr5=mk();api.naImport(pr5,na1);api.naImport(pr5,{nr:'2',items:[{pos:'06.00. 2.',art:'minder',betrag:-50}]});
+  api.naLoeschen(pr5,'1');
+  is(pr5.positionen[1].na.map(e=>e.nr),['2'],'NA: Löschen lässt andere Nachträge stehen');
 }
 
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
