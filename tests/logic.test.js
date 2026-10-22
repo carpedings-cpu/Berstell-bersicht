@@ -620,6 +620,14 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   const pr5=mk();api.naImport(pr5,na1);api.naImport(pr5,{nr:'2',items:[{pos:'06.00. 2.',art:'minder',betrag:-50}]});
   api.naLoeschen(pr5,'1');
   is(pr5.positionen[1].na.map(e=>e.nr),['2'],'NA: Löschen lässt andere Nachträge stehen');
+  // Pos.-Nr. mit/ohne Punkt am Ende
+  const pr6={positionen:[{pos:'01.0006.',bez:'Heissluftdämpfer',quelle:'bestellt'}]};
+  is(api.naImport(pr6,{nr:'1',items:[{pos:'01.0006',art:'aenderung',betrag:641.28}]}).ok,true,'NA: "01.0006" findet "01.0006."');
+  // Leistung ohne Bestellung (Lagerkosten) bleibt auch nach Freigabe nicht bestellbar
+  const pr7={positionen:[]};
+  api.naImport(pr7,{nr:'2',items:[{art:'neu',bez:'Lagerkosten',bestellbar:false,betrag:822.81}]});
+  api.naStatusSetzen(pr7,'2','freigegeben','2026-10-22');
+  is(api.istZuBestellen(pr7.positionen[0]),false,'NA: bestellbar:false bleibt nach Freigabe nicht zu bestellen');
 }
 
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);

@@ -576,6 +576,18 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .card.na-neu-frei{border:1.5px dashed #1e8a4a;}
 .pcard .pwarn-na{background:rgba(255,204,0,.22);color:#5e4700;}
 .pcard .pwarn-naf{background:rgba(52,199,89,.15);color:#0f5a2c;}
+.pcard .pwarn-nal{background:rgba(255,204,0,.1);color:#7a6420;}
+.na-tab{width:100%;border-collapse:collapse;font-size:12.5px;}
+.na-tab td,.na-tab th{padding:8px 8px;border-bottom:.5px solid rgba(0,0,0,.08);vertical-align:top;text-align:left;}
+.na-tab th{font-size:10.5px;text-transform:uppercase;color:rgba(28,28,30,.5);font-weight:700;}
+.na-tab tr.na-ang td:first-child{border-left:4px solid #e0b000;}
+.na-tab tr.na-frei td:first-child{border-left:4px solid #1e8a4a;}
+.na-tab .na-st{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:7px;}
+.na-tab .na-st.a{background:rgba(255,204,0,.25);color:#5e4700;}
+.na-tab .na-st.f{background:rgba(52,199,89,.18);color:#0f5a2c;}
+.na-tab .na-pl{display:inline-block;margin:2px 4px 0 0;font-size:11px;padding:1px 6px;border-radius:6px;background:rgba(0,0,0,.05);cursor:pointer;}
+.na-tab .na-pl:hover{background:rgba(0,0,0,.12);}
+.na-tab button{border:.5px solid rgba(0,0,0,.15);background:rgba(255,255,255,.7);font-size:11px;font-weight:600;padding:3px 8px;border-radius:7px;cursor:pointer;font-family:inherit;margin:0 4px 4px 0;}
 .inspos{margin-top:8px;width:100%;padding:6px 11px;border-radius:10px;border:.5px dashed rgba(107,80,64,.3);
   background:rgba(255,255,255,.4);color:rgba(107,80,64,.8);font-size:11.5px;font-weight:600;cursor:pointer;
   font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;}
@@ -801,7 +813,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <button class="ptbtn" onclick="openTermininfo()" style="background:linear-gradient(135deg,#1a5f7a,#1f6d8c);color:#fff;border-color:transparent">📧 Lieferanten zu Termin</button>
     <button class="ptbtn" onclick="openZubehoerListe()" style="background:linear-gradient(135deg,#6b5040,#8a6a52);color:#fff;border-color:transparent">🔧 Zubehör-Liste</button>
     <button class="ptbtn" id="wartungBtn" onclick="openWartungModal()">🛠 Wartung</button>
-    <button class="ptbtn" onclick="trigNachtrag()" title="Nachtrag einlesen (.json, von Claude aus dem Nachtragsangebot erstellt). Gleiche Nummer erneut einlesen ersetzt die alte Fassung." style="margin-left:auto;background:rgba(255,204,0,.2);color:#5e4700;border-color:transparent">📝 Nachtrag einlesen</button>
+    <button class="ptbtn" id="naBtn" onclick="openNachtraegeModal()" title="Alle Nachträge des Projekts: Stand, Summen, Freigabe – und neuen Nachtrag einlesen" style="margin-left:auto;background:rgba(255,204,0,.2);color:#5e4700;border-color:transparent">📝 Nachträge</button>
     <button class="ptbtn" onclick="trigEventualExcel()" title="Auftragsstückliste hochladen: Positionen mit dem kleinen 'a' werden im laufenden Projekt als Eventualpositionen markiert" style="background:rgba(155,133,168,.14);color:#5b4a73;border-color:transparent;font-size:11.5px">◇ Eventual aus Liste</button>
     <button class="ptbtn" id="archivBtn" onclick="toggleArchivProjekt()" style=background:rgba(120,120,128,.1);color:rgba(28,28,30,.55);border-color:transparent;font-size:11.5px">📦 Abschließen</button>
   </div>
@@ -1176,6 +1188,16 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 </div>
 
 <!-- Wartungsangebote je Lieferant (pro Projekt) -->
+<div class="modal" id="naModal" onclick="if(event.target===this)closeNachtraegeModal()">
+  <div class="modal-box flex-scroll" style="max-width:760px;max-height:90vh">
+    <button class="modal-x" onclick="closeNachtraegeModal()" title="Schließen (Esc)">✕</button>
+    <div id="naBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="trigNachtrag()">📥 Nachtrag einlesen (.json)</button>
+      <button class="mok" onclick="closeNachtraegeModal()">Schließen</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="wartungModal" onclick="if(event.target===this)closeWartungModal()">
   <div class="modal-box flex-scroll" style="max-width:720px;max-height:90vh">
     <button class="modal-x" onclick="closeWartungModal()" title="Schließen (Esc)">✕</button>
@@ -1644,8 +1666,9 @@ function naImport(proj,d){
   const items=Array.isArray(d.items)?d.items:[];
   if(!items.length)fehler.push('Keine Positionen im Nachtrag');
   const status=d.status==='freigegeben'?'freigegeben':'angebot';
+  const naKey=v=>posKey(v).replace(/\.+$/,'');   // "01.0006" findet auch "01.0006."
   const byKey=new Map();
-  proj.positionen.forEach(p=>{if(!byKey.has(posKey(p.pos)))byKey.set(posKey(p.pos),p);});
+  proj.positionen.forEach(p=>{if(!byKey.has(naKey(p.pos)))byKey.set(naKey(p.pos),p);});
   const ARTEN=['mehr','minder','entfall','aenderung','neu'];
   let lfd=0;
   const plan=items.map((it,i)=>{
@@ -1655,13 +1678,13 @@ function naImport(proj,d){
       lfd++;
       const pos=String(it.pos||('NA'+nr+'-'+String(lfd).padStart(2,'0'))).trim();
       if(!it.bez)fehler.push('Zeile '+(i+1)+': neue Position ohne Bezeichnung');
-      const vorh=byKey.get(posKey(pos));
+      const vorh=byKey.get(naKey(pos));
       // Gleiche Pos.-Nr. darf nur wiederverwendet werden, wenn sie aus DIESEM Nachtrag stammt
       if(vorh&&!naEintraege(vorh).some(e=>e.art==='neu'&&String(e.nr)===nr))
         fehler.push('Zeile '+(i+1)+': Pos. '+pos+' gibt es schon im Projekt');
       return {it,art,pos,ziel:vorh||null};
     }
-    const ziel=byKey.get(posKey(it.pos));
+    const ziel=byKey.get(naKey(it.pos));
     if(!ziel)fehler.push('Zeile '+(i+1)+': Pos. '+(it.pos||'(leer)')+' nicht im Projekt gefunden');
     return {it,art,ziel};
   });
@@ -1681,6 +1704,7 @@ function naImport(proj,d){
         p={pos,bereich:NA_BEREICH,bereichBez:'Nachträge',bez:String(it.bez),fabrikat:String(it.fabrikat||''),typ:String(it.typ||''),
           menge:e.menge||'1',einh:e.einh||'St',quelle:'',lieferant:'',kommNrs:[],lieferort:'',abrufTermin:'',status:'offen',
           geliefertDatum:'',notiz:'',bestelltAm:'',abBestaetigt:false,abAm:'',abErinnertAm:''};
+        if(it.bestellbar===false)p.nbOverride='nein';   // Leistung ohne Bestellung (Lagerkosten, Stunden …)
         proj.positionen.push(p);
       }
       p.na=naEintraege(p).concat([e]);neu++;
@@ -2544,11 +2568,10 @@ function renderHome(){
         ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
         ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
         ${amb?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'amber')" title="Bald fällige Positionen anzeigen">⏳ ${amb} bald fällig</button>`:''}
-        ${naOff?`<button class="pwarn-b pwarn-na" onclick="event.stopPropagation();openProject('${proj.id}',null,'nachtrag')" title="Nachtragsangebote, die noch nicht freigegeben sind">📝 ${naOff} NA offen</button>`:''}
-        ${naFrei?`<button class="pwarn-b pwarn-naf" onclick="event.stopPropagation();openProject('${proj.id}',null,'nachtrag')" title="Freigegebene Nachträge">📝 ${naFrei} NA frei</button>`:''}
         <button class="pwarn-b pwarn-g" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?">${best}/${tot} bestellt</button>
         <button class="pwarn-b ${wartOffen.length?(wartRed?'pwarn-r':'pwarn-a'):'pwarn-t'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="${wartOffen.length?'Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht':'Wartungsangebote ansehen und bearbeiten'}">⚙ ${wartOffen.length?wartOffen.length+' ':''}Wartung</button>
         <button class="pwarn-b ${protOff?'pwarn-r':'pwarn-v'}" onclick="event.stopPropagation();openProtokolleVonHome('${proj.id}')" title="${protOff?'Protokolle fehlen (IBN/Einweisung) – tippen öffnet die Liste':'Protokolle ansehen und abhaken'}">📋 ${protOff?protOff+' ':''}Protokolle</button>
+        <button class="pwarn-b ${naOff?'pwarn-na':naFrei?'pwarn-naf':'pwarn-nal'}" onclick="event.stopPropagation();openNachtraegeVonHome('${proj.id}')" title="${naL.length?naOff+' offen (Angebot), '+naFrei+' freigegeben – tippen öffnet die Übersicht':'Noch keine Nachträge – tippen zum Einlesen'}">📝 Nachträge${naOff?' · '+naOff+' offen':naFrei?' · '+naFrei+' frei':''}</button>
       </div>
       <button class="pstat" onclick="event.stopPropagation();showProjStatus('${proj.id}')" title="Status-Übersicht">📊</button>
       <button class="pdel" onclick="event.stopPropagation();delProject('${proj.id}')">✕</button>`;
@@ -3079,6 +3102,8 @@ document.addEventListener('keydown',e=>{
   if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
   const zlm=document.getElementById('zubListModal');
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
+  const nam=document.getElementById('naModal');
+  if(nam&&nam.classList.contains('on')){closeNachtraegeModal();e.preventDefault();return;}
   const wm=document.getElementById('wartungModal');
   if(wm&&wm.classList.contains('on')){closeWartungModal();e.preventDefault();return;}
   const prm=document.getElementById('protokolleModal');
@@ -3597,6 +3622,8 @@ function renderDetail(){
     `<button class="chip" onclick="toggleAllBereiche(true)" title="Alle Bereiche zuklappen" style="margin-left:auto;opacity:.75">▶ Alle zu</button>`+
     `<button class="chip" onclick="toggleAllBereiche(false)" title="Alle Bereiche aufklappen" style="opacity:.75">▼ Alle auf</button>`;
   updateWartungBtn();
+  updateNachtragBtn();
+  if(document.getElementById('naModal').classList.contains('on'))renderNachtraegeBody();
   // Cards: gruppiert nach Bereich, mit Akkordeon
   const q=(document.getElementById('dSrch').value||'').toLowerCase().trim();
   const wrap=document.getElementById('dCards');wrap.innerHTML='';
@@ -4620,6 +4647,49 @@ async function copyParseDebug(){
   catch(e){document.execCommand('copy');toast('Diagnose kopiert','ok');}
 }
 
+// Nachtrags-Übersicht (Button am Projekt: Startseite + Projektansicht)
+function openNachtraegeVonHome(id){openProject(id,null,'');openNachtraegeModal();}
+function openNachtraegeModal(){if(!CUR)return;renderNachtraegeBody();document.getElementById('naModal').classList.add('on');}
+function closeNachtraegeModal(){document.getElementById('naModal').classList.remove('on');}
+function naZuPos(pos){closeNachtraegeModal();DFILTER='nachtrag';renderDetail();
+  const i=CUR.positionen.findIndex(p=>p.pos===pos);const el=i>=0&&document.getElementById('C'+i);if(el)el.scrollIntoView({behavior:'smooth',block:'center'});}
+function renderNachtraegeBody(){
+  if(!CUR)return;
+  const l=naListe(CUR);
+  const off=l.filter(n=>n.status!=='freigegeben'),frei=l.filter(n=>n.status==='freigegeben');
+  const sum=a=>a.reduce((s,n)=>s+n.summe,0);
+  let html=`<h3 style="margin-bottom:4px">📝 Nachträge · ${esc(CUR.name)}</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">Gelb = Angebot (noch nicht beauftragt), grün = freigegeben. Beträge netto je Position, vor Nachlass. Abgelehnte Nachträge werden gelöscht.</div>`;
+  if(!l.length){
+    html+=`<div class="empty" style="padding:24px 0">Noch keine Nachträge in diesem Projekt.<br><span style="font-size:12px">Unten „Nachtrag einlesen“ wählen – die Datei erstellt Claude aus dem Nachtragsangebot.</span></div>`;
+  } else {
+    html+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+      <span class="na-st a" style="padding:5px 10px;border-radius:9px;background:rgba(255,204,0,.22);color:#5e4700;font-weight:700">${off.length} offen · ${esc(naBetragTxt(sum(off))||'0,00 €')}</span>
+      <span style="padding:5px 10px;border-radius:9px;background:rgba(52,199,89,.15);color:#0f5a2c;font-weight:700">${frei.length} freigegeben · ${esc(naBetragTxt(sum(frei))||'0,00 €')}</span></div>`;
+    html+=`<table class="na-tab"><tr><th>NA</th><th>Nachtrag</th><th>Status</th><th style="text-align:right">Betrag</th><th></th></tr>`;
+    l.forEach(n=>{
+      const f=n.status==='freigegeben';
+      const nrA=escA(JSON.stringify(n.nr));
+      const pos=n.idxs.map(i=>CUR.positionen[i]).filter(Boolean)
+        .map(p=>`<span class="na-pl" onclick='naZuPos(${escA(JSON.stringify(p.pos))})' title="${escA(p.bez)}">${esc(p.pos)}</span>`).join('');
+      html+=`<tr class="${f?'na-frei':'na-ang'}">
+        <td><strong>${esc(n.nr)}</strong></td>
+        <td>${esc(n.titel||'–')}${n.datum?`<div style="font-size:11px;color:rgba(28,28,30,.55)">vom ${fmtD(n.datum)}${n.datei?' · '+esc(n.datei):''}</div>`:''}<div>${pos}</div></td>
+        <td><span class="na-st ${f?'f':'a'}">${f?'freigegeben':'Angebot'}</span>${f&&n.freigabeAm?`<div style="font-size:11px;margin-top:3px">${fmtD(n.freigabeAm)}</div>`:''}</td>
+        <td style="text-align:right;white-space:nowrap;font-weight:700">${esc(naBetragTxt(n.summe))}</td>
+        <td style="white-space:nowrap">${f
+          ?`<button onclick='naAufAngebot(${nrA})'>↩ Angebot</button>`
+          :`<button onclick='naFreigeben(${nrA})'>✓ Freigegeben</button><button onclick='naAblehnen(${nrA})'>✕ Abgelehnt</button>`}</td></tr>`;
+    });
+    html+=`</table>`;
+  }
+  document.getElementById('naBody').innerHTML=html;
+}
+function updateNachtragBtn(){
+  const b=document.getElementById('naBtn');if(!b||!CUR)return;
+  const l=naListe(CUR),off=l.filter(n=>n.status!=='freigegeben').length;
+  b.textContent='📝 Nachträge'+(l.length?' ('+(off?off+' offen':l.length+' frei')+')':'');
+}
 // ── NACHTRÄGE: Anzeige + Aktionen ────────────────────────────────────────
 const NA_ART_TXT={mehr:'Mehrpreis',minder:'Minderpreis',entfall:'Entfall',aenderung:'Änderung',neu:'Neue Position'};
 function naBetragTxt(b){if(typeof b!=='number')return '';return (b>0?'+':'')+fmtEur(b);}
