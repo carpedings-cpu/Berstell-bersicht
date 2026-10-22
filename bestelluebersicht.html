@@ -2450,6 +2450,9 @@ function showView(id){
     if(zeigen)jb.textContent=JUMP_LABELS[JUMP_BACK]||'← Zurück';
   }
 }
+// Fenster (Wartung/Protokolle/Nachträge), die von der Startseite geöffnet wurden, führen beim Schließen dorthin zurück
+let MODAL_VON_HOME=false;
+function zurueckWennVonHome(){if(MODAL_VON_HOME){MODAL_VON_HOME=false;goHome();}}
 function goHome(){CUR=null;SEL.clear();SEL_MODE=false;JUMP_BACK=null;showView('vHome');renderHome();}
 async function goSearch(){
   showView('vSearch');
@@ -3346,6 +3349,7 @@ async function copyProjStatus(){
 // ── PROJEKT-DETAIL ──────────────────────────────────────────────────────
 function openProject(id,scrollToPos,filter){
   CUR=PROJECTS.find(p=>p.id===id);if(!CUR)return;
+  MODAL_VON_HOME=false;
   SEL.clear();SEL_MODE=false;
   document.getElementById('dTitle').textContent=CUR.name;
   document.getElementById('dTermin').value=CUR.liefertermin||'';
@@ -4099,8 +4103,8 @@ function openProtokolleModal(){
   renderProtokolleBody();
   document.getElementById('protokolleModal').classList.add('on');
 }
-function closeProtokolleModal(){document.getElementById('protokolleModal').classList.remove('on');}
-function openProtokolleVonHome(id){openProject(id,null,'');openProtokolleModal();}
+function closeProtokolleModal(){document.getElementById('protokolleModal').classList.remove('on');zurueckWennVonHome();}
+function openProtokolleVonHome(id){openProject(id,null,'');MODAL_VON_HOME=true;openProtokolleModal();}
 function renderProtokolleBody(){
   if(!CUR)return;
   ensureProtMeta();
@@ -4648,10 +4652,11 @@ async function copyParseDebug(){
 }
 
 // Nachtrags-Übersicht (Button am Projekt: Startseite + Projektansicht)
-function openNachtraegeVonHome(id){openProject(id,null,'');openNachtraegeModal();}
+function openNachtraegeVonHome(id){openProject(id,null,'');MODAL_VON_HOME=true;openNachtraegeModal();}
 function openNachtraegeModal(){if(!CUR)return;renderNachtraegeBody();document.getElementById('naModal').classList.add('on');}
-function closeNachtraegeModal(){document.getElementById('naModal').classList.remove('on');}
-function naZuPos(pos){closeNachtraegeModal();DFILTER='nachtrag';renderDetail();
+function closeNachtraegeModal(){document.getElementById('naModal').classList.remove('on');zurueckWennVonHome();}
+function naZuPos(pos){MODAL_VON_HOME=false;closeNachtraegeModal();   // Sprung zur Position: bewusst im Projekt bleiben
+  DFILTER='nachtrag';renderDetail();
   const i=CUR.positionen.findIndex(p=>p.pos===pos);const el=i>=0&&document.getElementById('C'+i);if(el)el.scrollIntoView({behavior:'smooth',block:'center'});}
 function renderNachtraegeBody(){
   if(!CUR)return;
@@ -5962,9 +5967,9 @@ function openWartungModal(){
   renderWartungBody();
   document.getElementById('wartungModal').classList.add('on');
 }
-function closeWartungModal(){document.getElementById('wartungModal').classList.remove('on');}
+function closeWartungModal(){document.getElementById('wartungModal').classList.remove('on');zurueckWennVonHome();}
 // Von der Projektkarte (Startseite) direkt ins Wartungs-Modal
-function openWartungVonHome(id){openProject(id,null,'');openWartungModal();}
+function openWartungVonHome(id){openProject(id,null,'');MODAL_VON_HOME=true;openWartungModal();}
 const WART_COL={red:'#d92020',amber:'#c47700',ok:'#1e8a4a'};
 function renderWartungBody(){
   if(!CUR)return;
