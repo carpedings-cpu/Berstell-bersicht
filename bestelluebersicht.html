@@ -2543,6 +2543,13 @@ function renderHome(){
     // 'Bestellt'-Zaehlung = quelle==='bestellt' (siehe istBestellt). Exakt das, was im
     // Detail als "Bestellt" angeklickt/angezeigt wird. Damit ist Karte == Detailansicht.
     const best=proj.positionen.filter(istBestellt).length;
+    // Karte == Projektansicht: "zu bestellen" exakt wie der Chip im Projekt (istZuBestellen).
+    // Erledigt = bestellt ODER Lagerware; nicht bestellbare Positionen (bauseits, Eventual, …) zaehlen nicht mit.
+    const zuBest=proj.positionen.filter(istZuBestellen).length;
+    const lagerN=proj.positionen.filter(p=>p.quelle==='lager').length;
+    const nbOhne=proj.positionen.filter(p=>istNichtBestellbar(p)&&!p.quelle).length;
+    const basis=tot-nbOhne, erl=basis-zuBest;
+    const zubN=proj.positionen.reduce((s,p)=>s+(Array.isArray(p.zubehoer)?p.zubehoer.filter(istZubZuBestellen).length:0),0);
     const red=proj.positionen.filter(p=>severity(p,proj)==='red').length;
     const amb=proj.positionen.filter(p=>severity(p,proj)==='amber').length;
     // Abruf überfällig zählen – nur bestellte Positionen, die noch auf Abruf warten
@@ -2571,7 +2578,8 @@ function renderHome(){
         ${abFehlt?`<button class="pwarn-b pwarn-r" onclick="event.stopPropagation();openProject('${proj.id}',null,'aboffen')" title="Auftragsbestätigungen überfällig – tippen zeigt die Positionen">⚠ ${abFehlt} AB fehlt</button>`:''}
         ${abrufNoetig?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'abruf')" title="Abrufe fällig oder überfällig – tippen zeigt die Positionen">📤 ${abrufNoetig} Abruf nötig</button>`:''}
         ${amb?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'amber')" title="Bald fällige Positionen anzeigen">⏳ ${amb} bald fällig</button>`:''}
-        <button class="pwarn-b pwarn-g" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="Welche Positionen sind als bestellt markiert?">${best}/${tot} bestellt</button>
+        <button class="pwarn-b pwarn-g" onclick="event.stopPropagation();showBestelltList('${proj.id}')" title="${escA(best+' bestellt'+(lagerN?', '+lagerN+' Lagerware':'')+(nbOhne?', '+nbOhne+' nicht bestellbar (zählen nicht mit)':'')+' – tippen zeigt die bestellten Positionen')}">${erl}/${basis} erledigt${lagerN?' ('+lagerN+' Lager)':''}</button>
+        ${(zuBest||zubN)?`<button class="pwarn-b pwarn-a" onclick="event.stopPropagation();openProject('${proj.id}',null,'${zuBest?'zubest':'zubehoer'}')" title="Noch zu bestellen – gleiche Zählung wie im Projekt (Chip „Zu bestellen“)${zubN?', dazu offene Zubehör-Zeilen':''}">📋 ${zuBest?zuBest+' zu bestellen':''}${zuBest&&zubN?' + ':''}${zubN?zubN+' Zubehör':''}</button>`:''}
         <button class="pwarn-b ${wartOffen.length?(wartRed?'pwarn-r':'pwarn-a'):'pwarn-t'}" onclick="event.stopPropagation();openWartungVonHome('${proj.id}')" title="${wartOffen.length?'Wartungsangebote fehlen oder Preisbindung läuft ab – tippen öffnet die Übersicht':'Wartungsangebote ansehen und bearbeiten'}">⚙ ${wartOffen.length?wartOffen.length+' ':''}Wartung</button>
         <button class="pwarn-b ${protOff?'pwarn-r':'pwarn-v'}" onclick="event.stopPropagation();openProtokolleVonHome('${proj.id}')" title="${protOff?'Protokolle fehlen (IBN/Einweisung) – tippen öffnet die Liste':'Protokolle ansehen und abhaken'}">📋 ${protOff?protOff+' ':''}Protokolle</button>
         <button class="pwarn-b ${naOff?'pwarn-na':naFrei?'pwarn-naf':'pwarn-nal'}" onclick="event.stopPropagation();openNachtraegeVonHome('${proj.id}')" title="${naL.length?naOff+' offen (Angebot), '+naFrei+' freigegeben – tippen öffnet die Übersicht':'Noch keine Nachträge – tippen zum Einlesen'}">📝 Nachträge${naOff?' · '+naOff+' offen':naFrei?' · '+naFrei+' frei':''}</button>
