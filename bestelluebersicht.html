@@ -775,6 +775,7 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     💡 Die Liste zeigt die Positionen aller aktiven Projekte live – EK, VK und Menge direkt in der Zeile ändern. Excel-Upload für ganze Preislisten.
   </div>
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <button class="actbtn" id="prProjBtn" onclick="openPreisProjekte()" title="Welche Projekte stecken in der Preisübersicht? Ein-/ausblenden, löschen, hinzufügen" style="background:rgba(26,95,122,.92);color:#fff;border-color:transparent">📁 Projekte</button>
     <button class="actbtn" onclick="trigPreiseExcel()" style="background:rgba(107,80,64,.92);color:#fff;border-color:transparent">📥 EK/VK Excel hochladen</button>
     <button class="actbtn" onclick="openPreisZusatz('')" title="Zusatzposition erfassen – Lieferant und Projekt frei wählbar, jederzeit" style="background:linear-gradient(135deg,#b8860b,#c8961b);color:#fff;border:none">＋ Position ergänzen</button>
     <div class="sw" style="flex:1;min-width:160px">
@@ -1188,6 +1189,17 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 </div>
 
 <!-- Wartungsangebote je Lieferant (pro Projekt) -->
+<div class="modal" id="prProjModal" onclick="if(event.target===this)closePreisProjekte()">
+  <div class="modal-box flex-scroll" style="max-width:760px;max-height:90vh">
+    <button class="modal-x" onclick="closePreisProjekte()" title="Schließen (Esc)">✕</button>
+    <div id="prProjBody" class="modal-scroll"></div>
+    <div class="modal-act">
+      <button class="mcancel" onclick="closePreisProjekte();trigPreiseExcel()" title="Preisliste (EK/VK) als Excel – Projektname kommt aus dem Dateinamen">📥 Excel hochladen</button>
+      <button class="mcancel" onclick="closePreisProjekte();openPreisZusatz('')" title="Einzelne Position für ein beliebiges Projekt erfassen">＋ Position / Projekt</button>
+      <button class="mok" onclick="closePreisProjekte()">Schließen</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="naModal" onclick="if(event.target===this)closeNachtraegeModal()">
   <div class="modal-box flex-scroll" style="max-width:760px;max-height:90vh">
     <button class="modal-x" onclick="closeNachtraegeModal()" title="Schließen (Esc)">✕</button>
@@ -3113,6 +3125,8 @@ document.addEventListener('keydown',e=>{
   if(am&&am.classList.contains('on')){closeAuditModal();e.preventDefault();return;}
   const zlm=document.getElementById('zubListModal');
   if(zlm&&zlm.classList.contains('on')){closeZubehoerListe();e.preventDefault();return;}
+  const ppm=document.getElementById('prProjModal');
+  if(ppm&&ppm.classList.contains('on')){closePreisProjekte();e.preventDefault();return;}
   const nam=document.getElementById('naModal');
   if(nam&&nam.classList.contains('on')){closeNachtraegeModal();e.preventDefault();return;}
   const wm=document.getElementById('wartungModal');
@@ -6427,6 +6441,78 @@ function trigPreiseExcel(){
   fi.click();
 }
 
+// ── Preisübersicht: welche Projekte stecken drin? (ein-/ausblenden, löschen, hinzufügen) ──
+// Quellen: aktive App-Projekte (live), Excel-Importe app-fremder Projekte (PREISE_DATA),
+// Zusatzpositionen (preisMeta.zusatz). Ausblenden wirkt nur auf die Preisübersicht.
+function preisProjektListe(){
+  ensurePreisMeta();
+  const pm=SETTINGS.preisMeta, aus=new Set(pm.ausblenden);
+  const appNamen=new Set(PROJECTS.map(p=>p.name));
+  const m=new Map();
+  const add=(name,art)=>{if(!m.has(name))m.set(name,{name,arten:new Set(),app:0,mitPreis:0,ext:0,zus:0,termin:'',aus:aus.has(name)});const e=m.get(name);e.arten.add(art);return e;};
+  aktiveProjekte().forEach(proj=>{
+    const e=add(proj.name,'app');e.termin=proj.liefertermin||'';
+    (proj.positionen||[]).forEach(p=>{e.app++;if((p.ek||0)>0||(p.vk||0)>0)e.mitPreis++;});
+  });
+  PREISE_DATA.forEach(d=>{if(appNamen.has(d.proj))return;const e=add(d.proj,'ext');e.ext++;if((d.ek||0)>0||(d.vk||0)>0)e.mitPreis++;if(!e.termin)e.termin=pm.termine[d.proj]||d.termin||'';});
+  pm.zusatz.forEach(z=>{const e=add(z.proj||'(ohne Projekt)','zus');e.zus++;if(!e.termin)e.termin=pm.termine[z.proj]||'';});
+  return [...m.values()].sort((a,b)=>(a.arten.has('app')?0:1)-(b.arten.has('app')?0:1)||a.name.localeCompare(b.name,'de'));
+}
+function openPreisProjekte(){renderPreisProjekte();document.getElementById('prProjModal').classList.add('on');}
+function closePreisProjekte(){document.getElementById('prProjModal').classList.remove('on');}
+function renderPreisProjekte(){
+  const l=preisProjektListe();
+  const sicht=l.filter(e=>!e.aus).length;
+  const lbl={app:'App-Projekt',ext:'Excel-Import',zus:'Zusatzpositionen'};
+  let html=`<h3 style="margin-bottom:4px">📁 Projekte in der Preisübersicht</h3>
+    <div style="font-size:11.5px;color:rgba(28,28,30,.55);margin-bottom:12px">${sicht} von ${l.length} Projekten sichtbar. <b>Ausblenden</b> nimmt ein Projekt nur aus der Preisübersicht (Daten bleiben). <b>Löschen</b> gibt es für Excel-Importe und Zusatzpositionen – App-Projekte selbst werden hier nie gelöscht.</div>
+    <table class="na-tab"><tr><th>Projekt</th><th>Quelle</th><th style="text-align:right">Pos.</th><th style="text-align:right">mit Preis</th><th>Termin</th><th></th></tr>`;
+  l.forEach(e=>{
+    const nA=escA(JSON.stringify(e.name));
+    const anz=e.app+e.ext+e.zus;
+    const loeschbar=e.ext||e.zus;
+    html+=`<tr style="${e.aus?'opacity:.45':''}">
+      <td><strong>${esc(e.name)}</strong></td>
+      <td style="font-size:11.5px">${[...e.arten].map(a=>lbl[a]).join(' + ')}</td>
+      <td style="text-align:right">${anz}</td>
+      <td style="text-align:right">${e.mitPreis}</td>
+      <td style="font-size:11.5px">${e.termin?fmtD(e.termin):'–'}</td>
+      <td style="text-align:right">
+        <button onclick='preisProjektSichtbar(${nA},${e.aus?'true':'false'})'>${e.aus?'👁 Einblenden':'🙈 Ausblenden'}</button>
+        ${loeschbar?`<button onclick='preisProjektLoeschen(${nA})' style="color:#a01515">🗑 Löschen</button>`:''}</td></tr>`;
+  });
+  html+=`</table>`;
+  const arch=PROJECTS.filter(p=>p.archiviert).map(p=>p.name);
+  if(arch.length)html+=`<div style="font-size:11px;color:rgba(28,28,30,.5);margin-top:10px">Abgeschlossene App-Projekte erscheinen nicht in der Preisübersicht: ${esc(arch.join(', '))}</div>`;
+  document.getElementById('prProjBody').innerHTML=html;
+  const b=document.getElementById('prProjBtn');if(b)b.textContent='📁 Projekte ('+sicht+')';
+}
+async function preisProjektSichtbar(name,an){
+  if(!requireLogin())return;
+  ensurePreisMeta();
+  const pm=SETTINGS.preisMeta;
+  pm.ausblenden=pm.ausblenden.filter(n=>n!==name);
+  if(!an)pm.ausblenden.push(name);
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderPreisProjekte();renderPreise();
+  toast('„'+name+'“ '+(an?'wieder in der Preisübersicht':'aus der Preisübersicht ausgeblendet'),'ok');
+}
+async function preisProjektLoeschen(name){
+  if(!requireLogin())return;
+  ensurePreisMeta();
+  const pm=SETTINGS.preisMeta;
+  const appNamen=new Set(PROJECTS.map(p=>p.name));
+  const nExt=appNamen.has(name)?0:PREISE_DATA.filter(e=>e.proj===name).length;
+  const nZus=pm.zusatz.filter(z=>z.proj===name).length;
+  if(!nExt&&!nZus)return;
+  if(!confirm(`„${name}“ aus der Preisübersicht löschen?\n\n`+(nExt?nExt+' Positionen aus dem Excel-Import\n':'')+(nZus?nZus+' Zusatzpositionen\n':'')+(appNamen.has(name)?'\nDas App-Projekt selbst bleibt unverändert.':'')+'\n\nDas lässt sich nicht rückgängig machen (Excel ggf. neu hochladen).'))return;
+  if(nExt){PREISE_DATA=PREISE_DATA.filter(e=>e.proj!==name);await dbPut('settings',{k:'preiseData',v:PREISE_DATA});}
+  if(nZus)pm.zusatz=pm.zusatz.filter(z=>z.proj!==name);
+  if(!appNamen.has(name)){pm.ausblenden=pm.ausblenden.filter(n=>n!==name);delete pm.termine[name];}
+  try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
+  renderPreisProjekte();renderPreise();
+  toast('„'+name+'“ aus der Preisübersicht gelöscht','ok');
+}
 // Parser für EK/VK-Excel – erkennt Spalten automatisch.
 // Durchsucht ALLE Blätter (bevorzugt 'Kalkulation') und akzeptiert viele
 // Überschriften-Varianten (EK, EK €, EK netto, Einkaufspreis, VK, Verkaufspreis, …).
@@ -6523,8 +6609,11 @@ function margeClass(m){return m>=35?'hi':m>=20?'mid':'low';}
 // bei Mainz). Jetzt: bei jedem renderPreise neu aus PROJECTS aufbauen.
 function buildPreiseLive(showAll,projFilter){
   const out=[];
+  const aus=new Set(((SETTINGS.preisMeta||{}).ausblenden)||[]);   // in der Projekte-Ansicht ausgeblendet
+  const weg=n=>!projFilter&&aus.has(n);
   aktiveProjekte().forEach(proj=>{
     if(projFilter && proj.name!==projFilter)return;
+    if(weg(proj.name))return;
     (proj.positionen||[]).forEach(p=>{
       const ek=p.ek||0, vk=p.vk||0;
       // Status fuer Diagnose-Anzeige
@@ -6559,6 +6648,7 @@ function buildPreiseLive(showAll,projFilter){
   const pm=SETTINGS.preisMeta||{};
   (pm.zusatz||[]).forEach((z,zIdx)=>{
     if(projFilter && z.proj!==projFilter)return;
+    if(weg(z.proj))return;
     const appProj=PROJECTS.find(p=>p.name===z.proj);
     out.push({
       proj:z.proj||'(ohne Projekt)', pos:z.pos||'—', bez:z.bez||'', typ:'',
@@ -6570,7 +6660,7 @@ function buildPreiseLive(showAll,projFilter){
   });
   // Externe Preisdaten (manuelle EK/VK-Excel ohne echtes Projekt im System) bleiben erhalten
   const projNames=new Set(PROJECTS.map(p=>p.name));
-  if(!projFilter)PREISE_DATA.forEach(e=>{ if(!projNames.has(e.proj))out.push(e); });
+  if(!projFilter)PREISE_DATA.forEach(e=>{ if(!projNames.has(e.proj)&&!weg(e.proj))out.push(e); });
   return out;
 }
 let PR_LIEF_PROJ={}; // (Alt, ungenutzt)
@@ -6584,6 +6674,7 @@ function ensurePreisMeta(){
   if(!pm.show||typeof pm.show!=='object')pm.show={};
   if(!Array.isArray(pm.exclude))pm.exclude=[];  // Positionen vom Druck ausgeschlossen (bleiben in der Liste)
   if(!pm.termine||typeof pm.termine!=='object')pm.termine={}; // Liefertermine app-fremder Projekte {projName:'YYYY-MM-DD'}
+  if(!Array.isArray(pm.ausblenden))pm.ausblenden=[];  // Projektnamen, die in der Preisübersicht nicht erscheinen
   // Einmal-Migration: alte proj.angebotsnr + proj.preisZusatz in den globalen Speicher ziehen
   if(!pm._migv1){
     PROJECTS.forEach(proj=>{
@@ -6618,6 +6709,7 @@ async function togglePrintPos(key){
 }
 function renderPreise(){
   ensurePreisMeta();
+  {const b=document.getElementById('prProjBtn');if(b)b.textContent='📁 Projekte ('+preisProjektListe().filter(e=>!e.aus).length+')';}
   const q=(document.getElementById('prSrch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('prSort')?.value||'lief';
   const showAll=!!document.getElementById('prShowAll')?.checked;
