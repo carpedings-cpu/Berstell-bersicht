@@ -6479,7 +6479,7 @@ function renderPreisProjekte(){
       <td style="font-size:11.5px">${[...e.arten].map(a=>lbl[a]).join(' + ')}</td>
       <td style="text-align:right">${anz}</td>
       <td style="text-align:right">${e.mitPreis}</td>
-      <td style="font-size:11.5px">${e.termin?fmtD(e.termin):'–'}</td>
+      <td><input type="date" class="pr-inp" style="width:130px;text-align:left" value="${escA(e.termin||'')}" title="Liefertermin – bei App-Projekten gilt er auch im Projekt" onchange='setPreisProjTermin(${nA},this.value)'></td>
       <td style="text-align:right">
         <button onclick='preisProjektSichtbar(${nA},${e.aus?'true':'false'})'>${e.aus?'👁 Einblenden':'🙈 Ausblenden'}</button>
         ${loeschbar?`<button onclick='preisProjektLoeschen(${nA})' style="color:#a01515">🗑 Löschen</button>`:''}</td></tr>`;
@@ -6832,9 +6832,7 @@ function renderPreise(){
       const termin=appP&&appP.liefertermin?fmtD(appP.liefertermin):'';
       const hdr=`<tr class="pr-projrow"><td colspan="9">
         <span class="pr-projrow-name">📁 ${esc(pn)}${isExtern?' <span style="font-weight:400;color:#888;font-size:10px">(app-fremd)</span>':''}</span>
-        ${isExtern
-          ?`<span class="pr-projrow-ang"><label>📅 Liefertermin</label><input type="date" value="${escA(getExtTermin(pn))}" onclick="event.stopPropagation()" onchange="setExtTermin('${escA(pn)}',this.value)"></span>`
-          :(termin?`<span class="pr-projrow-term">📅 Liefertermin: ${esc(termin)}</span>`:'')}
+        <span class="pr-projrow-ang"><label>📅 Liefertermin</label><input type="date" value="${escA(isExtern?getExtTermin(pn):(appP.liefertermin||''))}" title="${isExtern?'Liefertermin für dieses Projekt (nur Preisübersicht)':'Liefertermin des Projekts – gilt auch in der Projektansicht und auf der Startseite'}" onclick="event.stopPropagation()" onchange="setPreisProjTermin('${escA(pn)}',this.value)"></span>
         <span class="pr-projrow-ang"><label>Angebots-Nr.</label><input type="text" value="${escA(getAng(pn,liefKey))}" placeholder="z.B. AN-2026-0815" onclick="event.stopPropagation()" onchange="setAng('${escA(pn)}','${escA(liefKey)}',this.value)"></span>
       </td></tr>`;
       // Zwischensumme je Projekt (nur sinnvoll, wenn der Lieferant mehrere Projekte hat)
@@ -6989,7 +6987,21 @@ async function setMengeInline(projName,pos,lief,val){
   renderPreise();
   toast('Menge gespeichert','ok',1500);
 }
-// Liefertermin fuer app-fremde (zusaetzliche) Projekte – App-Projekte pflegen ihn im Projekt selbst
+// Liefertermin aus der Preisübersicht setzen: App-Projekt -> proj.liefertermin (gilt überall), sonst preisMeta.termine
+async function setPreisProjTermin(pn,val){
+  if(!requireLogin()){renderPreise();return;}
+  const proj=PROJECTS.find(p=>p.name===pn);
+  if(!proj)return setExtTermin(pn,val);
+  if((proj.liefertermin||'')===(val||''))return;
+  proj.liefertermin=val||'';
+  touchProject(proj);
+  await dbPut('projects',proj);
+  if(CUR&&CUR.id===proj.id){const d=document.getElementById('dTermin');if(d)d.value=proj.liefertermin;}
+  renderPreise();
+  if(document.getElementById('prProjModal').classList.contains('on'))renderPreisProjekte();
+  toast('Liefertermin „'+pn+'“ gespeichert','ok');
+}
+// Liefertermin fuer app-fremde (zusaetzliche) Projekte
 function getExtTermin(pn){
   return ((SETTINGS.preisMeta||{}).termine||{})[pn]||'';
 }
@@ -6999,6 +7011,7 @@ async function setExtTermin(pn,val){
   if(val)SETTINGS.preisMeta.termine[pn]=val; else delete SETTINGS.preisMeta.termine[pn];
   try{await dbPut('settings',{k:'main',...SETTINGS});}catch(e){}
   renderPreise();
+  if(document.getElementById('prProjModal').classList.contains('on'))renderPreisProjekte();
   toast('Liefertermin gespeichert','ok');
 }
 let _pzEditIdx=null;
