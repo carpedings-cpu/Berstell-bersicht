@@ -38,6 +38,15 @@ const code=[
   extractConst('ZUB_PREISE'),
   extractFn('istBauseits'),
   extractFn('istDienstleistung'),
+  extractConst('FRAGE_STOP'),
+  extractConst('FRAGE_NAME_IGNOR'),
+  extractFn('frageNorm'),
+  extractFn('frageWoerter'),
+  extractFn('frageTri'),
+  extractFn('frageAehnlich'),
+  extractFn('frageTrefferWert'),
+  extractFn('frageAuswerten'),
+  extractFn('istBestellt'),
   extractFn('naEintraege'),
   extractFn('istNaNeuOffen'),
   extractFn('istNaEntfallen'),
@@ -83,7 +92,7 @@ const code=[
 const api=new Function('const window={_parseDebug:{}};'+code+`
   return {istEventual,nichtBestellbarLabel,istZuBestellen,rowsToProject,istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
     protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
-    naListe,naImport,naStatusSetzen,naLoeschen,istNaNeuOffen,istEntfallen,
+    frageAuswerten,naListe,naImport,naStatusSetzen,naLoeschen,istNaNeuOffen,istEntfallen,
     begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,posKey,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
       advent:GRUSS_ADVENT,frueh:GRUSS_FRUEH,abend:GRUSS_ABEND}};`)();
@@ -628,6 +637,28 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   api.naImport(pr7,{nr:'2',items:[{art:'neu',bez:'Lagerkosten',bestellbar:false,betrag:822.81}]});
   api.naStatusSetzen(pr7,'2','freigegeben','2026-10-22');
   is(api.istZuBestellen(pr7.positionen[0]),false,'NA: bestellbar:false bleibt nach Freigabe nicht zu bestellen');
+}
+
+
+// ── Frage-Suche ──────────────────────────────────────────────────────────
+{
+  const P=[{name:'Mainz-Martin-Luther-King Schule',positionen:[
+      {pos:'01.0018.',bez:'Speisenausgabe',fabrikat:'Steinacker',quelle:''},
+      {pos:'01.0020.',bez:'Speisenausgabewagen\n Quelle: B.PRO',fabrikat:'Bpro',typ:'SAW L-3 HS',quelle:''},
+      {pos:'01.0023.',bez:'Transportwagen/Servierwagen',fabrikat:'Bpro',quelle:'bestellt'}]},
+    {name:'Mainz Peter-Härtling-Schule',positionen:[
+      {pos:'02.0006.',bez:'Spülmaschinen Zulauftisch',quelle:'bestellt'},
+      {pos:'02.0007.',bez:'Haubenspülmaschine',quelle:'bestellt'},
+      {pos:'01.0016.',bez:'Speisenausgabewagen',quelle:''}]},
+    {name:'Erlangen',positionen:[{pos:'1.01.01.',bez:'Elektro-Kombi-Dämpfer 10 x GN 1/1',quelle:''}]}];
+  const r=api.frageAuswerten('Welcher Speiseausgabewagen ist in Martin Luther King?',P);
+  is([r.projekte.map(p=>p.name),r.treffer[0]&&r.treffer[0].p.pos],[['Mainz-Martin-Luther-King Schule'],'01.0020.'],'Frage: Projekt erkannt, Speiseausgabewagen findet Speisenausgabewagen');
+  is(api.frageAuswerten('Welcher Ausgabewagen ist in Mainz?',P).treffer.map(t=>t.p.pos).sort(),['01.0016.','01.0020.'],'Frage: Ortsname Mainz trifft beide Mainzer Projekte');
+  is(api.frageAuswerten('Kombidämpfer in Erlangen',P).treffer.map(t=>t.p.pos),['1.01.01.'],'Frage: Kombidämpfer findet Kombi-Dämpfer');
+  is(api.frageAuswerten('Spülmaschine Peter Härtling',P).treffer[0].p.pos,'02.0007.','Frage: Hauptwort vor Bestimmungswort (Maschine vor Zulauftisch)');
+  is(api.frageAuswerten('was ist in Martin Luther King noch offen',P).treffer.map(t=>t.p.pos),['01.0018.','01.0020.'],'Frage: Status offen listet nur Zu-bestellen');
+  is(api.frageAuswerten('Welcher Wagen ist in Martin Luther King bestellt',P).treffer.map(t=>t.p.pos),['01.0023.'],'Frage: Status bestellt filtert');
+  is(api.frageAuswerten('in Erlangen',P).treffer.length,0,'Frage: ohne Begriff und Status keine Liste');
 }
 
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);

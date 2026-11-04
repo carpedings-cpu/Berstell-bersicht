@@ -579,6 +579,19 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .card.na-neu-frei{border:1.5px dashed #1e8a4a;}
 .pcard .pwarn-na{background:rgba(255,204,0,.22);color:#5e4700;}
 .pcard .pwarn-naf{background:rgba(52,199,89,.15);color:#0f5a2c;}
+.frage-box{margin-bottom:14px;}
+.frage-box input{flex:1;min-width:0;padding:12px 14px;border-radius:13px;border:.5px solid rgba(0,0,0,.1);background:rgba(255,255,255,.8);font-size:14px;font-family:inherit;}
+.frage-box input:focus{outline:none;border-color:#6b5040;background:#fff;}
+.frage-box button{padding:0 18px;border-radius:13px;border:none;background:rgba(45,41,38,.9);color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;font-family:inherit;}
+.frage-erg{margin-top:10px;background:rgba(255,255,255,.75);border:.5px solid rgba(0,0,0,.08);border-radius:13px;padding:10px 12px;font-size:12.5px;}
+.frage-erg .fe-kopf{font-size:11.5px;color:rgba(28,28,30,.6);margin-bottom:6px;}
+.frage-erg .fe-hit{display:flex;gap:10px;align-items:flex-start;padding:8px 6px;border-top:.5px solid rgba(0,0,0,.06);cursor:pointer;border-radius:8px;}
+.frage-erg .fe-hit:hover{background:rgba(200,168,130,.15);}
+.frage-erg .fe-pos{font-family:monospace;font-size:11px;background:rgba(45,41,38,.85);color:#fff;padding:2px 6px;border-radius:6px;white-space:nowrap;}
+.frage-erg .fe-st{font-size:11px;font-weight:700;padding:1px 7px;border-radius:7px;white-space:nowrap;}
+.frage-erg .fe-st.o{background:rgba(196,119,0,.15);color:#7d4d00;}
+.frage-erg .fe-st.b{background:rgba(26,95,122,.13);color:#0f4655;}
+.frage-erg .fe-st.g{background:rgba(30,138,74,.14);color:#0f6332;}
 .pcard .pwarn-nal{background:rgba(255,204,0,.1);color:#7a6420;}
 .na-tab{width:100%;border-collapse:collapse;font-size:12.5px;}
 .na-tab td,.na-tab th{padding:8px 8px;border-bottom:.5px solid rgba(0,0,0,.08);vertical-align:top;text-align:left;}
@@ -703,6 +716,13 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
     <button id="abrufBtn" onclick="goAbrufAnsicht()" style="flex:1;min-width:160px;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,#b85a00,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 18px rgba(184,90,0,.3)">
       📤 Abruf-Plan <span id="abrufCnt" style="background:rgba(255,255,255,.25);padding:2px 10px;border-radius:10px;font-size:12.5px"></span>
     </button>
+  </div>
+  <div class="frage-box">
+    <form onsubmit="event.preventDefault();frageStellen()" style="display:flex;gap:8px">
+      <input type="text" id="frageInp" autocomplete="off" placeholder="Frag die Bestellübersicht … z.B. „Welcher Speiseausgabewagen ist in Martin Luther King?“" oninput="if(!this.value.trim())document.getElementById('frageErg').innerHTML=''">
+      <button type="submit">Fragen</button>
+    </form>
+    <div id="frageErg"></div>
   </div>
   <div class="pgrid" id="pgrid"></div>
   <div id="archivWrap"></div>
@@ -1643,6 +1663,116 @@ function nichtBestellbarLabel(p){
   if(istBauseits(p))return 'Bauseits';
   if(istDienstleistung(p))return 'Dienstleistung';
   return '';
+}
+// ── FRAGE-SUCHE (Startseite) ─────────────────────────────────────────────
+// Keine KI: zerlegt die Frage in Wörter, erkennt Projekte am Namen und sucht die übrigen
+// Begriffe unscharf in Bezeichnung/Typ/Fabrikat/Lieferant (Speiseausgabewagen findet
+// Speisenausgabewagen). Status-Wörter (offen, bestellt, geliefert) filtern zusätzlich.
+const FRAGE_STOP=new Set(('welcher welche welches welchen welchem wer was wie wo wann wieviel wieviele viele ist sind war '+
+  'wurde wurden wird werden haben hat gibt es im in ins bei beim fuer von vom zum zur der die das den dem des ein eine einen '+
+  'einer und oder mit noch schon auch mal bitte zeig zeige mir uns wir unser unsere projekt projekten steht stehen drin '+
+  'kommt kommen geraet geraete position positionen artikel liste da dort hier denn').split(' '));
+const FRAGE_NAME_IGNOR=new Set('schule grundschule gs mensa kueche hotel berlin mainz wiesbaden frankfurt ffm'.split(' '));
+function frageNorm(t){return deUml(String(t||'').toLowerCase()).replace(/[^a-z0-9]+/g,' ').trim();}
+function frageWoerter(t){return frageNorm(t).split(' ').filter(w=>w.length>=2);}
+function frageTri(w){const s='  '+w+' ';const m=new Map();for(let i=0;i<s.length-2;i++){const g=s.slice(i,i+3);m.set(g,(m.get(g)||0)+1);}return m;}
+function frageAehnlich(a,b,streng){
+  if(!a||!b)return 0;
+  if(a===b)return 1;
+  if(!streng&&a.length>=4&&b.includes(a))return 1;          // "ausgabewagen" in "speisenausgabewagen"
+  if(!streng&&b.length>=5&&a.includes(b))return .85;
+  const ta=frageTri(a),tb=frageTri(b);let gem=0,na=0,nb=0;
+  ta.forEach((v,k)=>{na+=v;gem+=Math.min(v,tb.get(k)||0);});tb.forEach(v=>nb+=v);
+  return 2*gem/(na+nb);
+}
+// Wie gut passt ein Suchbegriff zu einer Position? Das Hauptwort der Bezeichnung (letztes längeres
+// Wort vor "für/mit/…") zählt voll, Bestimmungswörter davor nur zu 80 % – so steht die
+// Spülmaschine vor dem "Spülmaschinen Zulauftisch". Wortpaare werden zusammengezogen
+// ("Kombi-Dämpfer" = "kombidaempfer"), zählen aber nur bei echter Ähnlichkeit.
+function frageTrefferWert(b,p){
+  const bez=frageWoerter(String(p.bez||'').split('\n')[0].replace(/\([^)]*\)/g,' '));   // Klammern = Zusatzinfo
+  const PRAEP=new Set(['fuer','mit','und','inkl','zu','zum','zur','als','ohne','auf','unter']);
+  const seg=[];for(const w of bez){if(PRAEP.has(w))break;seg.push(w);}
+  const lang=seg.filter(w=>w.length>=4&&/^[a-z]+$/.test(w));const kopf=lang.length?lang[lang.length-1]:'';
+  let best=0;
+  const nimm=v=>{if(v>best)best=v;};
+  bez.forEach((w,i)=>{
+    nimm(frageAehnlich(b,w)*((w===kopf||bez.length<2)?1:.8));
+    if(i+1<bez.length)nimm(frageAehnlich(b,w+bez[i+1],true));
+  });
+  frageWoerter([p.typ,p.fabrikat,p.lieferant,p.pos].join(' ')).forEach(w=>nimm(frageAehnlich(b,w)*.9));   // Typ/Fabrikat knapp hinter der Bezeichnung
+  return best;
+}
+function frageAuswerten(frage,projekte){
+  const woerter=frageWoerter(frage).filter(w=>!FRAGE_STOP.has(w));
+  const status=new Set();
+  const STATUS={offen:'offen',bestellen:'offen',fehlt:'offen',fehlen:'offen',bestellt:'bestellt',geliefert:'geliefert',lager:'lager',lagerware:'lager'};
+  let rest=woerter.filter(w=>{if(STATUS[w]){status.add(STATUS[w]);return false;}return true;});
+  // Projekte erkennen: Wörter der Frage gegen die Namensteile der Projekte
+  let best=0,treffProj=[],namWoerter=new Set();
+  projekte.forEach(pr=>{
+    const teile=frageWoerter(pr.name).filter(t=>t.length>=3&&!FRAGE_NAME_IGNOR.has(t));
+    const hit=rest.filter(w=>w.length>=3&&teile.some(t=>frageAehnlich(w,t)>=.8));
+    if(!hit.length)return;
+    if(hit.length>best){best=hit.length;treffProj=[pr];namWoerter=new Set(hit);}
+    else if(hit.length===best){treffProj.push(pr);hit.forEach(h=>namWoerter.add(h));}
+  });
+  // Ortsnamen (Mainz, Berlin …) nur als Projektfilter, wenn sonst nichts passt
+  if(!treffProj.length){
+    projekte.forEach(pr=>{const teile=frageWoerter(pr.name);
+      const hit=rest.filter(w=>w.length>=4&&teile.includes(w));if(hit.length){treffProj.push(pr);hit.forEach(h=>namWoerter.add(h));}});
+  }
+  const begriffe=rest.filter(w=>!namWoerter.has(w)&&w.length>=3);
+  const basis=treffProj.length?treffProj:projekte;
+  const treffer=[];
+  basis.forEach(pr=>(pr.positionen||[]).forEach((p,idx)=>{
+    if(status.has('offen')&&!istZuBestellen(p))return;
+    if(status.has('bestellt')&&!istBestellt(p))return;
+    if(status.has('geliefert')&&p.status!=='geliefert')return;
+    if(status.has('lager')&&p.quelle!=='lager')return;
+    let score=1;
+    if(begriffe.length){
+      const werte=begriffe.map(b=>frageTrefferWert(b,p));
+      if(Math.min(...werte)<.5)return;               // jeder Begriff muss irgendwie vorkommen
+      score=werte.reduce((a,b)=>a+b,0)/werte.length;
+      if(score<.62)return;
+    } else if(!status.size) return;                   // weder Begriff noch Status: nichts zu suchen
+    treffer.push({proj:pr,idx,p,score});
+  }));
+  treffer.sort((a,b)=>b.score-a.score);
+  return {projekte:treffProj,begriffe,status:[...status],treffer};
+}
+function frageStatusHtml(p){
+  if(p.status==='geliefert')return `<span class="fe-st g">geliefert${p.geliefertDatum?' '+fmtD(p.geliefertDatum):''}</span>`;
+  if(p.quelle==='lager')return `<span class="fe-st g">Lagerware</span>`;
+  if(istNichtBestellbar(p))return `<span class="fe-st">${esc(nichtBestellbarLabel(p)||'nicht bestellbar')}</span>`;
+  if(istBestellt(p))return `<span class="fe-st b">bestellt${p.bestelltAm?' '+fmtD(p.bestelltAm):''}${p.abBestaetigt?' · AB ✓':' · AB fehlt'}${p.status==='abgerufen'?' · abgerufen':''}</span>`;
+  return `<span class="fe-st o">noch nicht bestellt</span>`;
+}
+function frageStellen(){
+  const q=document.getElementById('frageInp').value.trim();
+  const box=document.getElementById('frageErg');
+  if(!q){box.innerHTML='';return;}
+  const r=frageAuswerten(q,aktiveProjekte());
+  const wo=r.projekte.length?r.projekte.map(p=>esc(p.name)).join(', '):'allen aktiven Projekten';
+  const was=[r.begriffe.length?'„'+esc(r.begriffe.join(' '))+'“':'',r.status.length?esc(r.status.join(', ')):''].filter(Boolean).join(' · ');
+  let html=`<div class="frage-erg"><div class="fe-kopf">Gesucht: ${was||'–'} in ${wo} · ${r.treffer.length} Treffer</div>`;
+  if(!r.begriffe.length&&!r.status.length){
+    html+=`<div style="padding:6px">Was soll ich suchen? Nenne ein Gerät oder einen Status, z.B. „Kombidämpfer in Erlangen“ oder „was ist in Haus der Athleten noch offen“.</div>`;
+  } else if(!r.treffer.length){
+    html+=`<div style="padding:6px">Nichts gefunden. Anderer Begriff? Die Suche schaut in Bezeichnung, Typ, Fabrikat und Lieferant.</div>`;
+  }
+  r.treffer.slice(0,20).forEach(t=>{
+    const p=t.p, bez=String(p.bez||'').split('\n')[0];
+    html+=`<div class="fe-hit" onclick="jumpToProjPos('${escA(t.proj.id)}','${escA(p.pos)}')" title="Zur Position springen">
+      <span class="fe-pos">${esc(p.pos)}</span>
+      <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(bez)}</div>
+        <div style="color:rgba(28,28,30,.65)">${[p.fabrikat,p.typ].filter(Boolean).map(esc).join(' · ')||'<i>Fabrikat/Typ noch offen</i>'} · ${esc(p.menge||'')} ${esc(p.einh||'')}${r.projekte.length===1?'':' · <b>'+esc(t.proj.name)+'</b>'}</div></div>
+      ${frageStatusHtml(p)}</div>`;
+  });
+  if(r.treffer.length>20)html+=`<div class="fe-kopf" style="margin-top:6px">… und ${r.treffer.length-20} weitere – Frage genauer stellen.</div>`;
+  html+=`</div>`;
+  box.innerHTML=html;
 }
 // ── NACHTRÄGE ────────────────────────────────────────────────────────────
 // Ein Nachtrag liegt NICHT als eigene Tabelle vor, sondern als Eintraege direkt an den
