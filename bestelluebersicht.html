@@ -500,6 +500,9 @@ header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.7);
 .pr-inp:focus{outline:none;border-color:#6b5040;background:#fff;}
 .pr-pos{background:rgba(45,41,38,.08);color:#2d2926;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;}
 .pr-bez{font-weight:600;color:#1c1c1e;}
+.pr-bez-inp{display:block;width:100%;min-width:180px;padding:4px 7px;border-radius:7px;border:.5px solid transparent;background:transparent;font:inherit;font-size:12.5px;font-weight:600;color:#1c1c1e;resize:none;overflow:hidden;line-height:1.35;}
+.pr-bez-inp:hover{border-color:rgba(0,0,0,.12);background:rgba(255,255,255,.6);}
+.pr-bez-inp:focus{outline:none;border-color:#6b5040;background:#fff;}
 .pr-clickable{cursor:pointer;transition:background .12s ease;-webkit-tap-highlight-color:rgba(26,95,122,.18);touch-action:manipulation;}
 .pr-clickable:hover,.pr-clickable:active{background:rgba(26,95,122,.08);}
 .pr-clickable:hover .pr-bez{color:#0f4655;}
@@ -6811,7 +6814,7 @@ function renderPreise(){
       return `<tr class="pr-clickable${exclCls}" onclick="${onclick}" title="${tip}">
         ${printCell}
         <td><span class="pr-pos">${esc(it.pos)}</span></td>
-        <td><div class="pr-bez">${esc(it.bez)}${statusBadge}</div>${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}${diag}</td>
+        <td><textarea class="pr-bez-inp" rows="1" title="Beschreibung ändern – gilt auch für die Position im Projekt und für den Druck; speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" oninput="prBezHoehe(this)" onfocus="prBezHoehe(this)" onchange="setBezInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}',this)">${esc(it.bez)}</textarea>${statusBadge?'<div>'+statusBadge+'</div>':''}${it.typ?'<div class="pr-typ">'+esc(it.typ)+'</div>':''}${diag}</td>
         <td style="text-align:center"><input type="text" inputmode="decimal" class="pr-inp" style="width:58px;text-align:center" value="${escA(fmtMenge(it.menge))}" title="Menge ändern – Komma erlaubt, speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setMengeInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}',this.value)"></td>
         <td><span class="pr-proj">${esc(it.proj)}</span>${lDat?'<div style="font-size:10px;color:rgba(28,28,30,.5);margin-top:3px">📅 '+lDat+'</div>':''}</td>
         <td class="pr-ek"><input type="number" step="0.01" class="pr-inp" value="${it.ek||''}" placeholder="–" title="EK ändern – speichert beim Verlassen des Feldes" onclick="event.stopPropagation()" onchange="setPreisInline('${escA(it.proj)}','${escA(it.pos)}','${escA(it._liefRaw||it.lief||'')}','ek',this.value)"></td>
@@ -6883,6 +6886,7 @@ function renderPreise(){
       </div>
     </div>`;
   }).join('');
+  wrap.querySelectorAll('.pr-bez-inp').forEach(prBezHoehe);   // lange Beschreibungen gleich ganz zeigen
 }
 
 let PR_OPEN=new Set(); // welche Lieferanten-Gruppen aufgeklappt sind (bleibt über renderPreise erhalten)
@@ -6892,6 +6896,7 @@ function togglePr(el){
   el.nextElementSibling.classList.toggle('open');
   const lk=el.dataset.lk;
   if(lk){ if(el.classList.contains('open'))PR_OPEN.add(lk); else PR_OPEN.delete(lk); }
+  el.nextElementSibling.querySelectorAll('.pr-bez-inp').forEach(prBezHoehe);   // erst sichtbar messbar
 }
 function togglePrSel(lk){
   if(PR_SEL.has(lk))PR_SEL.delete(lk); else PR_SEL.add(lk);
@@ -6927,6 +6932,34 @@ async function setPreisInline(projName,pos,lief,feld,val){
   await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
   renderPreise();
   toast((feld==='ek'?'EK':'VK')+' gespeichert','ok',1500);
+}
+// Beschreibung direkt in der Preisliste aendern (App-Position: mit Audit, gilt im Projekt mit; Excel-Zeile: Preisspeicher)
+function prBezHoehe(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}
+async function setBezInline(projName,pos,lief,el){
+  if(!requireLogin()){renderPreise();return;}
+  const neu=String(el.value||'').replace(/\s+$/,'').replace(/^\s+/,'');
+  if(!neu){toast('Beschreibung darf nicht leer sein','err');renderPreise();return;}
+  const proj=PROJECTS.find(p=>p.name===projName);
+  if(proj){
+    const p=(proj.positionen||[]).find(x=>String(x.pos).trim()===String(pos).trim());
+    if(p){
+      const alt=p.bez||'';
+      if(neu===alt)return;
+      p.bez=neu;
+      logAction(p,'Beschreibung geändert: „'+alt+'“ → „'+neu+'“ (Preisliste)');
+      touchProject(proj);
+      await dbPut('projects',proj);
+      if(CUR&&CUR.id===proj.id)renderDetail();
+      toast('Beschreibung gespeichert','ok',1500);
+      return;
+    }
+  }
+  const e=PREISE_DATA.find(x=>x.proj===projName&&String(x.pos)===String(pos)&&(x.lief||'')===(lief||''));
+  if(!e){toast('Position nicht gefunden','err');renderPreise();return;}
+  if((e.bez||'')===neu)return;
+  e.bez=neu;
+  await dbPut('settings',{k:'preiseData',v:PREISE_DATA});
+  toast('Beschreibung gespeichert','ok',1500);
 }
 // Menge direkt in der Preisliste aendern (App-Position: mit Audit; Excel-Zeile: Preisspeicher)
 async function setMengeInline(projName,pos,lief,val){
