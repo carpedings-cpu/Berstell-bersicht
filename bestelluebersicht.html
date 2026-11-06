@@ -1412,6 +1412,20 @@ function posZeit(p){
   Object.keys(cm).forEach(k=>{const x=Date.parse(cm[k]&&cm[k].at)||0;if(x>t)t=x;});
   return t;
 }
+// Termine je Eintrag zusammenfuehren: Schluessel = id (aeltere Termine ohne id: Name).
+// Juengere Aenderung (t.at) gewinnt; geloeschte Termine bleiben als {del:true} stehen,
+// damit ein alter Stand sie nicht zurueckbringt (nach 90 Tagen weg).
+function terminKey(t){return t&&t.id?t.id:'n:'+String((t&&t.name)||'').trim().toLowerCase();}
+function mergeTermine(a,b){
+  const m=new Map();
+  [...(Array.isArray(a)?a:[]),...(Array.isArray(b)?b:[])].forEach(t=>{
+    if(!t)return;
+    const k=terminKey(t),x=m.get(k);
+    if(!x||(Date.parse(t.at)||0)>(Date.parse(x.at)||0))m.set(k,t);
+  });
+  const grenze=Date.now()-90*864e5;
+  return [...m.values()].filter(t=>!(t.del&&(Date.parse(t.at)||0)<grenze));
+}
 // Zwei Staende desselben Projekts zusammenfuehren: pro Position gewinnt die juenger
 // bearbeitete Fassung; Positionen, die nur auf einer Seite existieren, bleiben erhalten.
 function mergeProjekt(mine,theirs){
@@ -1429,6 +1443,7 @@ function mergeProjekt(mine,theirs){
   });
   rest.forEach(tp=>merged.push(tp));
   out.positionen=merged;
+  out.termine=mergeTermine(mine.termine,theirs.termine);
   return out;
 }
 // Projekt-Push: bedingtes Update nur wenn die Cloud noch auf unserem Basis-Stand (rev)
@@ -1558,10 +1573,15 @@ function sbSubscribe(){
         // Veraltetes Event (unsere Version ist bereits neuer) → ignorieren
         if(i>=0 && (PROJECTS[i].rev||0)>(p.rev||0))return;
         await dbPutLocal('projects',p);
-        if(i>=0)PROJECTS[i]=p; else PROJECTS.push(p);
         if(CUR&&CUR.id===p.id){
-          // Bei aktiv editierten Karten kein Re-Render, sonst springt das Tipp-Feld weg
-          if(!isEditingInput()){CUR=p;renderDetail();}
+          // In place: CUR bleibt dasselbe Objekt wie in PROJECTS – sonst speichert ein offenes
+          // Fenster spaeter auf einen abgehaengten alten Stand. Re-Render nur, wenn nicht getippt wird.
+          Object.keys(CUR).forEach(k=>{if(!(k in p))delete CUR[k];});
+          Object.assign(CUR,p);
+          if(i>=0)PROJECTS[i]=CUR; else PROJECTS.push(CUR);
+          if(!isEditingInput())renderDetail();
+        } else {
+          if(i>=0)PROJECTS[i]=p; else PROJECTS.push(p);
         }
       }
       if(!isEditingInput())renderHome();
@@ -3559,7 +3579,7 @@ function jumpToProjPos(projNameOrId,pos){
 function renderTermine(){
   const box=document.getElementById('dTermine');
   if(!box||!CUR)return;
-  const liste=(CUR.termine||[]).slice().sort((a,b)=>{
+  const liste=(CUR.termine||[]).filter(t=>!t.del).sort((a,b)=>{
     if(!!a.done!==!!b.done)return a.done?1:-1; // offene zuerst, erledigte ans Ende
     return String(a.datum||'').localeCompare(String(b.datum||''));
   });
@@ -3581,26 +3601,31 @@ function renderTermine(){
     <button onclick="openTerminModal()" title="Weiteren Termin ergänzen, z.B. Montage Dunstabzugshauben" style="padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.6);color:rgba(107,80,64,.8);border:.5px dashed rgba(107,80,64,.4)">＋ Termin</button>
   </div>`;
 }
-let _terminEditIdx=null;
+let _terminEditIdx=null,_terminEditKey=null;
+function terminNeueId(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function openTerminModal(idx){
   if(!requireLogin())return;
   _terminEditIdx=(idx==null?null:idx);
   const t=_terminEditIdx!=null?(CUR.termine||[])[_terminEditIdx]:null;
+  _terminEditKey=t?terminKey(t):null;
   document.getElementById('tmTitle').textContent=t?'✏️ Termin bearbeiten':'＋ Termin hinzufügen';
   document.getElementById('tmName').value=t?t.name||'':'';
   document.getElementById('tmDatum').value=t?t.datum||'':'';
   document.getElementById('terminModal').classList.add('on');
   setTimeout(()=>document.getElementById(t?'tmDatum':'tmName').focus(),120);
 }
-function closeTerminModal(){document.getElementById('terminModal').classList.remove('on');_terminEditIdx=null;}
+function closeTerminModal(){document.getElementById('terminModal').classList.remove('on');_terminEditIdx=null;_terminEditKey=null;}
 async function saveTermin(){
   if(!requireLogin())return;
   const name=document.getElementById('tmName').value.trim();
   if(!name){toast('Bitte Bezeichnung eingeben','err');return;}
   const datum=document.getElementById('tmDatum').value;
   if(!Array.isArray(CUR.termine))CUR.termine=[];
-  if(_terminEditIdx!=null&&CUR.termine[_terminEditIdx])Object.assign(CUR.termine[_terminEditIdx],{name,datum});
-  else CUR.termine.push({name,datum});
+  const at=new Date().toISOString();
+  const t=_terminEditKey?CUR.termine.find(x=>terminKey(x)===_terminEditKey):null;
+  if(t){if(!t.id)t.id=terminKey(t);   // alter Termin: Kennung aus dem bisherigen Namen, damit alte Stände ihn wiedererkennen
+  Object.assign(t,{name,datum,at});}
+  else CUR.termine.push({id:terminNeueId(),name,datum,at});
   touchProject(CUR);
   await saveCur();
   closeTerminModal();
@@ -3611,6 +3636,8 @@ async function toggleTerminDone(i){
   if(!requireLogin())return;
   const t=(CUR.termine||[])[i];if(!t)return;
   t.done=!t.done;
+  if(!t.id)t.id=terminKey(t);
+  t.at=new Date().toISOString();
   touchProject(CUR);
   await saveCur();
   renderDetail();
@@ -3620,7 +3647,8 @@ async function delTermin(i){
   if(!requireLogin())return;
   const t=(CUR.termine||[])[i];if(!t)return;
   if(!confirm('Termin "'+t.name+'" entfernen?'))return;
-  CUR.termine.splice(i,1);
+  if(!t.id)t.id=terminKey(t);
+  t.del=true;t.at=new Date().toISOString();   // vormerken statt entfernen, sonst kommt er per Sync zurück
   touchProject(CUR);
   await saveCur();
   renderDetail();

@@ -66,6 +66,8 @@ const code=[
   extractFn('protokolleVollstaendig'),
   extractFn('zubPreis'),
   extractFn('posZeit'),
+  extractFn('terminKey'),
+  extractFn('mergeTermine'),
   extractFn('mergeProjekt'),
   extractFn('isoKW'),
   extractConst('GRUSS_ALLGEMEIN'),
@@ -91,7 +93,7 @@ const code=[
 ].join('\n');
 const api=new Function('const window={_parseDebug:{}};'+code+`
   return {istEventual,nichtBestellbarLabel,istZuBestellen,rowsToProject,istNichtBestellbar,istWartungsrelevant,istProtokollpflichtig,
-    protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,isoKW,
+    protokolleVollstaendig,zubPreis,posZeit,mergeProjekt,mergeTermine,isoKW,
     frageAuswerten,naListe,naImport,naStatusSetzen,naLoeschen,istNaNeuOffen,istEntfallen,
     begruessung,grussVorname,URLAUB,URLAUB_WEG,toNum,fmtMenge,posKey,
     pools:{allgemein:GRUSS_ALLGEMEIN,montag:GRUSS_MONTAG,freitag:GRUSS_FREITAG,
@@ -659,6 +661,30 @@ is(api.posKey(' 6.62.10. 4. 210.'),api.posKey('6.62.10.4.210.'),'Schreibweise eg
   is(api.frageAuswerten('was ist in Martin Luther King noch offen',P).treffer.map(t=>t.p.pos),['01.0018.','01.0020.'],'Frage: Status offen listet nur Zu-bestellen');
   is(api.frageAuswerten('Welcher Wagen ist in Martin Luther King bestellt',P).treffer.map(t=>t.p.pos),['01.0023.'],'Frage: Status bestellt filtert');
   is(api.frageAuswerten('in Erlangen',P).treffer.length,0,'Frage: ohne Begriff und Status keine Liste');
+}
+
+
+// ── Termine zusammenführen ───────────────────────────────────────────────
+{
+  const jetzt=Date.now(), z=t=>new Date(jetzt-t*60000).toISOString();
+  // Alter Stand (Rechner A) kennt die neuen Termine nicht -> sie bleiben trotzdem
+  const alt=[{name:'Kälte',datum:'2026-10-14'},{name:'Haube',datum:'2026-12-14'}];
+  const neu=[{name:'Kälte',datum:'2026-10-14'},{name:'Haube',datum:'2026-12-14'},{id:'t1',name:'Kleinkälte Endmontage',datum:'2027-03-31',at:z(10)}];
+  is(api.mergeTermine(alt,neu).map(t=>t.name).sort(),['Haube','Kleinkälte Endmontage','Kälte'],'Termine: alter Stand löscht neue Termine nicht');
+  // Änderung mit Zeitstempel gewinnt gegen alten Stand ohne
+  const geaendert=[{id:'n:haube',name:'Haube',datum:'2027-01-11',at:z(1)}];
+  is(api.mergeTermine(alt,geaendert).filter(t=>t.name==='Haube').map(t=>t.datum),['2027-01-11'],'Termine: neuere Änderung gewinnt, kein Doppel');
+  const umbenannt=[{id:'n:haube',name:'Hauben Montage',datum:'2027-01-11',at:z(1)}];
+  is(api.mergeTermine(alt,umbenannt).map(t=>t.name).sort(),['Hauben Montage','Kälte'],'Termine: umbenannter alter Termin ersetzt den alten Namen');
+  // gleiche id: jüngere Fassung gewinnt in beide Richtungen
+  const a=[{id:'x',name:'Kühlzelle',datum:'2026-11-09',at:z(30)}], b=[{id:'x',name:'Kühlzelle',datum:'2026-12-02',at:z(5)}];
+  is([api.mergeTermine(a,b)[0].datum,api.mergeTermine(b,a)[0].datum],['2026-12-02','2026-12-02'],'Termine: jüngere Fassung gewinnt unabhängig von der Seite');
+  // Gelöscht bleibt gelöscht
+  const del=[{id:'x',name:'Kühlzelle',datum:'2026-12-02',del:true,at:z(1)}];
+  is(api.mergeTermine(b,del)[0].del,true,'Termine: Löschung wird nicht vom alten Stand zurückgeholt');
+  // mergeProjekt nutzt das
+  const m=api.mergeProjekt({lastEdit:{at:z(0)},positionen:[],termine:alt},{lastEdit:{at:z(20)},positionen:[],termine:neu});
+  is(m.termine.length,3,'Termine: mergeProjekt behält Termine beider Seiten');
 }
 
 console.log(`${pass}/${pass+fail} Tests ok, ${fail} fehlgeschlagen`);
